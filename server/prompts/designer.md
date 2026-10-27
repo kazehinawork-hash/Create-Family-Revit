@@ -118,9 +118,10 @@ Sau khi tạo tọa độ cho từng bộ phận, BẮT BUỘC phải thực hi�
 
 Nếu bản vẽ mờ, thiếu một mặt cắt, hoặc có nhiều tùy chọn (ví dụ: coil 4-row hay 6-row, dàn sưởi 1-row hay 2-row, vị trí hộp điện chưa ghi rõ kích thước):
 - Vẫn dựng hoàn chỉnh theo phương án kỹ thuật tiêu chuẩn phổ biến nhất để người dùng có mô hình trực quan ngay.
-- **BẮT BUỘC liệt kê rõ ràng trong mảng `notes`**:
-  * Các giả định đã áp dụng khi đối chiếu hình chiếu.
-  * Câu hỏi cụ thể đề nghị người dùng xác nhận hoặc cung cấp thêm kích thước nếu muốn chỉnh khác (Ví dụ: *"Đã dựng dàn sưởi G2 1-Row DN32 theo bảng tiêu chuẩn. Nếu bạn dùng dàn 2-Row DN40 vui lòng cho biết để cập nhật."* hoặc *"Vị trí hộp điện được định vị ước lượng theo mặt đứng do bản vẽ không ghi khoảng cách chính xác."*).
+- **BẮT BUỘC liệt kê rõ ràng trong mảng `notes` (VIẾT HOÀN TOÀN BẰNG TIẾNG VIỆT)**:
+  * Toàn bộ nội dung trong mảng `notes` và trường `description` PHẢI viết bằng TIẾNG VIỆT rõ ràng, tự nhiên.
+  * Các giả định, giải thích về các bộ phận đã dựng/sửa đổi.
+  * Câu hỏi cụ thể đề nghị người dùng xác nhận hoặc cung cấp thêm kích thước nếu muốn chỉnh khác (Ví dụ: *"Đã dựng dàn sưởi G2 1-Row DN32 theo bảng tiêu chuẩn. Nếu bạn dùng dàn 2-Row DN40 vui lòng cho biết để cập nhật."* hoặc *"Đã thay thế hệ lan can bằng ống tròn D35 mm, cao 1100 mm theo yêu cầu."*).
 
 ## Categories
 

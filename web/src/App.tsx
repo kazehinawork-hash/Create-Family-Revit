@@ -171,7 +171,15 @@ export function App() {
   useEffect(() => {
     let alive = true;
     fetchHealth().then((result) => {
-      if (alive) setHealth(result);
+      if (alive) {
+        setHealth(result);
+        if (result && result.agent?.model && result.agent.model.startsWith("agy:")) {
+          setModel(result.agent.model);
+        } else if (result && result.models && result.models.length > 0) {
+          const firstAgy = result.models.find((m) => m.id.startsWith("agy:"));
+          if (firstAgy) setModel((curr) => curr || firstAgy.id);
+        }
+      }
     });
     return () => {
       alive = false;
@@ -265,9 +273,9 @@ export function App() {
 
           pushEntry({
             role: "agent",
-            text: `${hadSpec ? "Updated" : "Built"} ${event.spec.name}.\n${stats.parts} parts · ${stats.parameters} parameters${dims ? ` · ${dims}` : ""}`,
+            text: `${hadSpec ? "Đã cập nhật" : "Đã tạo"} ${event.spec.name}.\n${stats.parts} chi tiết · ${stats.parameters} tham số${dims ? ` · ${dims}` : ""}`,
             notes: event.spec.notes,
-            meta: `${formatDuration(stats.elapsedMs)}${stats.attempts > 1 ? ` · ${stats.attempts} passes` : ""}`,
+            meta: `${formatDuration(stats.elapsedMs)}${stats.attempts > 1 ? ` · ${stats.attempts} lượt` : ""}`,
             issues: [...event.errors, ...event.issues.filter((issue) => issue.severity === "warning")].slice(0, 12),
           });
         },

@@ -170,7 +170,7 @@ export function ChatPanel({
               <div className="body">{entry.text}</div>
               {entry.notes && entry.notes.length > 0 && (
                 <div className="agent-assumptions">
-                  <div className="assumptions-title">Assumptions & Questions</div>
+                  <div className="assumptions-title">Giả định & Câu hỏi từ Agent (Assumptions & Questions)</div>
                   <ul className="assumptions-list">
                     {entry.notes.map((note, idx) => (
                       <li key={idx}>{note}</li>
