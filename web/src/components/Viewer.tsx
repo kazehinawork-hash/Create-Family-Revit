@@ -125,13 +125,6 @@ export function Viewer({
   const statusRef = useRef(status);
   statusRef.current = status;
 
-  // Khi Agent bắt đầu làm việc hoặc khi status xuất hiện -> tự động kích hoạt Turntable
-  useEffect(() => {
-    if (status) {
-      setTurntableActive(true);
-    }
-  }, [status]);
-
   useEffect(() => {
     if (!model || model.parts.length === 0) {
       setVisiblePartCount(0);
@@ -863,8 +856,8 @@ export function Viewer({
         controls.update();
       }
 
-      // Auto-turntable exhibition rotation when building/generating model or toggled by user button
-      if (statusRef.current || turntableRef.current) {
+      // Turntable exhibition rotation when explicitly toggled by user
+      if (turntableRef.current) {
         controls.autoRotate = true;
         controls.autoRotateSpeed = 0.35; // Gentle, cinematic exhibition turntable speed
       } else {
