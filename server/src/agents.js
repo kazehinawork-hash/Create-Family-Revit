@@ -37,6 +37,14 @@ function extractResult(stdout) {
 }
 
 function describeEvent(event) {
+  // agy stream event types
+  if (event.event === "step_update" || event.step_type) {
+    const st = event.step_type || event.step_update?.step_type;
+    if (st === "thinking") return "Thinking";
+    if (st === "call_tool" || st === "tool_call") return "Consulting tools";
+    if (st === "planner_response" || st === "message") return "Writing the spec";
+  }
+
   switch (event.type) {
     case "tool_running":
       if (event.toolName === "read_file") return "Reading the document";
@@ -79,7 +87,7 @@ function runCommandCode(prompt, timeoutMs, model, cwd, onProgress, signal) {
       executable = "agy";
       const agyModel = chosen.slice(4);
       // agy reads directly from stdin when no -p flag is provided; DO NOT use shell: true on Windows
-      args = ["--output-format", "json", "--model", agyModel];
+      args = ["--output-format", "json", "--model", agyModel, "--dangerously-skip-permissions"];
     } else {
       args = ["-p", "--output-format", "json", "--skip-onboarding", "--max-turns", "3"];
       if (chosen) args.push("-m", chosen);
@@ -155,7 +163,11 @@ function runCommandCode(prompt, timeoutMs, model, cwd, onProgress, signal) {
         if (!line.startsWith("{")) continue;
         try {
           const frame = JSON.parse(line);
-          if (frame.type === "event") progress(describeEvent(frame.event ?? {}));
+          if (frame.type === "event") {
+            progress(describeEvent(frame.event ?? {}));
+          } else if (frame.event) {
+            progress(describeEvent(frame));
+          }
         } catch {
           /* partial or non JSON line */
         }
@@ -365,11 +377,12 @@ export function agentStatus() {
     };
   }
 
+  const isAgy = config.agent.model.startsWith("agy:") || config.agent.command === "agy";
   return {
     provider,
-    model: config.agent.model || "command code default",
+    model: config.agent.model || (isAgy ? "Antigravity CLI (agy)" : "command code default"),
     ready: true,
-    detail: `runs "${config.agent.command} -p" on this machine`,
+    detail: isAgy ? `runs Antigravity CLI (agy) on this machine` : `runs "${config.agent.command} -p" on this machine`,
   };
 }
 
