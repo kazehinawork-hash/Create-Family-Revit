@@ -87,6 +87,11 @@ export interface UploadedDocument {
   name: string;
   size: number;
   path: string;
+  url?: string;
+}
+
+export function isImageDocument(doc: UploadedDocument): boolean {
+  return /\.(png|jpe?g|webp|gif|bmp)$/i.test(doc.name);
 }
 
 export async function uploadDocument(file: File): Promise<UploadedDocument> {

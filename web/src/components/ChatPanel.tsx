@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Issue } from "@family/spec-core";
-import type { CmdcModel, UploadedDocument } from "../lib/api";
+import { isImageDocument, type CmdcModel, type UploadedDocument } from "../lib/api";
 
 export interface ChatEntry {
   id: string;
@@ -88,6 +88,7 @@ export function ChatPanel({
   onRemoveAttachment,
 }: Props) {
   const [draft, setDraft] = useState("");
+  const [preview, setPreview] = useState<UploadedDocument | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -96,6 +97,15 @@ export function ChatPanel({
     const node = scrollRef.current;
     if (node) node.scrollTop = node.scrollHeight;
   }, [entries, running, stageMessage]);
+
+  useEffect(() => {
+    if (!preview) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPreview(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [preview]);
 
   const submit = () => {
     const text = draft.trim();
@@ -222,21 +232,43 @@ export function ChatPanel({
 
       <div className="chat-composer">
         {attachments.length > 0 && (
-          <div className="attachments-list" style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 6 }}>
-            {attachments.map((doc, idx) => (
-              <div key={`${doc.path}-${idx}`} className="attachment-chip">
-                <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
-                  <path d="M9.5 4.5 5 9a2.1 2.1 0 0 0 3 3l5-5a3.2 3.2 0 0 0-4.5-4.5L3 8a4.2 4.2 0 0 0 6 6l4-4" />
-                </svg>
-                <span className="name" title={doc.name}>
-                  {doc.name}
-                </span>
-                <span className="size">{formatSize(doc.size)}</span>
-                <button type="button" onClick={() => onRemoveAttachment(idx)} aria-label="Remove attachment">
-                  ×
-                </button>
-              </div>
-            ))}
+          <div className="attachments-list">
+            {attachments.map((doc, idx) => {
+              const showThumb = isImageDocument(doc) && Boolean(doc.url);
+              return (
+                <div key={`${doc.path}-${idx}`} className={`attachment-chip${showThumb ? " image" : ""}`}>
+                  {showThumb ? (
+                    <button
+                      type="button"
+                      className="attachment-thumb"
+                      onClick={() => setPreview(doc)}
+                      title={doc.name}
+                      aria-label={`View ${doc.name}`}
+                    >
+                      <img src={doc.url} alt={doc.name} draggable={false} />
+                    </button>
+                  ) : (
+                    <>
+                      <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
+                        <path d="M9.5 4.5 5 9a2.1 2.1 0 0 0 3 3l5-5a3.2 3.2 0 0 0-4.5-4.5L3 8a4.2 4.2 0 0 0 6 6l4-4" />
+                      </svg>
+                      <span className="name" title={doc.name}>
+                        {doc.name}
+                      </span>
+                    </>
+                  )}
+                  <span className="size">{formatSize(doc.size)}</span>
+                  <button
+                    type="button"
+                    className="remove"
+                    onClick={() => onRemoveAttachment(idx)}
+                    aria-label="Remove attachment"
+                  >
+                    ×
+                  </button>
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -325,6 +357,37 @@ export function ChatPanel({
           }}
         />
       </div>
+
+      {preview?.url && (
+        <div className="modal-backdrop image-viewer-backdrop" onClick={() => setPreview(null)}>
+          <div className="modal-card image-viewer-card" onClick={(event) => event.stopPropagation()}>
+            <div className="modal-header">
+              <div className="title-row">
+                <h3>{preview.name}</h3>
+                <span className="meta">{formatSize(preview.size)}</span>
+              </div>
+              <div className="header-actions">
+                <a
+                  className="modal-close"
+                  href={preview.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  title="Open in a new tab"
+                  aria-label="Open in a new tab"
+                >
+                  ↗
+                </a>
+                <button type="button" className="modal-close" onClick={() => setPreview(null)} aria-label="Close">
+                  ×
+                </button>
+              </div>
+            </div>
+            <div className="modal-body image-viewer-body">
+              <img src={preview.url} alt={preview.name} />
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

@@ -49,13 +49,30 @@ app.post("/api/upload", (req, res) => {
 
     fs.mkdirSync(config.dirs.uploads, { recursive: true });
     const safe = path.basename(name).replace(/[^\w.\- ]+/g, "_").slice(-80) || "document";
-    const stored = path.join(config.dirs.uploads, `${Date.now()}-${safe}`);
+    const storedName = `${Date.now()}-${safe}`;
+    const stored = path.join(config.dirs.uploads, storedName);
     fs.writeFileSync(stored, buffer);
 
-    res.json({ name: safe, size: buffer.length, path: stored });
+    res.json({
+      name: safe,
+      size: buffer.length,
+      path: stored,
+      url: `/api/uploads/${encodeURIComponent(storedName)}`,
+    });
   } catch (error) {
     res.status(500).json({ error: error?.message || String(error) });
   }
+});
+
+app.get("/api/uploads/:name", (req, res) => {
+  const uploadsRoot = path.resolve(config.dirs.uploads);
+  const name = path.basename(String(req.params.name || ""));
+  const target = path.join(uploadsRoot, name);
+  if (!name || !target.startsWith(uploadsRoot + path.sep) || !fs.existsSync(target)) {
+    res.status(404).json({ error: "Not found" });
+    return;
+  }
+  res.sendFile(target, { dotfiles: "allow" });
 });
 
 // Cheap liveness probe: the studio polls this while waiting, /api/health is too heavy
