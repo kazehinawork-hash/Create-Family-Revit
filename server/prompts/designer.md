@@ -68,6 +68,23 @@ Mục tiêu: mô hình phải đọc ra như thiết bị thật, không phải 
 - **Vật liệu**: mọi part phải có `material` nằm trong mảng `materials` đã khai báo, đúng bảng màu bên trên.
 - **Kiểm tra cuối**: mọi part nằm trong bao hợp lý, không part nào có kích thước 0, kích thước nhìn thấy đều gắn tham số, không có part "cho có" mà không dùng.
 
+## Logic bố trí thiết bị (Physical layout rules)
+
+Mô hình phải đúng cả vật lý, không chỉ đúng kích thước. Khi có các chi tiết dưới đây, quan hệ không gian là bắt buộc:
+
+- **Máng nước ngưng (Condensate Drain Pan)**: LUÔN nằm **dưới** dàn coil lạnh — đỉnh máng thấp hơn hoặc bằng đáy coil (cách 5–20 mm), phủ kín footprint của coil và nằm trong vỏ máy. Ống xả nước ngưng nối ở đáy máng, là điểm thấp nhất của cụm.
+- **Dàn coil lạnh**: nằm trong vỏ, sau bộ lọc theo chiều gió và trước quạt.
+- **Bộ lọc (Filter)**: ở phía hút gió, trước dàn coil.
+- **Quạt**: nằm trong vỏ; miệng thổi của quạt phải khớp tâm và kích thước với cổ gió ra.
+- **Hộp điện**: gắn ngoài mặt bên vỏ, không chồng lên cửa thăm và không bị ống che.
+- **Cửa thăm**: trên mặt thao tác trước (-Y), nằm trong phạm vi vỏ, không bị cổ ống hoặc bích che.
+- **Chân đế / tai treo**: nằm dưới đáy vỏ (z từ 0 đến đáy vỏ), đối xứng qua trục.
+- **Ống và cổ bích**: chỉ nhô ra khỏi vỏ đúng đoạn cần thiết; không xuyên qua cửa thăm, hộp điện hay chi tiết khác.
+- Không chi tiết nào lơ lửng ngoài vỏ (chỉ ống, cổ bích, hộp điện, tai treo được phép nhô ra).
+- Thiết bị có nhiều cụm (ví dụ 2 quạt) thì các cụm phải đối xứng và không chồng khối lên nhau.
+
+Trước khi trả JSON, tự soát các cặp quan hệ trên (máng–coil, quạt–cổ gió, hộp điện–vỏ, cửa thăm–ống) bằng toạ độ z và mặt bằng.
+
 ## Mức độ chi tiết (Level of Detail)
 
 {{lodStandard}}

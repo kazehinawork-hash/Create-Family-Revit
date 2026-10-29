@@ -194,3 +194,55 @@ describe("rounded box corners", () => {
     expect(cornerOf(undefined)).toBe(0);
   });
 });
+
+describe("layout logic checks", () => {
+  const layout = (panZ: number) => ({
+    schemaVersion: "1.0",
+    name: "Layout",
+    category: "Mechanical Equipment",
+    units: "mm",
+    parameters: [],
+    parts: [
+      {
+        id: "casing",
+        name: "Casing Body",
+        solid: { kind: "box", origin: { x: 0, y: 0, z: 0 }, size: { x: 1200, y: 800, z: 600 } },
+      },
+      {
+        id: "cooling-coil",
+        name: "Cooling Coil",
+        solid: { kind: "box", origin: { x: 0, y: 0, z: 200 }, size: { x: 900, y: 500, z: 300 } },
+      },
+      {
+        id: "drain-pan",
+        name: "Condensate Drain Pan",
+        solid: { kind: "box", origin: { x: 0, y: 0, z: panZ }, size: { x: 1000, y: 600, z: 60 } },
+      },
+    ],
+  });
+
+  it("warns when the drain pan is not below the cooling coil", () => {
+    const analysis = analyzeSpec(layout(500));
+    expect(analysis.ok).toBe(true);
+    expect(analysis.issues.some((issue) => issue.path === "logic.drain-pan.drain-pan")).toBe(true);
+  });
+
+  it("accepts a pan under the coil and inside the casing", () => {
+    const analysis = analyzeSpec(layout(100));
+    expect(analysis.issues.filter((issue) => issue.path.startsWith("logic."))).toEqual([]);
+  });
+
+  it("warns when internal equipment leaves the casing", () => {
+    const spec = layout(100);
+    const moved = {
+      ...spec,
+      parts: [
+        spec.parts[0],
+        { ...spec.parts[1], solid: { ...spec.parts[1].solid, origin: { x: 0, y: 0, z: 700 } } },
+        spec.parts[2],
+      ],
+    };
+    const analysis = analyzeSpec(moved);
+    expect(analysis.issues.some((issue) => issue.path === "logic.inside-casing.cooling-coil")).toBe(true);
+  });
+});
