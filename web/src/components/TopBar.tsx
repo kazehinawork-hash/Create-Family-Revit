@@ -16,8 +16,7 @@ interface Props {
   native: boolean;
   running?: boolean;
   agentStage?: string | null;
-  agentStatus?: AgentPill;
-  units: Units;
+    units: Units;
   onUnits: (units: Units) => void;
   revitVersion: string;
   onRevitVersion: (version: string) => void;
@@ -65,8 +64,7 @@ export function TopBar({
   native,
   running,
   agentStage,
-  agentStatus,
-  units,
+    units,
   onUnits,
   revitVersion,
   onRevitVersion,
@@ -138,15 +136,6 @@ export function TopBar({
       </div>
 
       <div className="top-actions">
-        {agentStatus && (
-          <span
-            className={`agent-pill ${agentStatus.tone} ${agentStatus.tone === "ok" ? "agent-pill-pulse" : ""}`}
-            title={agentStatus.hint ?? agentStatus.text}
-          >
-            <span className="agent-pill-dot" />
-            <span className="agent-pill-text">{agentStatus.text}</span>
-          </span>
-        )}
 
         {onLoadDemo && (
           <div className="demo-dropdown-container" ref={dropdownRef}>

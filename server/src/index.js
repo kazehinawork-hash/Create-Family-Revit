@@ -64,6 +64,67 @@ app.get("/api/ping", (_req, res) => {
   res.json({ ok: true, agent: agentStatus(), time: Date.now() });
 });
 
+
+app.post("/api/verify-api", async (req, res) => {
+  const { baseUrl, apiKey, model } = req.body || {};
+  if (!apiKey || !apiKey.trim()) {
+    return res.json({ ok: false, error: "Chưa nhập API Key" });
+  }
+
+  const url = (baseUrl || "").toLowerCase();
+  try {
+    if (url.includes("googleapis.com")) {
+      // Test Gemini API with a dummy model request
+      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey.trim()}`;
+      const testRes = await fetch(endpoint, { signal: AbortSignal.timeout(6000) });
+      if (!testRes.ok) {
+        const errText = await testRes.text().catch(() => "");
+        return res.json({ ok: false, status: testRes.status, error: "API Key Google không hợp lệ hoặc không có quyền truy cập." });
+      }
+      return res.json({ ok: true, provider: "Google Gemini" });
+    }
+
+    if (url.includes("anthropic.com")) {
+      // Test Anthropic Messages API
+      const endpoint = "https://api.anthropic.com/v1/messages";
+      const testRes = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey.trim(),
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: model || "claude-3-5-haiku-latest",
+          max_tokens: 1,
+          messages: [{ role: "user", content: "hi" }],
+        }),
+        signal: AbortSignal.timeout(6000),
+      });
+
+      if (testRes.status === 401 || testRes.status === 403) {
+        return res.json({ ok: false, status: testRes.status, error: "API Key Anthropic không hợp lệ hoặc đã hết hạn." });
+      }
+      return res.json({ ok: true, provider: "Anthropic Claude" });
+    }
+
+    // Default: OpenAI compatible endpoint
+    const endpoint = (baseUrl || "https://api.openai.com/v1").replace(/\/+$/, "");
+    const testUrl = `${endpoint}/models`;
+    const testRes = await fetch(testUrl, {
+      headers: { Authorization: `Bearer ${apiKey.trim()}` },
+      signal: AbortSignal.timeout(6000),
+    });
+
+    if (testRes.status === 401 || testRes.status === 403) {
+      return res.json({ ok: false, status: testRes.status, error: "API Key không hợp lệ hoặc sai endpoint." });
+    }
+    return res.json({ ok: true, provider: "OpenAI Compatible" });
+  } catch (err) {
+    return res.json({ ok: false, error: err.message || "Không thể kết nối tới máy chủ API" });
+  }
+});
+
 app.get("/api/health", async (_req, res) => {
   const models = await getCmdcModels();
   res.json({
@@ -115,7 +176,7 @@ app.post("/api/design", async (req, res) => {
 
   const keepAlive = setInterval(() => {
     if (!closed && !res.writableEnded) res.write(": ping\n\n");
-  }, 15000);
+  }, 5000);
 
   try {
     const result = await design({
@@ -123,6 +184,7 @@ app.post("/api/design", async (req, res) => {
       currentSpec: req.body?.spec ?? null,
       lod: req.body?.lod,
       model: typeof req.body?.model === "string" && req.body.model.trim() ? req.body.model.trim() : undefined,
+      customApiConfig: req.body?.customApiConfig,
       attachments: normalizeAttachments(req.body?.attachments),
       signal: controller.signal,
       emit,

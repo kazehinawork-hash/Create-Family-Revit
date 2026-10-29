@@ -33,6 +33,8 @@ export const config = {
   agent: {
     provider: (process.env.AGENT_PROVIDER || "commandcode").toLowerCase(),
     command: process.env.COMMAND_CODE_BIN || "cmdc",
+    codexBin: process.env.CODEX_BIN || "codex",
+    claudeBin: process.env.CLAUDE_BIN || "claude",
     model: process.env.COMMAND_CODE_MODEL || "",
     timeoutMs: Number(process.env.AGENT_TIMEOUT || 600000),
   },

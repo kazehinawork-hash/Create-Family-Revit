@@ -185,6 +185,7 @@ textarea {
 
 .agent-pill-text {
   display: inline-block;
+  text-transform: none;
   line-height: 14px;
   /* Nudge by half a pixel: with Vietnamese diacritics the glyph box sits a touch high. */
   padding-top: 1px;

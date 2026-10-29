@@ -82,7 +82,7 @@ function summarise(spec, model) {
   };
 }
 
-export async function design({ prompt, currentSpec, lod, emit, model, attachments, signal }) {
+export async function design({ prompt, currentSpec, lod, emit, model, customApiConfig, attachments, signal }) {
   const startedAt = Date.now();
   const level = LOD_LEVELS.includes(Number(lod)) ? Number(lod) : DEFAULT_LOD;
   const messages = [{ role: "system", content: systemPrompt(level) }];
@@ -138,6 +138,7 @@ export async function design({ prompt, currentSpec, lod, emit, model, attachment
 
   const modelOptions = {
     ...(model ? { model } : {}),
+    ...(customApiConfig ? { customApiConfig } : {}),
     ...(attachments && attachments.length > 0 ? { attachments } : {}),
     ...(signal ? { signal } : {}),
     onProgress: (message) => emit({ type: "stage", stage: "working", message }),

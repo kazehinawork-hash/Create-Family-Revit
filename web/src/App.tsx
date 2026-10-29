@@ -12,7 +12,7 @@ import fcuExampleRaw from "../../spec/examples/fcu-080.json";
 import pumpExampleRaw from "../../spec/examples/pump-dn80.json";
 import { ChatPanel, type ChatEntry } from "./components/ChatPanel";
 import { ParameterPanel } from "./components/ParameterPanel";
-import { TopBar, type AgentPill } from "./components/TopBar";
+import { TopBar } from "./components/TopBar";
 import { Viewer } from "./components/Viewer";
 import {
   buildFamily,
@@ -117,9 +117,9 @@ export function App() {
   const [hiddenPartIds, setHiddenPartIds] = useState<string[]>([]);
   const [transparentPartIds, setTransparentPartIds] = useState<string[]>([]);
   const [health, setHealth] = useState<Health | null>(null);
-  const [serverOnline, setServerOnline] = useState<boolean | null>(null);
-  const [agentReady, setAgentReady] = useState<boolean | null>(null);
-  const [lastBeatAt, setLastBeatAt] = useState<number | null>(null);
+  const [_serverOnline, setServerOnline] = useState<boolean | null>(null); void _serverOnline;
+  const [_agentReady, setAgentReady] = useState<boolean | null>(null); void _agentReady;
+  const [lastBeatAt, setLastBeatAt] = useState<number | null>(null); void lastBeatAt;
   const [toast, setToast] = useState<ToastState | null>(null);
   const [currentModelId, setCurrentModelId] = useState<string | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
@@ -232,32 +232,10 @@ export function App() {
   const elapsed = runStartedAt ? Math.max(0, Math.floor((now - runStartedAt) / 1000)) : 0;
   const elapsedLabel = running && runStartedAt ? `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, "0")}` : null;
 
-  const beatAge = lastBeatAt ? Math.max(0, Math.floor((now - lastBeatAt) / 1000)) : null;
-  const beatLabel = beatAge === null ? "" : beatAge < 1 ? "vừa xong" : `${beatAge}s trước`;
+  // beatAge removed
+  // beatLabel removed
 
-  const agentStatus: AgentPill = serverOnline === false
-    ? {
-        tone: "error",
-        text: "Mất kết nối server",
-        hint: "API 8787 không phản hồi — kiểm tra `npm run dev` rồi thử lại.",
-      }
-    : running
-      ? beatAge !== null && beatAge > 25
-        ? {
-            tone: "warn",
-            text: `Đang chờ · ${elapsedLabel ?? ""}`.trim(),
-            hint: `Không có phản hồi từ server ${beatAge}s. Agent có thể đang suy nghĩ rất lâu hoặc đã treo — bấm Stop nếu quá 10 phút.`,
-          }
-        : {
-            tone: "ok",
-            text: `Agent đang chạy · ${elapsedLabel ?? ""}`.trim(),
-            hint: `Server còn sống · nhịp cuối ${beatLabel}`,
-          }
-      : agentReady
-        ? { tone: "ok", text: "Agent sẵn sàng", hint: health?.agent?.detail }
-        : agentReady === false
-          ? { tone: "warn", text: "Agent chưa sẵn sàng", hint: health?.agent?.detail }
-          : { tone: "warn", text: "Đang kiểm tra server…", hint: "Chưa nhận được phản hồi từ API 8787." };
+  // unused
 
   useEffect(() => {
     if (!toast) return;
@@ -333,7 +311,7 @@ export function App() {
     // A restarted server (npm run dev reloads on every file change) leaves the SSE
     // connection open with no data. Abort instead of waiting forever.
     const watchdog = window.setInterval(() => {
-      if (Date.now() - lastBeat > 30000 && !controller.signal.aborted) {
+      if (Date.now() - lastBeat > 600000 && !controller.signal.aborted) {
         stalled = true;
         controller.abort();
       }
@@ -346,6 +324,7 @@ export function App() {
           spec,
           lod,
           model: model || undefined,
+          customApiConfig: model === 'custom:api' ? (() => { try { const raw = localStorage.getItem('custom_api_config'); return raw ? JSON.parse(raw) : undefined; } catch { return undefined; } })() : undefined,
           attachments: docs.length > 0 ? docs.map((d) => ({ path: d.path, name: d.name })) : undefined,
         },
         (event) => {
@@ -396,7 +375,7 @@ export function App() {
         pushEntry({
           role: "agent",
           text:
-            "Không nhận được phản hồi từ server quá 30 giây nên đã dừng.\n" +
+            "Không nhận được phản hồi từ server quá 10 phút nên đã dừng.\n" +
             "Thường là do API vừa restart (`npm run dev` reload khi có file thay đổi) — kiểm tra pill trạng thái rồi gửi lại.",
           tone: "error",
         });
@@ -842,8 +821,7 @@ export function App() {
         native={native}
         running={running}
         agentStage={stage?.stage ?? null}
-        agentStatus={agentStatus}
-        units={units}
+                units={units}
         onUnits={setUnits}
         revitVersion={revitVersion}
         onRevitVersion={setRevitVersion}
@@ -1054,3 +1032,4 @@ export function App() {
     </div>
   );
 }
+
