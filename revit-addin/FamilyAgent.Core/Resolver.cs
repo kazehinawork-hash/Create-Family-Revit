@@ -63,6 +63,7 @@ namespace FamilyAgent.Core
         public double InnerRadius;
         public double Height;
         public double RotationZ;
+        public double CornerRadius;
         public double From;
         public double To;
         public string Axis = "z";

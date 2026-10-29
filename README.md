@@ -165,7 +165,8 @@ Mọi trường số nhận số hoặc biểu thức, tham số tham chiếu b�
 }
 ```
 
-Primitive: `box` (origin = tâm mặt đáy), `cylinder` (base = tâm mặt đáy, `height` âm để
+Primitive: `box` (origin = tâm mặt đáy; `cornerRadius` bo 4 góc đứng, đơn vị mm, tự kẹp
+về nửa cạnh ngắn), `cylinder` (base = tâm mặt đáy, `height` âm để
 chạy ngược trục, `innerRadius` để làm ống), `prism` (polygon 2D extruded).
 `cuts` trừ khối, `array` nhân bản theo trục.
 

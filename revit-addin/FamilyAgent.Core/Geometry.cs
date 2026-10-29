@@ -53,12 +53,18 @@ namespace FamilyAgent.Core
 
                 if (kind == "box")
                 {
+                    var size = Vec(raw.Size, $"{path}.size");
+                    var limit = Math.Min(Math.Abs(size.X), Math.Abs(size.Y)) / 2;
+                    var corner = Math.Min(
+                        Math.Max(Num(raw.CornerRadius, $"{path}.cornerRadius", 0), 0),
+                        limit);
                     return new ResolvedSolid
                     {
                         Kind = "box",
                         Origin = Vec(raw.Origin, $"{path}.origin"),
-                        Size = Vec(raw.Size, $"{path}.size"),
+                        Size = size,
                         RotationZ = Num(raw.RotationZ, $"{path}.rotationZ", 0),
+                        CornerRadius = corner,
                     };
                 }
 

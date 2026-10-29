@@ -19,6 +19,7 @@ export interface ResolvedBox {
   origin: Vec3n;
   size: Vec3n;
   rotationZ: number;
+  cornerRadius: number;
 }
 
 export interface ResolvedCylinder {
@@ -241,11 +242,17 @@ export function resolveModel(
 
     if (kind === "box") {
       const size = numVec(solid.size as { x: Numeric; y: Numeric; z: Numeric }, `${path}.size`);
+      const radiusLimit = Math.min(Math.abs(size.x), Math.abs(size.y)) / 2;
+      const cornerRadius = Math.min(
+        Math.max(num(solid.cornerRadius as Numeric | undefined, `${path}.cornerRadius`, 0), 0),
+        radiusLimit,
+      );
       return {
         kind: "box",
         origin: numVec(solid.origin as { x: Numeric; y: Numeric; z: Numeric }, `${path}.origin`),
         size,
         rotationZ: num(solid.rotationZ as Numeric | undefined, `${path}.rotationZ`, 0),
+        cornerRadius,
       };
     }
 

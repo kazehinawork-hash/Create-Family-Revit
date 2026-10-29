@@ -50,6 +50,8 @@ export interface BoxSolid {
   size: Vec3;
   /** Rotation about the Z axis, in degrees. */
   rotationZ?: Numeric;
+  /** Rounds the four vertical corners, in millimetres. Clamped to half the footprint. */
+  cornerRadius?: Numeric;
 }
 
 export interface CylinderSolid {

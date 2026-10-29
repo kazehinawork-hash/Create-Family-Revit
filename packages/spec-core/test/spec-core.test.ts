@@ -148,3 +148,49 @@ describe("geometry resolution and the example spec", () => {
     expect(analysis.model.bounds!.size.z).toBeGreaterThan(0);
   });
 });
+
+describe("rounded box corners", () => {
+  const spec: FamilySpec = {
+    schemaVersion: "1.0",
+    name: "Rounded casing",
+    category: "Mechanical Equipment",
+    units: "mm",
+    parameters: [{ name: "Corner Radius", type: "Length", value: 20 }],
+    parts: [
+      {
+        id: "casing",
+        name: "Casing",
+        solid: {
+          kind: "box",
+          origin: { x: 0, y: 0, z: 0 },
+          size: { x: 1000, y: 600, z: 400 },
+          cornerRadius: "[Corner Radius]",
+        },
+      },
+    ],
+  };
+
+  const cornerOf = (value: number | undefined): number | undefined => {
+    const solid = analyzeSpec({
+      ...spec,
+      parts: [{ ...spec.parts[0], solid: { ...spec.parts[0].solid, cornerRadius: value } }],
+    }).model.parts[0].solid;
+    return solid.kind === "box" ? solid.cornerRadius : undefined;
+  };
+
+  it("resolves the radius from a parameter", () => {
+    const analysis = analyzeSpec(spec);
+    expect(analysis.ok).toBe(true);
+    const solid = analysis.model.parts[0].solid;
+    expect(solid.kind).toBe("box");
+    if (solid.kind === "box") expect(solid.cornerRadius).toBe(20);
+  });
+
+  it("clamps the radius to half of the footprint", () => {
+    expect(cornerOf(5000)).toBe(300);
+  });
+
+  it("defaults to a sharp box", () => {
+    expect(cornerOf(undefined)).toBe(0);
+  });
+});

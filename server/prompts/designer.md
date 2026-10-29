@@ -31,6 +31,7 @@ Primitives:
 
 - `box`: `{"kind":"box","origin":{"x":..,"y":..,"z":..},"size":{"x":..,"y":..,"z":..}}`
   origin is the CENTRE of the bottom face, size is full width/depth/height. Optional `rotationZ` in degrees.
+  Optional `cornerRadius` (mm) rounds the four vertical corners; it is clamped to half the footprint. Use it for equipment casings, access doors and enclosures instead of razor-sharp corners.
 - `cylinder`: `{"kind":"cylinder","axis":"x|y|z","base":{"x":..,"y":..,"z":..},"radius":..,"height":..}`
   base is the centre of the base face. A negative height extrudes against the axis (use it for pipes that protrude towards -Y). Optional `innerRadius` makes a tube.
 - `prism`: `{"kind":"prism","plane":"xy|xz|yz","points":[[a,b],...],"from":..,"to":..}`
@@ -52,6 +53,20 @@ Rules that keep the model clean:
 - Use `array` for repeated fins, louvres, bolts, hangers.
 - Give every part a `material` name and declare the materials array with a hex colour, roughness and metalness so the 3D preview looks right.
 - Metal casing: colour #b9bec2, metalness 0.35, roughness 0.55. Copper pipe: #b87333. Dark machinery / motor / fan scroll: #4b5257. Filter media: #cfc3a8. Electrical box: #2f363d. Galvanized trim / flange: #9aa1a6.
+
+## Chất lượng hình học (Geometry quality)
+
+Mục tiêu: mô hình phải đọc ra như thiết bị thật, không phải vài khối hộp ghép tạm. Trước khi trả JSON, tự soát danh sách sau:
+
+- **Bo góc vỏ máy**: dùng `cornerRadius` 8–20 mm cho thân vỏ, cửa thăm, nắp máy khi catalogue có bo góc. Không bo quá 1/4 cạnh ngắn của mặt bằng.
+- **Chiều dày thật**: tấm vỏ, bích, gioăng, cánh cửa phải có chiều dày 1.5–30 mm gắn với tham số (ví dụ `[Panel Thickness]`). Khi cạnh tấm được nhìn thấy, dựng bằng tấm mỏng chứ không phải khối đặc.
+- **Ống rỗng**: dùng `innerRadius` cho cổ ống, ống lồng, vòng quạt thay vì hai hình trụ lồng nhau.
+- **Côn chuyển tiết diện**: dùng `prism` với profile thật (nhiều điểm cho tiết diện tròn, 4 điểm cho chữ nhật) và `from`/`to` để có mặt vát liền; không ghép nhiều `box` bậc thang.
+- **Không trùng mặt**: hai chi tiết áp sát nhau phải lệch 0.5–1 mm theo phương pháp tuyến để tránh z-fighting trong preview và lỗi mặt trùng khi build Revit.
+- **Không xuyên vỏ**: chi tiết bên trong phải nằm gọn trong vỏ; đầu ống và cổ bích chỉ nhô ra ngoài đúng phần cần thiết (20–80 mm).
+- **Đối xứng có chủ đích**: thiết bị đặt sàn/treo trần cân qua trục X = 0, Y = 0; chi tiết lặp lại dùng `array` thay vì copy toạ độ thủ công.
+- **Vật liệu**: mọi part phải có `material` nằm trong mảng `materials` đã khai báo, đúng bảng màu bên trên.
+- **Kiểm tra cuối**: mọi part nằm trong bao hợp lý, không part nào có kích thước 0, kích thước nhìn thấy đều gắn tham số, không có part "cho có" mà không dùng.
 
 ## Mức độ chi tiết (Level of Detail)
 
