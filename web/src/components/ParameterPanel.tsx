@@ -58,6 +58,7 @@ function ParameterRow({
   const derived = Boolean(resolved.formula);
   const locked = derived || param.type === "YesNo" || (param.type === "Length" && units === "ft-in");
   const display = parameterDisplay(resolved, units);
+  const unit = parameterUnit(resolved, units);
   const [draft, setDraft] = useState(display);
 
   useEffect(() => {
@@ -117,8 +118,9 @@ function ParameterRow({
             }
           }}
           aria-label={param.name}
+          title={String(display)}
         />
-        <span className="param-unit">{parameterUnit(resolved, units)}</span>
+        {unit && <span className="param-unit">{unit}</span>}
       </div>
     </div>
   );

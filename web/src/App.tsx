@@ -110,7 +110,7 @@ export function App() {
   const [attachments, setAttachments] = useState<UploadedDocument[]>([]);
   const [uploading, setUploading] = useState(false);
   const [showGrid, setShowGrid] = useState(true);
-  const [showPlanes, setShowPlanes] = useState(true);
+  const [showPlanes, setShowPlanes] = useState(false);
   const [showConnectors, setShowConnectors] = useState(false);
   const [showHandles, setShowHandles] = useState(false);
   const [selectedPartId, setSelectedPartId] = useState<string | null>(null);
@@ -309,9 +309,10 @@ export function App() {
     setLastBeatAt(Date.now());
 
     // A restarted server (npm run dev reloads on every file change) leaves the SSE
-    // connection open with no data. Abort instead of waiting forever.
+    // connection open with no data. Abort instead of waiting forever. Keep this above
+    // the server's AGENT_TIMEOUT (10 min by default) so a slow model is not cut off.
     const watchdog = window.setInterval(() => {
-      if (Date.now() - lastBeat > 600000 && !controller.signal.aborted) {
+      if (Date.now() - lastBeat > 900000 && !controller.signal.aborted) {
         stalled = true;
         controller.abort();
       }
@@ -375,7 +376,7 @@ export function App() {
         pushEntry({
           role: "agent",
           text:
-            "Không nhận được phản hồi từ server quá 10 phút nên đã dừng.\n" +
+            "Không nhận được phản hồi từ server quá 15 phút nên đã dừng.\n" +
             "Thường là do API vừa restart (`npm run dev` reload khi có file thay đổi) — kiểm tra pill trạng thái rồi gửi lại.",
           tone: "error",
         });

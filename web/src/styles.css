@@ -480,6 +480,113 @@ body.resizing {
   cursor: pointer;
 }
 
+/* ------------------------------------------------------------ api config */
+
+.api-config {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--panel-2);
+  border-bottom: 1px solid var(--line);
+}
+
+.api-config-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.api-config-title {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.api-config-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.api-config-status.ok {
+  color: var(--accent-ink);
+}
+
+.api-config-status.error {
+  color: var(--danger);
+}
+
+.api-config-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.api-config-grid {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr;
+  gap: 8px;
+}
+
+.api-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.api-field > span {
+  font-size: 10.5px;
+  color: var(--ink-2);
+}
+
+.api-field input {
+  width: 100%;
+  padding: 5px 8px;
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--ink);
+  background: var(--panel);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  outline: none;
+}
+
+.api-field input::placeholder {
+  color: var(--muted);
+}
+
+.api-field input:focus {
+  border-color: var(--accent);
+}
+
+.api-field input.invalid {
+  border-color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.api-advanced-toggle {
+  align-self: flex-end;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font-size: 10.5px;
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.api-advanced-toggle:hover {
+  color: var(--ink-2);
+}
+
 /* ------------------------------------------------------------------ chat */
 
 .chat-scroll {
@@ -831,6 +938,7 @@ body.resizing {
   min-height: 0;
   background: #eceae5;
   overflow: hidden;
+  container-type: inline-size;
 }
 
 .viewer canvas {
@@ -844,7 +952,9 @@ body.resizing {
   top: 12px;
   left: 12px;
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
+  max-width: calc(100% - 24px);
   background: rgba(255, 255, 255, 0.92);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -902,7 +1012,7 @@ body.resizing {
   border: none;
   box-shadow: none;
   outline: none;
-  opacity: 0.42; /* Trong suốt mờ mờ tinh tế khi không tương tác */
+  opacity: 0.85; /* Đủ rõ để định hướng, vẫn dịu khi không tương tác */
   transition: opacity 0.25s ease, transform 0.25s ease;
 }
 
@@ -937,7 +1047,7 @@ body.resizing {
 
 .run-card {
   position: absolute;
-  top: 14px;
+  top: 54px;
   left: 50%;
   transform: translateX(-50%);
   min-width: 238px;
@@ -1060,8 +1170,12 @@ body.resizing {
   left: 14px;
   bottom: 12px;
   font-size: 10.5px;
-  color: var(--muted);
+  color: var(--ink-2);
   font-family: var(--mono);
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 3px 7px;
 }
 
 /* ------------------------------------------------------------ parameters */
@@ -1245,7 +1359,7 @@ body.resizing {
 
 .param-row {
   display: grid;
-  grid-template-columns: 10px minmax(0, 1fr) 104px;
+  grid-template-columns: 10px minmax(0, 1fr) 116px;
   gap: 10px;
   align-items: center;
   padding: 5px 14px;
@@ -1643,6 +1757,11 @@ body.resizing {
 }
 
 @media (max-width: 1180px) {
+  .topbar {
+    gap: 5px;
+    padding: 0 8px;
+  }
+
   .workspace {
     grid-template-columns:
       minmax(250px, var(--left-width, 322px)) 6px minmax(0, 1fr) 6px
@@ -2150,4 +2269,30 @@ a.modal-close {
 .demo-dropdown-menu button:hover {
   background: var(--accent-soft);
   color: var(--accent-ink);
+}
+
+/* Viewer hẹp: thu gọn thanh công cụ về icon (tooltip vẫn còn) để nhường chỗ cho
+   ViewCube, và dời pill kích thước xuống góc dưới phải. Đặt ở cuối file để thắng
+   thứ tự cascade của .run-card / .viewer-dims. */
+@container (max-width: 490px) {
+  .tool-label {
+    display: none;
+  }
+
+  .tool {
+    padding: 4px 6px;
+    gap: 0;
+  }
+
+  .viewer-dims {
+    top: 132px;
+    right: 12px;
+    bottom: auto;
+  }
+
+  /* Thẻ tiến trình về góc trái để không chạm ViewCube. */
+  .run-card {
+    left: 12px;
+    transform: none;
+  }
 }

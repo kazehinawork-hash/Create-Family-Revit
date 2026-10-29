@@ -7,8 +7,11 @@ import { formatDimensions, type Units } from "../lib/format";
 import { buildPartGeometry, partColor, partMaterialProps } from "../lib/three-build";
 
 interface PartCacheEntry {
-  signature: string;
+  geometryKey: string;
+  styleKey: string;
   group: THREE.Group;
+  meshMaterial: THREE.MeshStandardMaterial;
+  edgeMaterial: THREE.LineBasicMaterial;
   disposables: { dispose: () => void }[];
 }
 
@@ -61,6 +64,7 @@ interface SceneState {
   content: THREE.Group;
   handlesGroup: THREE.Group;
   grid: THREE.GridHelper;
+  gridSize: number;
   refPlanesGroup: THREE.Group;
   connectorsGroup: THREE.Group;
   key: THREE.DirectionalLight;
@@ -128,11 +132,18 @@ export function Viewer({
   // Rendered parts survive re-runs of the scene effect: only new or changed parts are
   // rebuilt, so the assembly animation adds meshes instead of redrawing everything.
   const partCacheRef = useRef(new Map<string, PartCacheEntry>());
+  // Solid outlines never change for a given resolved part, so the expensive
+  // JSON.stringify pass is cached per part object instead of running every effect.
+  const shapeKeysRef = useRef(new WeakMap<ResolvedPart, string>());
 
   const [animatingPartName, setAnimatingPartName] = useState<string | null>(null);
   const [turntableActive, setTurntableActive] = useState<boolean>(false);
   const turntableRef = useRef<boolean>(false);
   turntableRef.current = turntableActive;
+
+  const [shadowsEnabled, setShadowsEnabled] = useState<boolean>(true);
+  const shadowsEnabledRef = useRef<boolean>(true);
+  shadowsEnabledRef.current = shadowsEnabled;
 
   const statusRef = useRef(status);
   statusRef.current = status;
@@ -200,9 +211,13 @@ export function Viewer({
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setClearColor(0xecebe5, 1);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.02;
-    renderer.shadowMap.enabled = true;
+    renderer.toneMappingExposure = 0.96;
+    renderer.shadowMap.enabled = shadowsEnabledRef.current;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    // The shadow map only depends on geometry and the light, not on the camera:
+    // refresh it when the scene changes instead of re-rendering it every frame.
+    renderer.shadowMap.autoUpdate = false;
+    renderer.shadowMap.needsUpdate = true;
     renderer.domElement.style.width = "100%";
     renderer.domElement.style.height = "100%";
     host.appendChild(renderer.domElement);
@@ -246,11 +261,11 @@ export function Viewer({
       RIGHT: THREE.MOUSE.PAN,
     };
 
-    scene.add(new THREE.HemisphereLight(0xffffff, 0xa7a29a, 1.25));
+    scene.add(new THREE.HemisphereLight(0xffffff, 0xa7a29a, 1.05));
 
     const key = new THREE.DirectionalLight(0xffffff, 2.2);
     key.position.set(2800, -3200, 3600);
-    key.castShadow = true;
+    key.castShadow = shadowsEnabledRef.current;
     key.shadow.mapSize.set(2048, 2048);
     key.shadow.bias = -0.0005;
     key.shadow.normalBias = 2;
@@ -287,10 +302,11 @@ export function Viewer({
     // Catches the key light's shadow so parts read as sitting on the floor.
     const shadowPlane = new THREE.Mesh(
       new THREE.PlaneGeometry(6000, 6000),
-      new THREE.ShadowMaterial({ color: 0x1f2328, opacity: 0.16 }),
+      new THREE.ShadowMaterial({ color: 0x1f2328, opacity: 0.24 }),
     );
     shadowPlane.position.z = -0.25;
     shadowPlane.receiveShadow = true;
+    shadowPlane.visible = shadowsEnabledRef.current;
     scene.add(shadowPlane);
 
     const resize = () => {
@@ -555,11 +571,11 @@ export function Viewer({
       const ctx = canvas.getContext("2d")!;
 
       // Neutral matte gray background like Revit ViewCube
-      ctx.fillStyle = "#c3c7ca";
+      ctx.fillStyle = "#d6d9dc";
       ctx.fillRect(0, 0, 256, 256);
 
       // Subtle top/left light bevel
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.7)";
       ctx.lineWidth = 4;
       ctx.beginPath();
       ctx.moveTo(2, 254);
@@ -568,13 +584,13 @@ export function Viewer({
       ctx.stroke();
 
       // Clean Revit border
-      ctx.strokeStyle = "#a5aaae";
+      ctx.strokeStyle = "#aeb3b7";
       ctx.lineWidth = 3;
       ctx.strokeRect(1, 1, 254, 254);
 
       // Revit typography: italic sans-serif bold, subtle dark ink
-      ctx.fillStyle = "#6f767b";
-      ctx.font = "italic bold 42px 'Segoe UI', Arial, sans-serif";
+      ctx.fillStyle = "#4d545a";
+      ctx.font = "italic bold 44px 'Segoe UI', Arial, sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(text, 128, 128);
@@ -662,8 +678,8 @@ export function Viewer({
       // Outer ring band (larger ring around the cube as in Revit)
       cCtx.beginPath();
       cCtx.arc(256, 256, 222, 0, Math.PI * 2);
-      cCtx.lineWidth = 44;
-      cCtx.strokeStyle = "rgba(65, 70, 75, 0.7)";
+      cCtx.lineWidth = 30;
+      cCtx.strokeStyle = "rgba(70, 76, 82, 0.68)";
       cCtx.stroke();
 
       // Inner ring thin contour
@@ -674,8 +690,10 @@ export function Viewer({
       cCtx.stroke();
 
       // Cardinal direction letters (N, S, E, W) - crisp light gray
+      cCtx.shadowColor = "rgba(0, 0, 0, 0.28)";
+      cCtx.shadowBlur = 4;
       cCtx.fillStyle = "#ffffff";
-      cCtx.font = "bold 46px 'Segoe UI', Arial, sans-serif";
+      cCtx.font = "bold 44px 'Segoe UI', Arial, sans-serif";
       cCtx.textAlign = "center";
       cCtx.textBaseline = "middle";
 
@@ -922,7 +940,7 @@ export function Viewer({
     };
     tick();
 
-    stateRef.current = { renderer, scene, camera, controls, content, handlesGroup, grid, refPlanesGroup, connectorsGroup, key, shadowPlane, disposables: [] };
+    stateRef.current = { renderer, scene, camera, controls, content, handlesGroup, grid, gridSize: 6000, refPlanesGroup, connectorsGroup, key, shadowPlane, disposables: [] };
 
     return () => {
       cancelAnimationFrame(frame);
@@ -949,6 +967,24 @@ export function Viewer({
       stateRef.current = null;
     };
   }, []);
+
+  // Bật/Tắt đổ bóng: tắt shadow map của renderer + nguồn sáng và ẩn mặt phẳng hứng bóng,
+  // đồng thời buộc biên dịch lại vật liệu để shader nhận cờ shadow mới.
+  useEffect(() => {
+    const state = stateRef.current;
+    if (!state) return;
+    state.renderer.shadowMap.enabled = shadowsEnabled;
+    state.key.castShadow = shadowsEnabled;
+    state.shadowPlane.visible = shadowsEnabled;
+    state.renderer.shadowMap.needsUpdate = true;
+    state.scene.traverse((object) => {
+      const mesh = object as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      const material = mesh.material;
+      if (Array.isArray(material)) material.forEach((item) => { item.needsUpdate = true; });
+      else if (material) material.needsUpdate = true;
+    });
+  }, [shadowsEnabled]);
 
   const setView = useCallback(
     (direction: "top" | "front" | "back" | "left" | "right" | "iso" | "tfr" | "tfl" | "tbr" | "tbl" | "bfr" | "bfl" | "bbr" | "bbl") => {
@@ -1027,15 +1063,14 @@ export function Viewer({
     setView("iso");
   }, [setView]);
 
+  // Parts live in their own effect: the assembly animation only changes how many parts
+  // are visible, so it must not re-run the overlay, reference-plane and connector work.
   useEffect(() => {
     const state = stateRef.current;
     if (!state) return;
 
-    for (const item of state.disposables) item.dispose();
-    state.disposables = [];
-    state.grid.visible = showGrid;
-
     const partCache = partCacheRef.current;
+    const shapeKeys = shapeKeysRef.current;
 
     const dropEntry = (entry: PartCacheEntry) => {
       state.content.remove(entry.group);
@@ -1045,96 +1080,91 @@ export function Viewer({
     if (!model) {
       for (const entry of partCache.values()) dropEntry(entry);
       partCache.clear();
+      state.renderer.shadowMap.needsUpdate = true;
       return;
     }
 
     const limitParts = visiblePartCount > 0 ? visiblePartCount : model.parts.length;
     const partsToRender = model.parts.slice(0, limitParts);
     const wanted = new Set<string>();
+    const materialsKey = materials.map((material) => `${material.name}:${material.color ?? ""}`).join(",");
 
-    const buildEntry = (part: ResolvedPart, signature: string): PartCacheEntry => {
+    const styleOf = (part: ResolvedPart) => {
+      const isClearance =
+        part.id.toLowerCase().includes("clearance") || part.name.toLowerCase().includes("clearance");
+      const props = partMaterialProps(part, materials);
+      return {
+        color: partColor(part, materials),
+        metalness: props.metalness,
+        roughness: props.roughness,
+        isSelected: part.id === selectedPartId,
+        isTransparent: transparentPartIds.includes(part.id) || isClearance,
+        isClearance,
+        isAnimating: Boolean(animatingPartName) && part.name === animatingPartName,
+      };
+    };
+
+    const applyStyle = (entry: PartCacheEntry, style: ReturnType<typeof styleOf>) => {
+      const { meshMaterial: material, edgeMaterial } = entry;
+      const transparent = style.isSelected || style.isTransparent;
+      material.color.set(style.color);
+      material.metalness = style.isSelected ? Math.max(0.1, style.metalness) : style.metalness;
+      material.roughness = style.isSelected ? Math.max(0.2, style.roughness) : style.roughness;
+      material.transparent = transparent;
+      material.opacity = style.isSelected ? 0.55 : style.isTransparent ? (style.isClearance ? 0.07 : 0.35) : 1;
+      material.depthWrite = !transparent;
+      material.emissive.set(style.color);
+      material.emissiveIntensity = style.isAnimating ? 0.55 : 0;
+      material.polygonOffsetFactor = style.isSelected ? -1 : 1;
+
+      if (style.isSelected) {
+        edgeMaterial.color.setHex(0x0078d4); // Viền xanh Revit sắc nét bao quanh part đang chọn
+        edgeMaterial.opacity = 1;
+        edgeMaterial.transparent = false;
+      } else if (style.isAnimating) {
+        edgeMaterial.color.setHex(0x2f7d5b); // green edge on the part that just appeared
+        edgeMaterial.opacity = 0.95;
+        edgeMaterial.transparent = true;
+      } else if (style.isClearance) {
+        edgeMaterial.color.setHex(0xd8a53a); // viền vàng mảnh cho vùng clearance
+        edgeMaterial.opacity = 0.55;
+        edgeMaterial.transparent = true;
+      } else if (style.isTransparent) {
+        edgeMaterial.color.setHex(0x30373b);
+        edgeMaterial.opacity = 0.14;
+        edgeMaterial.transparent = true;
+      } else {
+        edgeMaterial.color.setHex(0x30373b);
+        edgeMaterial.opacity = 0.32;
+        edgeMaterial.transparent = true;
+      }
+
+      for (const child of entry.group.children) {
+        if (child instanceof THREE.Mesh) child.castShadow = !style.isTransparent;
+      }
+    };
+
+    const buildEntry = (part: ResolvedPart, geometryKey: string, styleKey: string): PartCacheEntry => {
       const disposables: { dispose: () => void }[] = [];
       const group = new THREE.Group();
       group.name = part.id;
 
       const { geometry } = buildPartGeometry(part);
-      disposables.push(geometry);
-
-      const color = partColor(part, materials);
-      const props = partMaterialProps(part, materials);
-
-      const isClearance = part.id.toLowerCase().includes("clearance") || part.name.toLowerCase().includes("clearance");
-      const isSelected = part.id === selectedPartId;
-      const isTransparent = transparentPartIds.includes(part.id) || isClearance;
-      // The part being assembled glows for a moment so the build reads part by part.
-      const isAnimating = Boolean(animatingPartName) && part.name === animatingPartName;
-      const activeOpacity = isTransparent ? (isClearance ? 0.22 : 0.35) : 1.0;
-
-      const material = isSelected
-        ? new THREE.MeshStandardMaterial({
-            color: new THREE.Color(color),
-            metalness: Math.max(0.1, props.metalness),
-            roughness: Math.max(0.2, props.roughness),
-            transparent: true,
-            opacity: 0.55, // Mờ nhẹ thanh thoát
-            depthWrite: false,
-            polygonOffset: true,
-            polygonOffsetFactor: -1,
-            polygonOffsetUnits: -1,
-          })
-        : new THREE.MeshStandardMaterial({
-            color: new THREE.Color(color),
-            metalness: props.metalness,
-            roughness: props.roughness,
-            transparent: isTransparent,
-            opacity: activeOpacity,
-            depthWrite: !isTransparent,
-            emissive: new THREE.Color(color),
-            emissiveIntensity: isAnimating ? 0.55 : 0,
-            polygonOffset: true,
-            polygonOffsetFactor: 1,
-            polygonOffsetUnits: 1,
-          });
-      disposables.push(material);
-
+      const meshMaterial = new THREE.MeshStandardMaterial({
+        polygonOffset: true,
+        polygonOffsetUnits: 1,
+      });
       const edgeGeometry = new THREE.EdgesGeometry(geometry, 24);
-      const edgeMaterial = new THREE.LineBasicMaterial(
-        isSelected
-          ? {
-              color: 0x0078d4, // Viền xanh Revit sắc nét bao quanh part đang chọn
-              linewidth: 2,
-              transparent: false,
-              opacity: 1.0,
-            }
-          : isAnimating
-            ? {
-                color: 0x2f7d5b, // green edge on the part that just appeared
-                linewidth: 2,
-                transparent: true,
-                opacity: 0.95,
-              }
-            : isTransparent
-              ? {
-                  color: 0x30373b,
-                  transparent: true,
-                  opacity: 0.1,
-                }
-              : {
-                  color: 0x30373b,
-                  transparent: true,
-                  opacity: 0.18,
-                },
-      );
-      disposables.push(edgeGeometry, edgeMaterial);
+      const edgeMaterial = new THREE.LineBasicMaterial({ transparent: true });
+      disposables.push(geometry, meshMaterial, edgeGeometry, edgeMaterial);
 
       for (let index = 0; index < part.array.count; index += 1) {
-        const mesh = new THREE.Mesh(geometry, material);
+        const mesh = new THREE.Mesh(geometry, meshMaterial);
         const offset = { x: 0, y: 0, z: 0 };
         offset[part.array.axis] = part.array.spacing * index;
         mesh.position.set(offset.x, offset.y, offset.z);
         mesh.name = part.name;
         mesh.userData = { partId: part.id, partName: part.name };
-        mesh.castShadow = !isTransparent;
         mesh.receiveShadow = true;
         group.add(mesh);
 
@@ -1145,51 +1175,92 @@ export function Viewer({
       }
 
       state.content.add(group);
-      return { signature, group, disposables };
+      const entry: PartCacheEntry = { geometryKey, styleKey, group, meshMaterial, edgeMaterial, disposables };
+      applyStyle(entry, styleOf(part));
+      return entry;
     };
+
+    let geometryChanged = false;
+    let styleChanged = false;
 
     for (const part of partsToRender) {
       if (hiddenPartIds.includes(part.id)) continue;
 
       wanted.add(part.id);
 
-      const signature = [
-        JSON.stringify(part.solid),
-        JSON.stringify(part.cuts),
-        JSON.stringify(part.array),
-        part.name,
-        part.material ?? "",
-        part.color ?? "",
-        selectedPartId === part.id ? "selected" : "",
-        transparentPartIds.includes(part.id) ? "transparent" : "",
-        animatingPartName === part.name ? "hot" : "",
-        materials.map((material) => `${material.name}:${material.color ?? ""}`).join(","),
+      let shapeKey = shapeKeys.get(part);
+      if (!shapeKey) {
+        shapeKey = `${JSON.stringify(part.solid)}|${JSON.stringify(part.cuts)}|${JSON.stringify(part.array)}`;
+        shapeKeys.set(part, shapeKey);
+      }
+
+      const geometryKey = `${shapeKey}|${part.name}|${part.material ?? ""}|${part.color ?? ""}|${materialsKey}`;
+      const style = styleOf(part);
+      const styleKey = [
+        style.isSelected ? "selected" : "",
+        style.isTransparent ? "transparent" : "",
+        style.isClearance ? "clearance" : "",
+        style.isAnimating ? "hot" : "",
       ].join("|");
 
       const existing = partCache.get(part.id);
-      if (existing && existing.signature === signature) continue;
-      if (existing) dropEntry(existing);
+      if (existing && existing.geometryKey === geometryKey) {
+        // Only the highlight/selection changed: recolour instead of re-cutting the solid.
+        if (existing.styleKey !== styleKey) {
+          applyStyle(existing, style);
+          existing.styleKey = styleKey;
+          styleChanged = true;
+        }
+        continue;
+      }
 
-      partCache.set(part.id, buildEntry(part, signature));
+      if (existing) dropEntry(existing);
+      partCache.set(part.id, buildEntry(part, geometryKey, styleKey));
+      geometryChanged = true;
     }
 
     for (const [id, entry] of partCache) {
       if (wanted.has(id)) continue;
       dropEntry(entry);
       partCache.delete(id);
+      geometryChanged = true;
+    }
+
+    if (geometryChanged || styleChanged) {
+      state.renderer.shadowMap.needsUpdate = true;
+    }
+  }, [model, materials, selectedPartId, hiddenPartIds, transparentPartIds, visiblePartCount, animatingPartName]);
+
+  useEffect(() => {
+    const state = stateRef.current;
+    if (!state) return;
+
+    for (const item of state.disposables) item.dispose();
+    state.disposables = [];
+    state.grid.visible = showGrid;
+
+    if (!model) {
+      state.refPlanesGroup.clear();
+      state.handlesGroup.clear();
+      state.connectorsGroup.clear();
+      return;
     }
 
     const size = Math.max(model.bounds?.size.x ?? 0, model.bounds?.size.y ?? 0, 3000);
     const gridSize = Math.ceil((size * 2.4) / 1000) * 1000;
-    state.scene.remove(state.grid);
-    state.grid.geometry.dispose();
-    state.grid.dispose();
-    const nextGrid = new THREE.GridHelper(gridSize, Math.max(12, Math.round(gridSize / 200)), 0xcfccc4, 0xdedbd4);
-    nextGrid.rotation.x = Math.PI / 2;
-    nextGrid.position.z = -0.4;
-    nextGrid.visible = showGrid;
-    state.scene.add(nextGrid);
-    state.grid = nextGrid;
+    if (state.gridSize !== gridSize) {
+      state.scene.remove(state.grid);
+      state.grid.geometry.dispose();
+      state.grid.dispose();
+      const nextGrid = new THREE.GridHelper(gridSize, Math.max(12, Math.round(gridSize / 200)), 0xcfccc4, 0xdedbd4);
+      nextGrid.rotation.x = Math.PI / 2;
+      nextGrid.position.z = -0.4;
+      nextGrid.visible = showGrid;
+      state.scene.add(nextGrid);
+      state.grid = nextGrid;
+      state.gridSize = gridSize;
+    }
+    state.grid.visible = showGrid;
 
     // Fit the key light and its shadow frustum to the model so the shadow stays crisp.
     if (model.bounds) {
@@ -1214,6 +1285,7 @@ export function Viewer({
       shadowCamera.updateProjectionMatrix();
 
       state.shadowPlane.scale.setScalar(gridSize / 6000);
+      state.renderer.shadowMap.needsUpdate = true;
     }
 
     // Reference Planes (Revit Style Green Dashed Lines & Translucent Planes)
@@ -1378,7 +1450,7 @@ export function Viewer({
         model.bounds.size.z,
         400,
       );
-      const planeExtent = modelExtent * 1.7;
+      const planeExtent = modelExtent * 1.4;
       const halfExt = planeExtent / 2;
 
       const refLineMat = new THREE.LineDashedMaterial({
@@ -1387,7 +1459,7 @@ export function Viewer({
         gapSize: 25,
         linewidth: 1.5,
         transparent: true,
-        opacity: 0.7,
+        opacity: 0.5,
       });
       state.disposables.push(refLineMat);
 
@@ -1451,7 +1523,7 @@ export function Viewer({
         dashSize: 40,
         gapSize: 30,
         transparent: true,
-        opacity: 0.55,
+        opacity: 0.4,
       });
       state.disposables.push(paramLineMat);
 
@@ -1595,7 +1667,7 @@ export function Viewer({
       fit();
       hasFittedRef.current = true;
     }
-  }, [model, parameters, materials, showGrid, showPlanes, showConnectors, selectedPartId, hiddenPartIds, transparentPartIds, visiblePartCount, animatingPartName, fit]);
+  }, [model, parameters, showGrid, showPlanes, showConnectors, selectedPartId, fit]);
 
   const dims = formatDimensions(model?.bounds ?? null, units);
 
@@ -1604,11 +1676,11 @@ export function Viewer({
       <div ref={hostRef} style={{ position: "absolute", inset: 0 }} />
 
       <div className="viewer-tools">
-        <button type="button" className="tool" onClick={fit}>
+        <button type="button" className="tool" onClick={fit} title="Fit view (Vừa khung)">
           <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
             <path d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4" />
           </svg>
-          Fit
+          <span className="tool-label">Fit</span>
         </button>
         <button
           type="button"
@@ -1619,7 +1691,19 @@ export function Viewer({
           <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2">
             <path d="M2 2h12v12H2zM2 6h12M2 10h12M6 2v12M10 2v12" />
           </svg>
-          Grid
+          <span className="tool-label">Grid</span>
+        </button>
+        <button
+          type="button"
+          className={`tool ${shadowsEnabled ? "active" : ""}`}
+          onClick={() => setShadowsEnabled((curr) => !curr)}
+          title="Bật/Tắt đổ bóng (Shadows)"
+        >
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3">
+            <circle cx="8" cy="7" r="3" />
+            <path d="M8 1v1.6M8 11.4V13M2 7h1.6M12.4 7H14M3.8 2.8l1.1 1.1M10.5 9.5l1.1 1.1M12.2 2.8l-1.1 1.1M5.1 9.5l-1.1 1.1" />
+          </svg>
+          <span className="tool-label">Shadows</span>
         </button>
         {onTogglePlanes && (
           <button
@@ -1631,7 +1715,7 @@ export function Viewer({
             <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3">
               <path strokeDasharray="3 2" d="M8 1v14M1 8h14" />
             </svg>
-            Ref Planes
+            <span className="tool-label">Ref Planes</span>
           </button>
         )}
         {onToggleConnectors && (
@@ -1645,7 +1729,7 @@ export function Viewer({
               <circle cx="8" cy="8" r="6" />
               <path d="M8 4v8M5 7l3-3 3 3" />
             </svg>
-            Connectors
+            <span className="tool-label">Connectors</span>
           </button>
         )}
         <button
@@ -1657,7 +1741,7 @@ export function Viewer({
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
           </svg>
-          Turntable
+          <span className="tool-label">Turntable</span>
         </button>
         {hiddenPartIds.length > 0 && onUnhideAll && (
           <button
@@ -1670,12 +1754,12 @@ export function Viewer({
               <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
               <circle cx="12" cy="12" r="3" />
             </svg>
-            Unhide all ({hiddenPartIds.length})
+            <span className="tool-label">Unhide all ({hiddenPartIds.length})</span>
           </button>
         )}
       </div>
 
-      {dims && <div className="viewer-dims">{dims}</div>}
+      {model && dims && <div className="viewer-dims">{dims}</div>}
 
       <div className="viewcube-container" ref={cubeHostRef} title="Click a face to align view" />
 
@@ -1859,7 +1943,7 @@ export function Viewer({
         </div>
       )}
 
-      {animatingPartName && (
+      {animatingPartName && !status && (
         <div className="viewer-assembly-badge">
           <span className="assembly-pulse" />
           <span>Assembling: <strong>{animatingPartName}</strong> ({visiblePartCount}/{model?.parts.length})</span>
