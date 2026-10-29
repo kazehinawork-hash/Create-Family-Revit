@@ -10,3 +10,6 @@ revit-addin/**/bin/
 revit-addin/**/obj/
 tmp/
 .uploads/
+
+# Local studio output: generated families are the user's data, never committed.
+saved-models/
