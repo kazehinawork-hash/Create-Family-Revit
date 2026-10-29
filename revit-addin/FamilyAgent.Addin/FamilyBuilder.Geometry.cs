@@ -174,16 +174,54 @@ namespace FamilyAgent.Addin
 
             var halfWidth = width / 2;
             var halfDepth = depth / 2;
+            var radius = Ft(Math.Max(0, solid.CornerRadius));
 
-            var points = new List<XYZ>
-            {
-                center - u * halfWidth - v * halfDepth,
-                center + u * halfWidth - v * halfDepth,
-                center + u * halfWidth + v * halfDepth,
-                center - u * halfWidth + v * halfDepth,
-            };
+            var points = radius > 1e-6
+                ? RoundedRectPoints(center, u, v, halfWidth, halfDepth, Math.Min(radius, Math.Min(halfWidth, halfDepth) - 1e-9))
+                : new List<XYZ>
+                {
+                    center - u * halfWidth - v * halfDepth,
+                    center + u * halfWidth - v * halfDepth,
+                    center + u * halfWidth + v * halfDepth,
+                    center - u * halfWidth + v * halfDepth,
+                };
 
             return Extrude(document, Plane.CreateByOriginAndBasis(center, u, v), points, height, isSolid);
+        }
+
+        /// <summary>
+        /// Polyline outline of a rectangle with rounded corners, counter-clockwise in the (u, v) basis.
+        /// Revit profiles are built from lines, so the arcs are tessellated.
+        /// </summary>
+        private static List<XYZ> RoundedRectPoints(
+            XYZ center,
+            XYZ u,
+            XYZ v,
+            double halfWidth,
+            double halfDepth,
+            double radius)
+        {
+            const int segmentsPerCorner = 8;
+            var innerX = halfWidth - radius;
+            var innerY = halfDepth - radius;
+            var cornerX = new[] { innerX, -innerX, -innerX, innerX };
+            var cornerY = new[] { innerY, innerY, -innerY, -innerY };
+            var cornerStart = new[] { 0.0, Math.PI / 2, Math.PI, 3 * Math.PI / 2 };
+
+            var points = new List<XYZ>(4 * (segmentsPerCorner + 1));
+            for (var corner = 0; corner < 4; corner += 1)
+            {
+                for (var step = 0; step <= segmentsPerCorner; step += 1)
+                {
+                    var angle = cornerStart[corner] + step * (Math.PI / 2) / segmentsPerCorner;
+                    points.Add(
+                        center
+                        + u * (cornerX[corner] + Math.Cos(angle) * radius)
+                        + v * (cornerY[corner] + Math.Sin(angle) * radius));
+                }
+            }
+
+            return points;
         }
 
         private static Extrusion CreateCylinderForm(

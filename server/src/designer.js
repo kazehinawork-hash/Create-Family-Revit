@@ -149,6 +149,7 @@ export async function design({ prompt, currentSpec, lod, emit, model, customApiC
   let analysis = null;
   let attempts = 0;
   let usage = null;
+  let layoutPassUsed = false;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
     attempts = attempt;
@@ -191,7 +192,27 @@ export async function design({ prompt, currentSpec, lod, emit, model, customApiC
     emit({ type: "stage", stage: "checking", message: "Checking the model" });
     analysis = analyzeSpec(result.json);
 
-    if (analysis.ok) break;
+    if (analysis.ok) {
+      // A valid spec can still be physically wrong (e.g. a drain pan above the coil).
+      // Give the model one corrective pass with those layout warnings.
+      const layoutIssues = analysis.issues.filter((issue) => issue.path.startsWith("logic."));
+      if (layoutIssues.length > 0 && !layoutPassUsed && attempt < MAX_ATTEMPTS) {
+        layoutPassUsed = true;
+        emit({
+          type: "stage",
+          stage: "repairing",
+          message: `Fixing ${layoutIssues.length} layout problem${layoutIssues.length === 1 ? "" : "s"}`,
+          issues: layoutIssues.slice(0, 12),
+        });
+        messages.push({ role: "assistant", content: result.text });
+        messages.push({
+          role: "user",
+          content: repairPrompt.replace("{{issues}}", formatIssues(layoutIssues, 25)),
+        });
+        continue;
+      }
+      break;
+    }
 
     if (attempt < MAX_ATTEMPTS) {
       emit({

@@ -91,6 +91,18 @@ function checkSolid(raw: unknown, path: string, issues: Issue[]): void {
   if (kind === "box") {
     requireVec("origin");
     requireVec("size");
+    if (
+      raw.cornerRadius !== undefined &&
+      raw.cornerRadius !== null &&
+      raw.cornerRadius !== "" &&
+      !hasNumbersValue(raw.cornerRadius)
+    ) {
+      issues.push({
+        severity: "error",
+        path: `${path}.cornerRadius`,
+        message: "cornerRadius must be a number or an expression string",
+      });
+    }
   } else if (kind === "cylinder") {
     requireVec("base");
     if (raw.radius === undefined) {

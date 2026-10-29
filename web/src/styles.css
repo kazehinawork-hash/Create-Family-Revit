@@ -683,8 +683,16 @@ body.resizing {
   background: var(--panel);
 }
 
+.attachments-list {
+  flex: 1 0 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
 .attachment-chip {
-  flex-basis: 100%;
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -694,6 +702,35 @@ body.resizing {
   padding: 4px 8px;
   font-size: 11px;
   color: var(--ink-2);
+  max-width: 100%;
+}
+
+.attachment-chip.image {
+  padding: 3px 6px 3px 3px;
+  gap: 5px;
+}
+
+.attachment-thumb {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 auto;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: #fff;
+  overflow: hidden;
+  cursor: zoom-in;
+}
+
+.attachment-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.attachment-thumb:hover {
+  border-color: var(--accent);
 }
 
 .attachment-chip .name {
@@ -710,7 +747,7 @@ body.resizing {
   font-size: 10px;
 }
 
-.attachment-chip button {
+.attachment-chip .remove {
   margin-left: auto;
   border: 0;
   background: transparent;
@@ -743,7 +780,8 @@ body.resizing {
 }
 
 .chat-composer textarea {
-  flex: 1;
+  flex: 1 1 120px;
+  min-width: 0;
   resize: none;
   border: 1px solid var(--line);
   border-radius: 9px;
@@ -864,7 +902,7 @@ body.resizing {
   border: none;
   box-shadow: none;
   outline: none;
-  opacity: 0.6; /* Trong suốt mờ mờ tinh tế khi không tương tác */
+  opacity: 0.42; /* Trong suốt mờ mờ tinh tế khi không tương tác */
   transition: opacity 0.25s ease, transform 0.25s ease;
 }
 
@@ -1850,6 +1888,55 @@ body.resizing {
   padding: 20px;
   overflow-y: auto;
   flex: 1;
+}
+
+.image-viewer-backdrop {
+  z-index: 2100;
+}
+
+.image-viewer-card {
+  width: auto;
+  max-width: min(92vw, 1200px);
+  max-height: 90vh;
+}
+
+.image-viewer-card .modal-header {
+  padding: 10px 14px;
+}
+
+.image-viewer-card .modal-header h3 {
+  font-size: 13px;
+  max-width: 60vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.image-viewer-card .meta {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--muted);
+}
+
+a.modal-close {
+  text-decoration: none;
+}
+
+.image-viewer-body {
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--panel-2);
+  overflow: auto;
+}
+
+.image-viewer-body img {
+  display: block;
+  max-width: 100%;
+  max-height: calc(90vh - 80px);
+  object-fit: contain;
+  border-radius: 6px;
 }
 
 .empty-library {

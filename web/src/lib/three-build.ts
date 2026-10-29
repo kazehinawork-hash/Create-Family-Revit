@@ -8,6 +8,36 @@ evaluator.useGroups = false;
 evaluator.attributes = ["position", "normal"];
 
 const UP = new THREE.Vector3(0, 1, 0);
+const CORNER_SEGMENTS = 8;
+
+function roundedRectShape(width: number, depth: number, radius: number): THREE.Shape {
+  const halfWidth = width / 2;
+  const halfDepth = depth / 2;
+  const r = Math.max(0, Math.min(radius, halfWidth, halfDepth));
+  const corners: [number, number, number][] = [
+    [halfWidth - r, halfDepth - r, 0],
+    [-(halfWidth - r), halfDepth - r, Math.PI / 2],
+    [-(halfWidth - r), -(halfDepth - r), Math.PI],
+    [halfWidth - r, -(halfDepth - r), (3 * Math.PI) / 2],
+  ];
+
+  const shape = new THREE.Shape();
+  let started = false;
+  for (const [cx, cy, start] of corners) {
+    for (let step = 0; step <= CORNER_SEGMENTS; step += 1) {
+      const angle = start + (step / CORNER_SEGMENTS) * (Math.PI / 2);
+      const x = cx + Math.cos(angle) * r;
+      const y = cy + Math.sin(angle) * r;
+      if (started) shape.lineTo(x, y);
+      else {
+        shape.moveTo(x, y);
+        started = true;
+      }
+    }
+  }
+  shape.closePath();
+  return shape;
+}
 
 function prepare(geometry: THREE.BufferGeometry): THREE.BufferGeometry {
   let result = geometry;
@@ -27,12 +57,24 @@ function axisDirection(axis: "x" | "y" | "z", sign: number): THREE.Vector3 {
 export function solidGeometry(solid: ResolvedSolid): THREE.BufferGeometry {
   if (solid.kind === "box") {
     const { origin, size } = solid;
-    const geometry = new THREE.BoxGeometry(
-      Math.abs(size.x) || 0.01,
-      Math.abs(size.y) || 0.01,
-      Math.abs(size.z) || 0.01,
-    );
-    geometry.translate(0, 0, size.z / 2);
+    const width = Math.abs(size.x) || 0.01;
+    const depth = Math.abs(size.y) || 0.01;
+    const height = Math.abs(size.z) || 0.01;
+
+    let geometry: THREE.BufferGeometry;
+    if (solid.cornerRadius > 0) {
+      geometry = new THREE.ExtrudeGeometry(roundedRectShape(width, depth, solid.cornerRadius), {
+        depth: height,
+        bevelEnabled: false,
+        steps: 1,
+        curveSegments: 4,
+      });
+      if (size.z < 0) geometry.translate(0, 0, size.z);
+    } else {
+      geometry = new THREE.BoxGeometry(width, depth, height);
+      geometry.translate(0, 0, size.z / 2);
+    }
+
     if (solid.rotationZ) geometry.rotateZ((solid.rotationZ * Math.PI) / 180);
     geometry.translate(origin.x, origin.y, origin.z);
     return geometry;

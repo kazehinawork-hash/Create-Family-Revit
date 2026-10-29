@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { FamilyParameter, MaterialDef, ResolvedModel, ResolvedPart } from "@family/spec-core";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { formatDimensions, type Units } from "../lib/format";
 import { buildPartGeometry, partColor, partMaterialProps } from "../lib/three-build";
 
@@ -62,6 +63,8 @@ interface SceneState {
   grid: THREE.GridHelper;
   refPlanesGroup: THREE.Group;
   connectorsGroup: THREE.Group;
+  key: THREE.DirectionalLight;
+  shadowPlane: THREE.Mesh;
   disposables: (THREE.BufferGeometry | THREE.Material)[];
 }
 
@@ -196,11 +199,24 @@ export function Viewer({
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setClearColor(0xecebe5, 1);
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.02;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.domElement.style.width = "100%";
     renderer.domElement.style.height = "100%";
     host.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
+
+    // A neutral room probe gives the metals something to reflect; without it every
+    // metalness > 0 surface renders as flat grey.
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    pmrem.dispose();
+    scene.environment = environment;
+    scene.environmentIntensity = 0.5;
+
     const camera = new THREE.PerspectiveCamera(38, 1, 10, 200000);
     camera.up.set(0, 0, 1);
     camera.position.set(3200, -3600, 2400);
@@ -234,7 +250,14 @@ export function Viewer({
 
     const key = new THREE.DirectionalLight(0xffffff, 2.2);
     key.position.set(2800, -3200, 3600);
+    key.castShadow = true;
+    key.shadow.mapSize.set(2048, 2048);
+    key.shadow.bias = -0.0005;
+    key.shadow.normalBias = 2;
+    key.shadow.camera.near = 1;
+    key.shadow.camera.far = 40000;
     scene.add(key);
+    scene.add(key.target);
 
     const fill = new THREE.DirectionalLight(0xffffff, 0.75);
     fill.position.set(-3200, 2400, 1400);
@@ -260,6 +283,15 @@ export function Viewer({
     grid.rotation.x = Math.PI / 2;
     grid.position.z = -0.4;
     scene.add(grid);
+
+    // Catches the key light's shadow so parts read as sitting on the floor.
+    const shadowPlane = new THREE.Mesh(
+      new THREE.PlaneGeometry(6000, 6000),
+      new THREE.ShadowMaterial({ color: 0x1f2328, opacity: 0.16 }),
+    );
+    shadowPlane.position.z = -0.25;
+    shadowPlane.receiveShadow = true;
+    scene.add(shadowPlane);
 
     const resize = () => {
       const width = host.clientWidth || 1;
@@ -523,11 +555,11 @@ export function Viewer({
       const ctx = canvas.getContext("2d")!;
 
       // Neutral matte gray background like Revit ViewCube
-      ctx.fillStyle = "#8a8f94";
+      ctx.fillStyle = "#c3c7ca";
       ctx.fillRect(0, 0, 256, 256);
 
       // Subtle top/left light bevel
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.45)";
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
       ctx.lineWidth = 4;
       ctx.beginPath();
       ctx.moveTo(2, 254);
@@ -536,12 +568,12 @@ export function Viewer({
       ctx.stroke();
 
       // Clean Revit border
-      ctx.strokeStyle = "#5f656a";
+      ctx.strokeStyle = "#a5aaae";
       ctx.lineWidth = 3;
       ctx.strokeRect(1, 1, 254, 254);
 
       // Revit typography: italic sans-serif bold, subtle dark ink
-      ctx.fillStyle = "#2c3034";
+      ctx.fillStyle = "#6f767b";
       ctx.font = "italic bold 42px 'Segoe UI', Arial, sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
@@ -590,7 +622,7 @@ export function Viewer({
       // Add crisp edges to the cube
       const cubeEdges = new THREE.LineSegments(
         new THREE.EdgesGeometry(geometry),
-        new THREE.LineBasicMaterial({ color: 0x5a6066, linewidth: 1 })
+        new THREE.LineBasicMaterial({ color: 0xa3a8ac, linewidth: 1 })
       );
       cubeScene.add(cubeEdges);
 
@@ -890,7 +922,7 @@ export function Viewer({
     };
     tick();
 
-    stateRef.current = { renderer, scene, camera, controls, content, handlesGroup, grid, refPlanesGroup, connectorsGroup, disposables: [] };
+    stateRef.current = { renderer, scene, camera, controls, content, handlesGroup, grid, refPlanesGroup, connectorsGroup, key, shadowPlane, disposables: [] };
 
     return () => {
       cancelAnimationFrame(frame);
@@ -902,6 +934,9 @@ export function Viewer({
       renderer.domElement.removeEventListener("click", onCanvasClick);
       controls.dispose();
       renderer.dispose();
+      environment.dispose();
+      shadowPlane.geometry.dispose();
+      (shadowPlane.material as THREE.Material).dispose();
       for (const entry of partCacheRef.current.values()) {
         for (const item of entry.disposables) item.dispose();
       }
@@ -1062,40 +1097,35 @@ export function Viewer({
           });
       disposables.push(material);
 
-      let edgeGeometry: THREE.EdgesGeometry | null = null;
-      let edgeMaterial: THREE.LineBasicMaterial | null = null;
-
-      if (part.cuts.length === 0) {
-        edgeGeometry = new THREE.EdgesGeometry(geometry, 24);
-        edgeMaterial = new THREE.LineBasicMaterial(
-          isSelected
+      const edgeGeometry = new THREE.EdgesGeometry(geometry, 24);
+      const edgeMaterial = new THREE.LineBasicMaterial(
+        isSelected
+          ? {
+              color: 0x0078d4, // Viền xanh Revit sắc nét bao quanh part đang chọn
+              linewidth: 2,
+              transparent: false,
+              opacity: 1.0,
+            }
+          : isAnimating
             ? {
-                color: 0x0078d4, // Viền xanh Revit sắc nét bao quanh part đang chọn
+                color: 0x2f7d5b, // green edge on the part that just appeared
                 linewidth: 2,
-                transparent: false,
-                opacity: 1.0,
+                transparent: true,
+                opacity: 0.95,
               }
-            : isAnimating
+            : isTransparent
               ? {
-                  color: 0x2f7d5b, // green edge on the part that just appeared
-                  linewidth: 2,
+                  color: 0x30373b,
                   transparent: true,
-                  opacity: 0.95,
+                  opacity: 0.1,
                 }
-              : isTransparent
-                ? {
-                    color: 0x30373b,
-                    transparent: true,
-                    opacity: 0.1,
-                  }
-                : {
-                    color: 0x30373b,
-                    transparent: true,
-                    opacity: 0.18,
-                  },
-        );
-        disposables.push(edgeGeometry, edgeMaterial);
-      }
+              : {
+                  color: 0x30373b,
+                  transparent: true,
+                  opacity: 0.18,
+                },
+      );
+      disposables.push(edgeGeometry, edgeMaterial);
 
       for (let index = 0; index < part.array.count; index += 1) {
         const mesh = new THREE.Mesh(geometry, material);
@@ -1104,14 +1134,14 @@ export function Viewer({
         mesh.position.set(offset.x, offset.y, offset.z);
         mesh.name = part.name;
         mesh.userData = { partId: part.id, partName: part.name };
+        mesh.castShadow = !isTransparent;
+        mesh.receiveShadow = true;
         group.add(mesh);
 
-        if (edgeGeometry && edgeMaterial) {
-          const clone = new THREE.LineSegments(edgeGeometry, edgeMaterial);
-          clone.position.copy(mesh.position);
-          clone.userData = { partId: part.id };
-          group.add(clone);
-        }
+        const clone = new THREE.LineSegments(edgeGeometry, edgeMaterial);
+        clone.position.copy(mesh.position);
+        clone.userData = { partId: part.id };
+        group.add(clone);
       }
 
       state.content.add(group);
@@ -1160,6 +1190,31 @@ export function Viewer({
     nextGrid.visible = showGrid;
     state.scene.add(nextGrid);
     state.grid = nextGrid;
+
+    // Fit the key light and its shadow frustum to the model so the shadow stays crisp.
+    if (model.bounds) {
+      const { min, max } = model.bounds;
+      const center = new THREE.Vector3(
+        (min.x + max.x) / 2,
+        (min.y + max.y) / 2,
+        (min.z + max.z) / 2,
+      );
+      const extent = Math.max(model.bounds.size.x, model.bounds.size.y, model.bounds.size.z, 600) * 1.6;
+      state.key.position.set(center.x + extent * 0.7, center.y - extent, center.z + extent * 1.5);
+      state.key.target.position.copy(center);
+      state.key.target.updateMatrixWorld();
+
+      const shadowCamera = state.key.shadow.camera;
+      shadowCamera.left = -extent;
+      shadowCamera.right = extent;
+      shadowCamera.top = extent;
+      shadowCamera.bottom = -extent;
+      shadowCamera.near = 1;
+      shadowCamera.far = extent * 6;
+      shadowCamera.updateProjectionMatrix();
+
+      state.shadowPlane.scale.setScalar(gridSize / 6000);
+    }
 
     // Reference Planes (Revit Style Green Dashed Lines & Translucent Planes)
     state.refPlanesGroup.clear();

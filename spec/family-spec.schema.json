@@ -142,7 +142,11 @@
               "description": "Centre of the bottom face."
             },
             "size": { "$ref": "#/$defs/vec3" },
-            "rotationZ": { "$ref": "#/$defs/numeric" }
+            "rotationZ": { "$ref": "#/$defs/numeric" },
+            "cornerRadius": {
+              "$ref": "#/$defs/numeric",
+              "description": "Rounds the four vertical corners, in millimetres. Clamped to half the footprint."
+            }
           }
         },
         {

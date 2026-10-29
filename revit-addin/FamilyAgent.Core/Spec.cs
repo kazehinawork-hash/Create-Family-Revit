@@ -78,6 +78,7 @@ namespace FamilyAgent.Core
         public Num? InnerRadius { get; set; }
         public Num? Height { get; set; }
         public Num? RotationZ { get; set; }
+        public Num? CornerRadius { get; set; }
         public Num? From { get; set; }
         public Num? To { get; set; }
         public string Axis { get; set; }
