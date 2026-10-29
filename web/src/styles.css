@@ -901,7 +901,7 @@ body.resizing {
   border: none;
   box-shadow: none;
   outline: none;
-  opacity: 0.6; /* Trong suốt mờ mờ tinh tế khi không tương tác */
+  opacity: 0.42; /* Trong suốt mờ mờ tinh tế khi không tương tác */
   transition: opacity 0.25s ease, transform 0.25s ease;
 }
 

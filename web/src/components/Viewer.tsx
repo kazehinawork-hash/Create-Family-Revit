@@ -555,11 +555,11 @@ export function Viewer({
       const ctx = canvas.getContext("2d")!;
 
       // Neutral matte gray background like Revit ViewCube
-      ctx.fillStyle = "#8a8f94";
+      ctx.fillStyle = "#c3c7ca";
       ctx.fillRect(0, 0, 256, 256);
 
       // Subtle top/left light bevel
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.45)";
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
       ctx.lineWidth = 4;
       ctx.beginPath();
       ctx.moveTo(2, 254);
@@ -568,12 +568,12 @@ export function Viewer({
       ctx.stroke();
 
       // Clean Revit border
-      ctx.strokeStyle = "#5f656a";
+      ctx.strokeStyle = "#a5aaae";
       ctx.lineWidth = 3;
       ctx.strokeRect(1, 1, 254, 254);
 
       // Revit typography: italic sans-serif bold, subtle dark ink
-      ctx.fillStyle = "#2c3034";
+      ctx.fillStyle = "#6f767b";
       ctx.font = "italic bold 42px 'Segoe UI', Arial, sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
@@ -622,7 +622,7 @@ export function Viewer({
       // Add crisp edges to the cube
       const cubeEdges = new THREE.LineSegments(
         new THREE.EdgesGeometry(geometry),
-        new THREE.LineBasicMaterial({ color: 0x5a6066, linewidth: 1 })
+        new THREE.LineBasicMaterial({ color: 0xa3a8ac, linewidth: 1 })
       );
       cubeScene.add(cubeEdges);
 
