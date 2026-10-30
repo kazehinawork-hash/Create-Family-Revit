@@ -47,10 +47,19 @@ export interface CmdcModel {
   label: string;
 }
 
+export interface AgentBackends {
+  commandcode: boolean;
+  agy: boolean;
+  codex: boolean;
+  claude: boolean;
+  openai: boolean;
+}
+
 export interface Health {
   ok: boolean;
   agent: AgentStatus;
   models?: CmdcModel[];
+  backends?: AgentBackends;
   bridge: string;
   outDir: string;
   queueDir: string;

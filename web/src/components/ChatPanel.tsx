@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { Issue } from "@family/spec-core";
-import { isImageDocument, type CmdcModel, type CustomApiConfig, type UploadedDocument } from "../lib/api";
+import { isImageDocument, type AgentBackends, type CmdcModel, type CustomApiConfig, type UploadedDocument } from "../lib/api";
 
 export interface ChatEntry {
   id: string;
@@ -28,16 +28,14 @@ interface Props {
   model: string;
   onModel: (model: string) => void;
   availableModels?: CmdcModel[];
+  backends?: AgentBackends;
   attachments: UploadedDocument[];
   uploading: boolean;
   onAttach: (files: File[]) => void;
   onRemoveAttachment: (index: number) => void;
 }
 
-const MODELS = [
-  { id: "", label: "cmdc default", category: "General" },
-  { id: "custom:api", label: "⚙️ Direct API (Google / Anthropic / OpenAI...)", category: "Direct API" },
-];
+const EMPTY_MODELS: CmdcModel[] = [];
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -156,6 +154,7 @@ export function ChatPanel({
   model,
   onModel,
   availableModels,
+  backends,
   attachments,
   uploading,
   onAttach,
@@ -293,9 +292,19 @@ export function ChatPanel({
     if (inputRef.current) inputRef.current.style.height = "auto";
   };
 
-  const modelList: CmdcModel[] = availableModels && availableModels.length > 0
-    ? availableModels
-    : MODELS;
+  const modelList: CmdcModel[] = availableModels ?? EMPTY_MODELS;
+  const hasModels = modelList.length > 0;
+  const modelValue = hasModels && modelList.some((entry) => entry.id === model)
+    ? model
+    : (modelList[0]?.id ?? "");
+
+  // The server lists only CLIs that exist on this machine. If the stored selection
+  // is gone (other machine, uninstalled CLI), fall back to the first available one.
+  useEffect(() => {
+    if (!hasModels) return;
+    if (modelList.some((entry) => entry.id === model)) return;
+    onModel(modelList[0].id);
+  }, [hasModels, modelList, model, onModel]);
 
   // Group models by category
   const groupedModels = modelList.reduce<Record<string, CmdcModel[]>>((acc, item) => {
@@ -305,20 +314,27 @@ export function ChatPanel({
     return acc;
   }, {});
 
-  const isCustomApi = model === "custom:api";
+  const isCustomApi = modelValue === "custom:api";
+
+  // Readiness belongs to the backend behind the selected model, not to the default CLI.
+  const backendKey = modelValue.startsWith("agy:")
+    ? "agy"
+    : modelValue.startsWith("codex:")
+      ? "codex"
+      : modelValue.startsWith("claude:")
+        ? "claude"
+        : "commandcode";
+  const modelBackendReady = backends ? backends[backendKey] : agentReady;
 
   // Calculate real-time status for the selected model
-  let isCurrentModelReady = agentReady === true;
-  let statusText = agentReady === null ? "Đang kết nối..." : "Sẵn sàng";
-  let statusTone: "ok" | "warn" | "error" = agentReady === null ? "warn" : "ok";
+  let isCurrentModelReady = modelBackendReady === true;
+  let statusText = modelBackendReady ? "Sẵn sàng" : "Đang kết nối...";
+  let statusTone: "ok" | "warn" | "error" = modelBackendReady ? "ok" : "warn";
   let statusHint = agentDetail || "Agent đang hoạt động sẵn sàng nhận yêu cầu";
 
-  if (agentReady === false) {
-    isCurrentModelReady = false;
-    statusText = "Không kết nối";
-    statusTone = "error";
-    statusHint = agentDetail || "Không thể kết nối với server hoặc CLI";
-  } else if (isCustomApi) {
+  if (isCustomApi) {
+    // A machine without any CLI can still work through Direct API, so this status
+    // must not inherit the "no CLI installed" readiness of the default backend.
     if (!apiConfig.apiKey?.trim()) {
       isCurrentModelReady = false;
       statusText = "Không kết nối";
@@ -340,6 +356,11 @@ export function ChatPanel({
       statusTone = "ok";
       statusHint = `${detected.label} · Model: ${apiConfig.model || detected.defaultModel}`;
     }
+  } else if (modelBackendReady === false) {
+    isCurrentModelReady = false;
+    statusText = "Không kết nối";
+    statusTone = "error";
+    statusHint = `Không tìm thấy CLI cho model "${modelValue || backendKey}" trên máy — chọn model từ CLI đang cài hoặc Direct API`;
   }
 
   return (
@@ -350,12 +371,14 @@ export function ChatPanel({
         <div style={{ display: "inline-flex", alignItems: "center", gap: 6, maxWidth: "calc(100% - 60px)", flexWrap: "wrap", justifyContent: "flex-end", rowGap: 6 }}>
           <select
             className="model-select"
-            value={model}
+            value={modelValue}
             onChange={(event) => onModel(event.target.value)}
+            disabled={!hasModels}
             title="Chọn CLI hoặc Direct API"
             aria-label="Agent model"
             style={{ maxWidth: 150, flexShrink: 1, minWidth: 0 }}
           >
+            {!hasModels && <option value="">Agent chưa sẵn sàng</option>}
             {Object.entries(groupedModels).map(([group, items]) => (
               <optgroup key={group} label={group}>
                 {items.map((entry) => (

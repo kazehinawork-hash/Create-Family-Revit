@@ -88,6 +88,14 @@ function readStoredLod(): Lod {
   }
 }
 
+function readStoredModel(): string {
+  try {
+    return window.localStorage.getItem("fa.model") ?? "";
+  } catch {
+    return "";
+  }
+}
+
 export function App() {
   const [spec, setSpec] = useState<FamilySpec | null>(null);
   const [entries, setEntries] = useState<ChatEntry[]>([
@@ -106,7 +114,7 @@ export function App() {
   const [units, setUnits] = useState<Units>("mm");
   const [revitVersion, setRevitVersion] = useState("2024");
   const [lod, setLod] = useState<Lod>(readStoredLod);
-  const [model, setModel] = useState("");
+  const [model, setModel] = useState<string>(readStoredModel);
   const [attachments, setAttachments] = useState<UploadedDocument[]>([]);
   const [uploading, setUploading] = useState(false);
   const [showGrid, setShowGrid] = useState(true);
@@ -196,12 +204,16 @@ export function App() {
     void fetchHealth().then((result) => {
       if (!alive || !result) return;
       setHealth(result);
-      if (result.agent?.model && result.agent.model.startsWith("agy:")) {
-        setModel(result.agent.model);
-      } else if (result.models && result.models.length > 0) {
-        const firstAgy = result.models.find((m) => m.id.startsWith("agy:"));
-        if (firstAgy) setModel((curr) => curr || firstAgy.id);
-      }
+      // Keep the user's remembered choice; only auto-pick when nothing is selected
+      // or the stored model no longer exists on this machine.
+      const available = result.models ?? [];
+      setModel((current) => {
+        if (current && available.some((entry) => entry.id === current)) return current;
+        if (result.agent?.model && available.some((entry) => entry.id === result.agent.model)) {
+          return result.agent.model;
+        }
+        return available[0]?.id ?? "";
+      });
     });
 
     const probe = async () => {
@@ -269,6 +281,15 @@ export function App() {
 
   const handleRemoveAttachment = (index: number) => {
     setAttachments((current) => current.filter((_, idx) => idx !== index));
+  };
+
+  const handleModel = (value: string) => {
+    setModel(value);
+    try {
+      window.localStorage.setItem("fa.model", value);
+    } catch {
+      /* private mode, ignore */
+    }
   };
 
   const handleLod = (value: Lod) => {
@@ -542,6 +563,33 @@ export function App() {
         setToast({
           text: "Đã lưu mô hình thành công!",
           sub: `ID: ${res.id}`,
+          tone: "ok",
+        });
+      }
+    } catch (error) {
+      setToast({
+        text: `Lưu thất bại: ${error instanceof Error ? error.message : String(error)}`,
+        tone: "error",
+      });
+    }
+  };
+
+  const handleSaveModelAs = async () => {
+    if (!spec) return;
+    const entered = window.prompt("Tên bản mới:", `${spec.name} copy`);
+    const name = entered?.trim();
+    if (!name) return;
+
+    try {
+      // No id: the server stores this as a new saved model and leaves the open one alone.
+      const copySpec: FamilySpec = { ...spec, name };
+      const res = await saveModel({ name, spec: copySpec, entries });
+      if (res.ok && res.id) {
+        setSpec(copySpec);
+        setCurrentModelId(res.id);
+        setToast({
+          text: "Đã lưu thành bản mới!",
+          sub: `Tên: ${name}`,
           tone: "ok",
         });
       }
@@ -832,6 +880,7 @@ export function App() {
         canBuild={Boolean(analysis?.ok)}
         building={building}
         onSaveModel={handleSaveModel}
+        onSaveModelAs={handleSaveModelAs}
         onOpenLibrary={handleOpenLibrary}
         onNewModel={handleNewModel}
         onLoadDemo={handleLoadDemo}
@@ -865,8 +914,9 @@ export function App() {
           agentDetail={health?.agent.detail ?? null}
           provider={health?.agent.provider ?? null}
           model={model}
-          onModel={setModel}
+          onModel={handleModel}
           availableModels={health?.models}
+          backends={health?.backends}
           attachments={attachments}
           uploading={uploading}
           onAttach={handleAttach}

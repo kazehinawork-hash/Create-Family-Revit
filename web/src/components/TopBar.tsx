@@ -26,6 +26,7 @@ interface Props {
   canBuild: boolean;
   building: boolean;
   onSaveModel?: () => void;
+  onSaveModelAs?: () => void;
   onOpenLibrary?: () => void;
   onNewModel?: () => void;
   onLoadDemo?: (key: "fcu" | "pump" | "elbow") => void;
@@ -74,6 +75,7 @@ export function TopBar({
   canBuild,
   building,
   onSaveModel,
+  onSaveModelAs,
   onOpenLibrary,
   onNewModel,
   onLoadDemo,
@@ -215,6 +217,21 @@ export function TopBar({
               <polyline points="7 3 7 8 15 8" />
             </svg>
             <span>Save</span>
+          </button>
+        )}
+
+        {hasSpec && onSaveModelAs && (
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={onSaveModelAs}
+            title="Lưu thành một bản mới, giữ nguyên bản đang mở"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <rect x="9" y="9" width="12" height="12" rx="2" />
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+            </svg>
+            <span>Save as</span>
           </button>
         )}
 
