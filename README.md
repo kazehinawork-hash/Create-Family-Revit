@@ -62,6 +62,7 @@ Cấu hình trong `.env` (copy từ `.env.example`):
 ```ini
 AGENT_PROVIDER=commandcode      # hoặc openai
 COMMAND_CODE_MODEL=             # model mặc định, để trống = model của CLI
+COMMAND_CODE_EFFORT=            # off | high | max, để trống = mặc định của model
 AGENT_TIMEOUT=600000
 ```
 

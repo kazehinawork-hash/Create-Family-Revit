@@ -64,6 +64,30 @@ function describeEvent(event) {
   }
 }
 
+const IS_WINDOWS = process.platform === "win32";
+
+/**
+ * npm-installed CLIs (`cmdc`, `codex`, `claude`) are `.cmd` shims on Windows, which
+ * CreateProcess cannot start directly — they have to go through the shell.
+ */
+function spawnCli(executable, args, options = {}) {
+  if (!IS_WINDOWS) return spawn(executable, args, options);
+  // Join into one command string: passing an args array together with `shell` is
+  // deprecated in Node because the arguments are not escaped for cmd.exe.
+  const command = [executable, ...args]
+    .map((part) => {
+      const text = String(part);
+      return /\s/.test(text) ? `"${text}"` : text;
+    })
+    .join(" ");
+  return spawn(command, { ...options, shell: true });
+}
+
+/** Model ids come from CLI listings/config; strip anything shell-hostile. */
+function safeArg(value) {
+  return String(value ?? "").replace(/[^\w./:@+-]/g, "");
+}
+
 function killTree(child) {
   if (!child || child.exitCode !== null) return;
 
@@ -79,7 +103,7 @@ function killTree(child) {
   try { child.kill("SIGTERM"); } catch { /* ignore */ }
 }
 
-function runCommandCode(prompt, timeoutMs, model, cwd, onProgress, signal) {
+function runCommandCode(prompt, timeoutMs, model, cwd, onProgress, signal, maxTurns = 3) {
   return new Promise((resolve, reject) => {
     let executable = config.agent.command;
     let args = [];
@@ -87,11 +111,14 @@ function runCommandCode(prompt, timeoutMs, model, cwd, onProgress, signal) {
 
     if (chosen && chosen.startsWith("agy:")) {
       executable = "agy";
-      const agyModel = chosen.slice(4);
+      const agyModel = safeArg(chosen.slice(4));
       args = ["--output-format", "json", "--model", agyModel, "--dangerously-skip-permissions"];
     } else {
-      args = ["-p", "--output-format", "json", "--skip-onboarding", "--max-turns", "3"];
-      if (chosen) args.push("-m", chosen);
+      args = ["-p", "--output-format", "json", "--skip-onboarding", "--max-turns", String(maxTurns)];
+      const effort = (config.agent.effort || "").trim().toLowerCase();
+      if (["off", "high", "max"].includes(effort)) args.push("--effort", effort);
+      const safeChosen = safeArg(chosen);
+      if (safeChosen) args.push("-m", safeChosen);
     }
 
     const started = Date.now();
@@ -101,7 +128,7 @@ function runCommandCode(prompt, timeoutMs, model, cwd, onProgress, signal) {
 
     let child;
     try {
-      child = spawn(executable, args, {
+      child = spawnCli(executable, args, {
         cwd: cwd || os.tmpdir(),
         stdio: ["pipe", "pipe", "pipe"],
         windowsHide: true,
@@ -195,8 +222,8 @@ function runCodexCli(prompt, timeoutMs, model, cwd, onProgress, signal) {
     let effort = null;
     if (rawModel.includes(":")) {
       const parts = rawModel.split(":");
-      rawModel = parts[0];
-      effort = parts[1]; // low, medium, high
+      rawModel = safeArg(parts[0]);
+      effort = safeArg(parts[1]); // low, medium, high
     }
 
     const args = ["exec", "--json", "--dangerously-bypass-approvals-and-sandbox", "--skip-git-repo-check"];
@@ -213,7 +240,7 @@ function runCodexCli(prompt, timeoutMs, model, cwd, onProgress, signal) {
 
     let child;
     try {
-      child = spawn(executable, args, {
+      child = spawnCli(executable, args, {
         cwd: cwd || undefined,
         stdio: ["pipe", "pipe", "pipe"],
         windowsHide: true,
@@ -298,7 +325,7 @@ function runCodexCli(prompt, timeoutMs, model, cwd, onProgress, signal) {
 function runClaudeCli(prompt, timeoutMs, model, cwd, onProgress, signal) {
   return new Promise((resolve, reject) => {
     const executable = config.agent.claudeBin || "claude";
-    const claudeModel = model.startsWith("claude:") ? model.slice(7) : model;
+    const claudeModel = safeArg(model.startsWith("claude:") ? model.slice(7) : model);
     const args = ["-p", "--output-format", "json"];
     if (claudeModel && claudeModel !== "default") {
       args.push("-m", claudeModel);
@@ -309,7 +336,7 @@ function runClaudeCli(prompt, timeoutMs, model, cwd, onProgress, signal) {
 
     let child;
     try {
-      child = spawn(executable, args, {
+      child = spawnCli(executable, args, {
         cwd: cwd || undefined,
         stdio: ["pipe", "pipe", "pipe"],
         windowsHide: true,
@@ -472,6 +499,8 @@ async function commandCodeJson(messages, options = {}) {
       workspace.dir,
       options.onProgress,
       options.signal,
+      // A plain brief needs a single answer; only attachments need tool turns to read files.
+      options.attachments && options.attachments.length > 0 ? 3 : 1,
     );
     const frame = extractResult(result.stdout);
 
@@ -538,17 +567,78 @@ function checkBinaryExists(bin) {
   });
 }
 
+/**
+ * `cmdc --list-models` prints grouped rows: "<group>" headings followed by
+ * "<id>  <description>" lines. Turn that into dropdown entries.
+ */
+function listCommandModels(command) {
+  return new Promise((resolve) => {
+    const child = spawnCli(command, ["--list-models"], { windowsHide: true });
+    let stdout = "";
+    child.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
+    child.on("error", () => resolve([]));
+    child.on("close", (code) => {
+      if (code !== 0 || !stdout) {
+        resolve([]);
+        return;
+      }
+
+      const models = [];
+      let group = "Models";
+      let defaultIndex = -1;
+      for (const rawLine of stdout.split(/\r?\n/)) {
+        const line = rawLine.trim();
+        if (!line) continue;
+        if (/^available models/i.test(line)) continue;
+        if (/^(pass the full id|cmdc? --model|docs:)/i.test(line)) continue;
+
+        const parts = line.split(/\s{2,}/);
+        if (parts.length >= 2) {
+          const id = parts[0].trim();
+          if (!id || /\s/.test(id)) continue;
+          if (/\(default\)/i.test(line)) defaultIndex = models.length;
+          models.push({
+            id,
+            category: `Command Code · ${group}`,
+            label: id,
+          });
+        } else {
+          group = line;
+        }
+      }
+
+      // Start the dropdown on the CLI's own default model.
+      if (defaultIndex > 0) {
+        const [entry] = models.splice(defaultIndex, 1);
+        models.unshift(entry);
+      }
+
+      resolve(models);
+    });
+  });
+}
+
 export async function getCmdcModels() {
   const now = Date.now();
-  if (false) {
+  if (cachedModels && now - lastFetchModels < 60000) {
     return cachedModels;
   }
 
   const list = [];
+  const command = config.agent.command || "cmdc";
+  const [hasCommand, hasAgy] = await Promise.all([
+    checkBinaryExists(command),
+    checkBinaryExists("agy"),
+  ]);
 
-  // 1. Fetch agy models
-  const agyModels = await new Promise((resolve) => {
-    const child = spawn("agy", ["models"], { shell: true, windowsHide: true });
+  // 1. Command Code models, only when the CLI is actually installed here.
+  if (hasCommand && command !== "agy") {
+    list.push(...(await listCommandModels(command)));
+  }
+
+  // 2. Fetch agy models
+  const agyModels = !hasAgy ? [] : await new Promise((resolve) => {
+    const child = spawnCli("agy", ["models"], { windowsHide: true });
     let stdout = "";
     child.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
     child.on("close", (code) => {
@@ -615,6 +705,26 @@ export async function getCmdcModels() {
   cachedModels = list;
   lastFetchModels = now;
   return list;
+}
+
+let backendsCache = { at: 0, value: null };
+
+/** Which agent backends this machine can actually run right now. */
+export async function detectAgentBackends() {
+  if (backendsCache.value && Date.now() - backendsCache.at < 30000) {
+    return backendsCache.value;
+  }
+
+  const [commandcode, agy, codex, claude] = await Promise.all([
+    checkBinaryExists(config.agent.command || "cmdc"),
+    checkBinaryExists("agy"),
+    checkBinaryExists(config.agent.codexBin || "codex"),
+    checkBinaryExists(config.agent.claudeBin || "claude"),
+  ]);
+
+  const value = { commandcode, agy, codex, claude, openai: Boolean(config.llm.apiKey) };
+  backendsCache = { at: Date.now(), value };
+  return value;
 }
 
 export function agentStatus() {

@@ -36,6 +36,7 @@ export const config = {
     codexBin: process.env.CODEX_BIN || "codex",
     claudeBin: process.env.CLAUDE_BIN || "claude",
     model: process.env.COMMAND_CODE_MODEL || "",
+    effort: process.env.COMMAND_CODE_EFFORT || "",
     timeoutMs: Number(process.env.AGENT_TIMEOUT || 600000),
   },
   llm: {
