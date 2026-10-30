@@ -10,9 +10,13 @@ const repairPrompt = fs.readFileSync(path.join(config.dirs.prompts, "repair.md")
 
 const MAX_ATTEMPTS = 3;
 
-const PROSE_REPAIR = `That answer was not a JSON object, so it cannot be built. Reply with ONE JSON object and nothing else:
-no headings, no bullet lists, no design document, no commentary, no code fences.
-It must start with { and end with }, and contain schemaVersion, name, category, parameters, materials and parts.`;
+const PROSE_REPAIR = `Your previous answer was prose, so it cannot be built. Do not repeat or explain it.
+Reply with ONE JSON object and nothing else: no headings, no bullet lists, no code fences.
+
+Start like this and include every part you described:
+{"schemaVersion":"1.0","name":"...","category":"...","units":"mm","parameters":[],"materials":[],"parts":[]}
+
+It must start with { and end with }.`;
 
 export const LOD_LEVELS = [200, 300, 350, 400];
 export const DEFAULT_LOD = 300;
@@ -99,10 +103,28 @@ export async function design({ prompt, currentSpec, lod, emit, model, customApiC
 
     try {
       emit({ type: "stage", stage: "reading", message: "Reading the document" });
-      for (const file of attachments) {
-        const text = await extractDocumentText(file);
-        if (text.length > 40) extracted.push({ name: file.name, text });
-      }
+      // Extract in parallel: datasheets are independent and PDF parsing is the slow part.
+      const results = await Promise.allSettled(attachments.map((file) => extractDocumentText(file)));
+
+      // Datasheets are long; a handful of pages already carries every dimension we need.
+      const PER_DOC_LIMIT = 20000;
+      const TOTAL_LIMIT = 30000;
+      let budget = TOTAL_LIMIT;
+
+      results.forEach((result, index) => {
+        if (result.status === "rejected") {
+          console.error("document extraction failed:", attachments[index].name, result.reason);
+          return;
+        }
+        const text = result.value.trim();
+        if (text.length <= 40 || budget <= 0) return;
+        const clipped = text.slice(0, Math.min(PER_DOC_LIMIT, budget));
+        budget -= clipped.length;
+        extracted.push({
+          name: attachments[index].name,
+          text: clipped.length < text.length ? `${clipped}\n[... truncated]` : clipped,
+        });
+      });
     } catch (error) {
       console.error("document extraction failed:", error);
       extracted = [];
@@ -174,10 +196,8 @@ export async function design({ prompt, currentSpec, lod, emit, model, customApiC
 
       emit({ type: "stage", stage: "repairing", message: "The answer was prose — asking for the JSON spec again" });
 
-      if (typeof error.text === "string" && error.text.trim()) {
-        messages.push({ role: "assistant", content: error.text.slice(0, 20000) });
-      }
-
+      // Do not echo the prose answer: it can be tens of thousands of tokens, which makes
+      // the retry slower than the original request. The brief is still in the messages.
       messages.push({ role: "user", content: PROSE_REPAIR });
       continue;
     }
@@ -196,7 +216,16 @@ export async function design({ prompt, currentSpec, lod, emit, model, customApiC
       // A valid spec can still be physically wrong (e.g. a drain pan above the coil).
       // Give the model one corrective pass with those layout warnings.
       const layoutIssues = analysis.issues.filter((issue) => issue.path.startsWith("logic."));
-      if (layoutIssues.length > 0 && !layoutPassUsed && attempt < MAX_ATTEMPTS) {
+      // A full extra model call is only worth it for the checks the prompt cannot prevent
+      // reliably: a wrong drain pan, or several layout problems at once.
+      const severeLayout = layoutIssues.some((issue) => issue.path.startsWith("logic.drain-pan"));
+      const layoutPassEnabled = process.env.LAYOUT_PASS !== "0";
+      if (
+        layoutPassEnabled &&
+        (severeLayout || layoutIssues.length >= 2) &&
+        !layoutPassUsed &&
+        attempt < MAX_ATTEMPTS
+      ) {
         layoutPassUsed = true;
         emit({
           type: "stage",
