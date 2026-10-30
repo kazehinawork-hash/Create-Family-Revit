@@ -326,6 +326,23 @@ function ensureSavedDir() {
   }
 }
 
+function safeModelId(id) {
+  return path.basename(String(id || "")).replace(/[^\w.\- ]+/g, "_");
+}
+
+function historyDir(modelId) {
+  return path.join(config.dirs.saved, ".history", safeModelId(modelId));
+}
+
+/** Every Save keeps the previous file as a revision, so an edit can always be rolled back. */
+function archiveModel(modelId, filePath) {
+  if (!modelId || !fs.existsSync(filePath)) return;
+  const dir = historyDir(modelId);
+  fs.mkdirSync(dir, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  fs.copyFileSync(filePath, path.join(dir, `${stamp}.json`));
+}
+
 app.get("/api/models", (_req, res) => {
   try {
     ensureSavedDir();
@@ -361,7 +378,7 @@ app.get("/api/models", (_req, res) => {
 app.get("/api/models/:id", (req, res) => {
   try {
     ensureSavedDir();
-    const safeId = path.basename(req.params.id).replace(/[^\w.\- ]+/g, "_");
+    const safeId = safeModelId(req.params.id);
     const filePath = path.join(config.dirs.saved, `${safeId}.json`);
     if (!fs.existsSync(filePath)) {
       res.status(404).json({ error: "Model not found" });
@@ -369,6 +386,57 @@ app.get("/api/models/:id", (req, res) => {
     }
     const raw = fs.readFileSync(filePath, "utf8");
     res.json(JSON.parse(raw));
+  } catch (error) {
+    res.status(500).json({ error: error?.message || String(error) });
+  }
+});
+
+app.get("/api/models/:id/history", (req, res) => {
+  try {
+    const id = safeModelId(req.params.id);
+    const dir = historyDir(id);
+    if (!fs.existsSync(dir)) {
+      res.json({ revisions: [] });
+      return;
+    }
+
+    const revisions = fs
+      .readdirSync(dir)
+      .filter((file) => file.endsWith(".json"))
+      .map((file) => {
+        try {
+          const filePath = path.join(dir, file);
+          const data = JSON.parse(fs.readFileSync(filePath, "utf8"));
+          return {
+            stamp: file.replace(/\.json$/, ""),
+            savedAt: data.savedAt || fs.statSync(filePath).mtimeMs,
+            name: data.spec?.name || data.name || id,
+            parts: data.spec?.parts?.length || 0,
+            parameters: data.spec?.parameters?.length || 0,
+          };
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.savedAt - a.savedAt);
+
+    res.json({ revisions });
+  } catch (error) {
+    res.status(500).json({ error: error?.message || String(error) });
+  }
+});
+
+app.get("/api/models/:id/history/:stamp", (req, res) => {
+  try {
+    const id = safeModelId(req.params.id);
+    const stamp = path.basename(String(req.params.stamp || "")).replace(/[^\w.\-]+/g, "");
+    const filePath = path.join(historyDir(id), `${stamp}.json`);
+    if (!stamp || !fs.existsSync(filePath)) {
+      res.status(404).json({ error: "Revision not found" });
+      return;
+    }
+    res.json(JSON.parse(fs.readFileSync(filePath, "utf8")));
   } catch (error) {
     res.status(500).json({ error: error?.message || String(error) });
   }
@@ -387,6 +455,9 @@ app.post("/api/models", (req, res) => {
       : `${Date.now()}-${(name || spec.name).toLowerCase().replace(/[^\w]+/g, "-").slice(0, 50)}`;
 
     const filePath = path.join(config.dirs.saved, `${modelId}.json`);
+    // Overwriting an existing model keeps the previous version as a revision.
+    if (id) archiveModel(modelId, filePath);
+
     const payload = {
       id: modelId,
       name: name || spec.name,

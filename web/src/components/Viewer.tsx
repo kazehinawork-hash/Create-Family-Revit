@@ -36,6 +36,8 @@ interface Props {
   transparentPartIds?: string[];
   onToggleTransparentPart?: (partId: string) => void;
   onResetTransparent?: () => void;
+  issuePartIds?: string[];
+  focusPartId?: string | null;
   onUpdateParameter?: (name: string, value: number) => void;
   status: { stage: string; message: string; elapsed: string | null } | null;
 }
@@ -91,6 +93,8 @@ export function Viewer({
   transparentPartIds = [],
   onToggleTransparentPart,
   onResetTransparent,
+  issuePartIds = [],
+  focusPartId = null,
   onUpdateParameter,
   status,
 }: Props) {
@@ -128,6 +132,8 @@ export function Viewer({
     partName: string;
     x: number;
     y: number;
+    normal: THREE.Vector3 | null;
+    center: THREE.Vector3 | null;
   } | null>(null);
 
   const [visiblePartCount, setVisiblePartCount] = useState<number>(0);
@@ -147,6 +153,35 @@ export function Viewer({
   const [shadowsEnabled, setShadowsEnabled] = useState<boolean>(true);
   const shadowsEnabledRef = useRef<boolean>(true);
   shadowsEnabledRef.current = shadowsEnabled;
+
+  // Section (clipping plane) and measurement tools.
+  const [sectionAxis, setSectionAxis] = useState<"off" | "x" | "y" | "z" | "custom">("off");
+  const [sectionT, setSectionT] = useState(1);
+  const [sectionCustom, setSectionCustom] = useState<{
+    normal: THREE.Vector3;
+    base: THREE.Vector3;
+  } | null>(null);
+  const [pickingSection, setPickingSection] = useState(false);
+  const pickingSectionRef = useRef(false);
+  pickingSectionRef.current = pickingSection;
+  const [measuring, setMeasuring] = useState(false);
+  const [measureLabel, setMeasureLabel] = useState<string | null>(null);
+  const measuringRef = useRef(false);
+  measuringRef.current = measuring;
+  const measurePointsRef = useRef<THREE.Vector3[]>([]);
+  const measureLineRef = useRef<THREE.Line | null>(null);
+  const measureMarkersRef = useRef<THREE.Mesh[]>([]);
+  const sectionPlaneRef = useRef<THREE.Group | null>(null);
+  const sectionOutlineRef = useRef<THREE.Group | null>(null);
+  const sectionArrowRef = useRef<THREE.Group | null>(null);
+  const sectionBuildKeyRef = useRef<string>("off");
+  const sectionDragRef = useRef(false);
+  const sectionDragMovedRef = useRef(false);
+  const sectionDragDataRef = useRef<{
+    origin: THREE.Vector3;
+    normal: THREE.Vector3;
+    range: number;
+  } | null>(null);
 
   const statusRef = useRef(status);
   statusRef.current = status;
@@ -470,6 +505,11 @@ export function Viewer({
     };
 
     const onCanvasClick = (e: MouseEvent) => {
+      // Ignore the click that ends a section-arrow drag.
+      if (sectionDragMovedRef.current) {
+        sectionDragMovedRef.current = false;
+        return;
+      }
       // Ignore if user was dragging / orbiting
       const dx = Math.abs(e.clientX - downPos.x);
       const dy = Math.abs(e.clientY - downPos.y);
@@ -483,6 +523,171 @@ export function Viewer({
 
       const mainRaycaster = new THREE.Raycaster();
       mainRaycaster.setFromCamera(pointer, camera);
+
+      if (pickingSectionRef.current) {
+        const meshHits = mainRaycaster
+          .intersectObjects(content.children, true)
+          .filter((entry) => (entry.object as THREE.Mesh).isMesh);
+        const hit = meshHits[0];
+        if (hit?.face) {
+          const mesh = hit.object as THREE.Mesh;
+          // Face normals point outward; flip so the interior side is kept and the
+          // camera side is cut away.
+          const normal = hit.face.normal
+            .clone()
+            .transformDirection(mesh.matrixWorld)
+            .normalize()
+            .negate();
+          setSectionCustom({ normal, base: hit.point.clone() });
+          setSectionAxis("custom");
+          setSectionT(0.5);
+        }
+        setPickingSection(false);
+        return;
+      }
+
+      if (measuringRef.current) {
+        const hits = mainRaycaster.intersectObjects(content.children, true);
+        const hit = hits.find((entry) => (entry.object as THREE.Mesh).isMesh) ?? hits[0];
+        if (hit) {
+          let point = hit.point.clone();
+          let snapKind = "mặt";
+
+          const mesh = hit.object as THREE.Mesh;
+          if (hit.face && mesh.isMesh) {
+            const geometry = mesh.geometry as THREE.BufferGeometry;
+            const position = geometry.getAttribute("position");
+            if (position && typeof hit.face.a === "number") {
+              const rect = renderer.domElement.getBoundingClientRect();
+              const clickX = e.clientX - rect.left;
+              const clickY = e.clientY - rect.top;
+              const toScreen = (world: THREE.Vector3) => {
+                const projected = world.clone().project(camera);
+                return {
+                  x: ((projected.x + 1) / 2) * rect.width,
+                  y: ((-projected.y + 1) / 2) * rect.height,
+                };
+              };
+              const readVertex = (index: number) =>
+                new THREE.Vector3().fromBufferAttribute(position, index).applyMatrix4(mesh.matrixWorld);
+
+              const corners = [hit.face.a, hit.face.b, hit.face.c].map(readVertex);
+              const screens = corners.map(toScreen);
+
+              let bestVertex = -1;
+              let bestVertexDistance = 14;
+              screens.forEach((screen, index) => {
+                const distance = Math.hypot(screen.x - clickX, screen.y - clickY);
+                if (distance < bestVertexDistance) {
+                  bestVertexDistance = distance;
+                  bestVertex = index;
+                }
+              });
+
+              if (bestVertex >= 0) {
+                point = corners[bestVertex].clone();
+                snapKind = "điểm góc";
+              } else {
+                const distanceToSegment = (
+                  p: { x: number; y: number },
+                  a: { x: number; y: number },
+                  b: { x: number; y: number },
+                ) => {
+                  const dx = b.x - a.x;
+                  const dy = b.y - a.y;
+                  const lengthSq = dx * dx + dy * dy;
+                  const t = lengthSq > 0
+                    ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / lengthSq))
+                    : 0;
+                  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+                };
+
+                const edges: [number, number][] = [[0, 1], [1, 2], [2, 0]];
+                let bestEdge = -1;
+                let bestEdgeDistance = 10;
+                edges.forEach(([i, j], index) => {
+                  const distance = distanceToSegment(
+                    { x: clickX, y: clickY },
+                    screens[i],
+                    screens[j],
+                  );
+                  if (distance < bestEdgeDistance) {
+                    bestEdgeDistance = distance;
+                    bestEdge = index;
+                  }
+                });
+
+                if (bestEdge >= 0) {
+                  const [i, j] = edges[bestEdge];
+                  const pointOnSegment = new THREE.Vector3();
+                  mainRaycaster.ray.distanceSqToSegment(
+                    corners[i],
+                    corners[j],
+                    undefined,
+                    pointOnSegment,
+                  );
+                  point = pointOnSegment;
+                  snapKind = "cạnh";
+                }
+              }
+            }
+          }
+
+          const points = measurePointsRef.current;
+
+          // Starting a new measurement clears the previous line and markers.
+          if (points.length >= 2) {
+            points.length = 0;
+            if (measureLineRef.current) {
+              scene.remove(measureLineRef.current);
+              measureLineRef.current.geometry.dispose();
+              (measureLineRef.current.material as THREE.Material).dispose();
+              measureLineRef.current = null;
+            }
+            for (const marker of measureMarkersRef.current) {
+              scene.remove(marker);
+              marker.geometry.dispose();
+              (marker.material as THREE.Material).dispose();
+            }
+            measureMarkersRef.current = [];
+          }
+
+          points.push(point);
+
+          const bounds = modelRef.current?.bounds;
+          const markerRadius = bounds
+            ? Math.max(6, Math.max(bounds.size.x, bounds.size.y, bounds.size.z) / 180)
+            : 10;
+          const marker = new THREE.Mesh(
+            new THREE.SphereGeometry(markerRadius, 16, 12),
+            new THREE.MeshBasicMaterial({ color: 0xcf222e, depthTest: false }),
+          );
+          marker.position.copy(point);
+          marker.renderOrder = 998;
+          scene.add(marker);
+          measureMarkersRef.current.push(marker);
+
+          if (points.length === 2) {
+            const [a, b] = points;
+            setMeasureLabel(
+              `${Math.round(a.distanceTo(b))} mm · bắt ${snapKind} · bấm điểm mới để đo lại`,
+            );
+
+            const geometry = new THREE.BufferGeometry().setFromPoints([a, b]);
+            const line = new THREE.Line(
+              geometry,
+              new THREE.LineBasicMaterial({ color: 0xcf222e, depthTest: false }),
+            );
+            line.renderOrder = 999;
+            scene.add(line);
+            measureLineRef.current = line;
+          } else {
+            setMeasureLabel(`Điểm 1 (bắt ${snapKind}) · bấm điểm thứ hai (Esc để huỷ)`);
+          }
+          renderDirtyRef.current = true;
+        }
+        return;
+      }
 
       // Check handle click first
       const handleHits = mainRaycaster.intersectObjects(handlesGroup.children, true);
@@ -524,7 +729,8 @@ export function Viewer({
 
       const intersects = hitRaycaster.intersectObjects(content.children, true);
       if (intersects.length > 0) {
-        let currentObj: THREE.Object3D | null = intersects[0].object;
+        const hit = intersects[0];
+        let currentObj: THREE.Object3D | null = hit.object;
         while (currentObj && !currentObj.userData.partId && currentObj.parent !== content && currentObj.parent) {
           currentObj = currentObj.parent;
         }
@@ -532,12 +738,37 @@ export function Viewer({
         if (hitId) {
           const partDef = modelRef.current?.parts.find((p) => p.id === hitId);
           const partName = partDef?.name || hitId;
+
+          // Section placed from this click: plane normal follows the clicked face and
+          // is flipped to face away from the camera, so the near half gets cut.
+          let normal: THREE.Vector3 | null = null;
+          if (hit.face) {
+            normal = hit.face.normal
+              .clone()
+              .transformDirection((hit.object as THREE.Mesh).matrixWorld)
+              .normalize()
+              .negate();
+          } else {
+            normal = camera.getWorldDirection(new THREE.Vector3());
+          }
+
+          // Cut through the middle of the part so it is visibly sliced, not flush
+          // with the surface that was clicked.
+          let center: THREE.Vector3 | null = null;
+          if (currentObj) {
+            const box = new THREE.Box3().setFromObject(currentObj);
+            if (!box.isEmpty()) center = box.getCenter(new THREE.Vector3());
+          }
+          if (!center) center = hit.point.clone();
+
           onSelectPartRef.current?.(hitId);
           setContextMenu({
             partId: hitId,
             partName,
             x: e.clientX,
             y: e.clientY,
+            normal,
+            center,
           });
           return;
         }
@@ -551,6 +782,61 @@ export function Viewer({
     window.addEventListener("mousemove", onCanvasMouseMove);
     window.addEventListener("mouseup", onCanvasMouseUp);
     renderer.domElement.addEventListener("click", onCanvasClick);
+
+    // Section plane drag handle: grab the red arrow and drag it along the normal.
+    const sectionRay = new THREE.Raycaster();
+    const sectionPointer = new THREE.Vector2();
+    const readSectionPointer = (e: PointerEvent) => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      sectionPointer.set(
+        ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        -((e.clientY - rect.top) / rect.height) * 2 + 1,
+      );
+    };
+
+    const onSectionPointerDown = (e: PointerEvent) => {
+      const arrow = sectionArrowRef.current;
+      const data = sectionDragDataRef.current;
+      if (!arrow || !data) return;
+      readSectionPointer(e);
+      sectionRay.setFromCamera(sectionPointer, camera);
+      if (sectionRay.intersectObject(arrow, true).length === 0) return;
+
+      // Capture phase: stop OrbitControls from starting a rotation.
+      e.stopPropagation();
+      e.preventDefault();
+      sectionDragRef.current = true;
+      controls.enabled = false;
+      renderer.domElement.style.cursor = "grabbing";
+    };
+
+    const onSectionPointerMove = (e: PointerEvent) => {
+      const data = sectionDragDataRef.current;
+      if (!sectionDragRef.current || !data) return;
+      readSectionPointer(e);
+      sectionRay.setFromCamera(sectionPointer, camera);
+
+      const span = data.range * 2;
+      const start = data.origin.clone().addScaledVector(data.normal, -span);
+      const end = data.origin.clone().addScaledVector(data.normal, span);
+      const hitPoint = new THREE.Vector3();
+      sectionRay.ray.distanceSqToSegment(start, end, undefined, hitPoint);
+      const offset = hitPoint.sub(data.origin).dot(data.normal);
+      const next = Math.min(1, Math.max(0, 0.5 + offset / data.range));
+      setSectionT(next);
+    };
+
+    const onSectionPointerUp = () => {
+      if (!sectionDragRef.current) return;
+      sectionDragRef.current = false;
+      sectionDragMovedRef.current = true;
+      controls.enabled = true;
+      renderer.domElement.style.cursor = "";
+    };
+
+    renderer.domElement.addEventListener("pointerdown", onSectionPointerDown, true);
+    window.addEventListener("pointermove", onSectionPointerMove);
+    window.addEventListener("pointerup", onSectionPointerUp);
 
     let frame = 0;
 
@@ -962,6 +1248,9 @@ export function Viewer({
       window.removeEventListener("mousemove", onCanvasMouseMove);
       window.removeEventListener("mouseup", onCanvasMouseUp);
       renderer.domElement.removeEventListener("click", onCanvasClick);
+      renderer.domElement.removeEventListener("pointerdown", onSectionPointerDown, true);
+      window.removeEventListener("pointermove", onSectionPointerMove);
+      window.removeEventListener("pointerup", onSectionPointerUp);
       controls.dispose();
       renderer.dispose();
       environment.dispose();
@@ -1114,6 +1403,7 @@ export function Viewer({
         isSelected: part.id === selectedPartId,
         isTransparent: transparentPartIds.includes(part.id) || isClearance,
         isClearance,
+        hasIssue: issuePartIds.includes(part.id),
         isAnimating: Boolean(animatingPartName) && part.name === animatingPartName,
       };
     };
@@ -1140,6 +1430,10 @@ export function Viewer({
       if (style.isSelected) {
         edgeMaterial.color.setHex(0x3f8ce8); // Viền xanh Revit dịu quanh part đang chọn
         edgeMaterial.opacity = 0.75;
+        edgeMaterial.transparent = true;
+      } else if (style.hasIssue) {
+        edgeMaterial.color.setHex(0xcf222e); // cảnh báo bố trí: viền đỏ
+        edgeMaterial.opacity = 0.9;
         edgeMaterial.transparent = true;
       } else if (style.isAnimating) {
         edgeMaterial.color.setHex(0x2f7d5b); // green edge on the part that just appeared
@@ -1222,6 +1516,7 @@ export function Viewer({
         style.isSelected ? "selected" : "",
         style.isTransparent ? "transparent" : "",
         style.isClearance ? "clearance" : "",
+        style.hasIssue ? "issue" : "",
         style.isAnimating ? "hot" : "",
       ].join("|");
 
@@ -1252,7 +1547,232 @@ export function Viewer({
       state.renderer.shadowMap.needsUpdate = true;
       renderDirtyRef.current = true;
     }
-  }, [model, materials, selectedPartId, hiddenPartIds, transparentPartIds, visiblePartCount, animatingPartName]);
+  }, [model, materials, selectedPartId, hiddenPartIds, transparentPartIds, issuePartIds, visiblePartCount, animatingPartName]);
+
+  // Zoom the camera to a part when an issue is clicked in the chat.
+  useEffect(() => {
+    const state = stateRef.current;
+    if (!state || !focusPartId) return;
+
+    const group = state.content.children.find((child) => child.name === focusPartId);
+    if (!group) return;
+
+    const box = new THREE.Box3().setFromObject(group);
+    if (box.isEmpty()) return;
+
+    const center = box.getCenter(new THREE.Vector3());
+    const radius = Math.max(box.getSize(new THREE.Vector3()).length() / 2, 120);
+    const distance = (radius / Math.sin((state.camera.fov * Math.PI) / 360)) * 1.7;
+
+    state.camera.position
+      .copy(center)
+      .add(new THREE.Vector3(0.55, -0.75, 0.45).normalize().multiplyScalar(distance));
+    state.camera.near = Math.max(1, distance / 400);
+    state.camera.far = distance * 12;
+    state.camera.updateProjectionMatrix();
+    state.controls.target.copy(center);
+    state.controls.update();
+    renderDirtyRef.current = true;
+  }, [focusPartId]);
+
+  // Section box: one global clipping plane in front of the chosen axis.
+  useEffect(() => {
+    const state = stateRef.current;
+    if (!state) return;
+
+    // Rebuild only when the plane orientation/base changes; sliding reuses the meshes.
+    const modelKey = model?.bounds
+      ? `${model.bounds.size.x.toFixed(1)},${model.bounds.size.y.toFixed(1)},${model.bounds.size.z.toFixed(1)}`
+      : "none";
+    const buildKey =
+      sectionAxis === "off" || !model?.bounds
+        ? "off"
+        : sectionAxis === "custom"
+          ? sectionCustom
+            ? `custom:${sectionCustom.normal.toArray().map((v) => v.toFixed(4)).join(",")}:${sectionCustom.base.toArray().map((v) => v.toFixed(2)).join(",")}:${modelKey}`
+            : "custom-none"
+          : `axis:${sectionAxis}:${modelKey}`;
+
+    if (buildKey !== sectionBuildKeyRef.current) {
+      const previousPlane = sectionPlaneRef.current;
+      if (previousPlane) {
+        state.scene.remove(previousPlane);
+        previousPlane.traverse((child) => {
+          const mesh = child as THREE.Mesh;
+          mesh.geometry?.dispose();
+          const material = mesh.material as THREE.Material | THREE.Material[] | undefined;
+          if (Array.isArray(material)) material.forEach((item) => item.dispose());
+          else material?.dispose();
+        });
+        sectionPlaneRef.current = null;
+        sectionArrowRef.current = null;
+        sectionOutlineRef.current = null;
+      }
+      sectionBuildKeyRef.current = buildKey;
+    }
+
+    if (sectionAxis === "off" || !model?.bounds) {
+      state.renderer.clippingPlanes = [];
+      state.renderer.shadowMap.needsUpdate = true;
+      renderDirtyRef.current = true;
+      return;
+    }
+
+    const { min, max, size } = model.bounds;
+    const center = new THREE.Vector3(
+      (min.x + max.x) / 2,
+      (min.y + max.y) / 2,
+      (min.z + max.z) / 2,
+    );
+    const extent = Math.max(size.x, size.y, size.z, 400);
+
+    let normal: THREE.Vector3 | null = null;
+    let planePoint: THREE.Vector3 | null = null;
+
+    if (sectionAxis === "custom" && sectionCustom) {
+      // Plane picked from a face: it slides along that face normal.
+      normal = sectionCustom.normal.clone().normalize();
+      const offset = (sectionT - 0.5) * extent;
+      planePoint = sectionCustom.base.clone().addScaledVector(normal, offset);
+    } else if (sectionAxis !== "custom") {
+      const axis = sectionAxis;
+      const lo = min[axis];
+      const hi = max[axis];
+      const position = lo + (hi - lo) * sectionT;
+      normal = new THREE.Vector3(
+        axis === "x" ? -1 : 0,
+        axis === "y" ? -1 : 0,
+        axis === "z" ? -1 : 0,
+      );
+      planePoint = new THREE.Vector3(
+        axis === "x" ? position : center.x,
+        axis === "y" ? position : center.y,
+        axis === "z" ? position : center.z,
+      );
+    }
+
+    if (!normal || !planePoint) {
+      state.renderer.clippingPlanes = [];
+      state.renderer.shadowMap.needsUpdate = true;
+      renderDirtyRef.current = true;
+      return;
+    }
+
+    state.renderer.clippingPlanes = [
+      new THREE.Plane(normal.clone(), -normal.dot(planePoint)),
+    ];
+
+    // Keep the arrow on the plane, near the middle of the model.
+    const planeCenter = center
+      .clone()
+      .addScaledVector(normal, -center.clone().sub(planePoint).dot(normal));
+
+    const existingOutline = sectionOutlineRef.current;
+    const existingArrow = sectionArrowRef.current;
+
+    if (existingOutline && existingArrow && sectionPlaneRef.current) {
+      existingOutline.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
+      existingOutline.position.copy(planePoint);
+      existingArrow.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), normal);
+      existingArrow.position.copy(planeCenter);
+    } else {
+      // Outline only: a filled quad coplanar with the cut flickers while orbiting.
+      const planeExtent = extent * 1.6;
+      const planeGeometry = new THREE.PlaneGeometry(planeExtent, planeExtent);
+      const outlineGeometry = new THREE.EdgesGeometry(planeGeometry);
+      const outlineMaterial = new THREE.LineBasicMaterial({
+        color: 0xcf222e,
+        transparent: true,
+        opacity: 0.5,
+      });
+
+      const group = new THREE.Group();
+      const outlineGroup = new THREE.Group();
+      outlineGroup.add(new THREE.LineSegments(outlineGeometry, outlineMaterial));
+      outlineGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
+      outlineGroup.position.copy(planePoint);
+      group.add(outlineGroup);
+
+      // Drag handle: an arrow sitting on the plane, pointing along the normal.
+      const arrowLength = Math.max(extent * 0.3, 220);
+      const shaftRadius = Math.max(extent * 0.007, 5);
+      const coneRadius = Math.max(extent * 0.022, 15);
+      const coneHeight = Math.max(extent * 0.08, 45);
+      const arrowMaterial = new THREE.MeshBasicMaterial({
+        color: 0xcf222e,
+        depthTest: false,
+        transparent: true,
+        opacity: 0.9,
+      });
+      const arrow = new THREE.Group();
+      const shaft = new THREE.Mesh(
+        new THREE.CylinderGeometry(shaftRadius, shaftRadius, arrowLength - coneHeight, 12),
+        arrowMaterial,
+      );
+      shaft.position.y = (arrowLength - coneHeight) / 2;
+      const head = new THREE.Mesh(new THREE.ConeGeometry(coneRadius, coneHeight, 18), arrowMaterial);
+      head.position.y = arrowLength - coneHeight / 2;
+      arrow.add(shaft, head);
+      arrow.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), normal);
+      arrow.renderOrder = 1000;
+      arrow.position.copy(planeCenter);
+      group.add(arrow);
+
+      state.scene.add(group);
+      sectionPlaneRef.current = group;
+      sectionOutlineRef.current = outlineGroup;
+      sectionArrowRef.current = arrow;
+    }
+
+    const dragOrigin =
+      sectionAxis === "custom" && sectionCustom ? sectionCustom.base.clone() : center.clone();
+    const dragRange =
+      sectionAxis === "custom" ? extent : Math.max(max[sectionAxis] - min[sectionAxis], 1);
+    sectionDragDataRef.current = {
+      origin: dragOrigin,
+      normal: normal.clone(),
+      range: dragRange,
+    };
+
+    state.renderer.shadowMap.needsUpdate = true;
+    renderDirtyRef.current = true;
+  }, [sectionAxis, sectionT, model, sectionCustom]);
+
+  useEffect(() => {
+    if (measuring) return;
+
+    measurePointsRef.current = [];
+    setMeasureLabel(null);
+
+    const state = stateRef.current;
+    const line = measureLineRef.current;
+    if (state && line) {
+      state.scene.remove(line);
+      line.geometry.dispose();
+      (line.material as THREE.Material).dispose();
+    }
+    measureLineRef.current = null;
+
+    if (state) {
+      for (const marker of measureMarkersRef.current) {
+        state.scene.remove(marker);
+        marker.geometry.dispose();
+        (marker.material as THREE.Material).dispose();
+      }
+    }
+    measureMarkersRef.current = [];
+    renderDirtyRef.current = true;
+  }, [measuring]);
+
+  // Esc leaves the measuring tool.
+  useEffect(() => {
+    if (!measuring) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMeasuring(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [measuring]);
 
   useEffect(() => {
     const state = stateRef.current;
@@ -1742,6 +2262,38 @@ export function Viewer({
             <span className="tool-label">Ref Planes</span>
           </button>
         )}
+        <button
+          type="button"
+          className={`tool ${sectionAxis !== "off" ? "active" : ""}`}
+          onClick={() => {
+            if (sectionAxis === "off") {
+              setSectionT(1);
+              setSectionAxis("x");
+            } else {
+              setSectionAxis("off");
+              setPickingSection(false);
+            }
+          }}
+          title="Cắt khối để xem bên trong (Section)"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <path d="M3 7l9-4 9 4-9 4-9-4z" />
+            <path d="M3 12l9 4 9-4M3 17l9 4 9-4" />
+          </svg>
+          <span className="tool-label">Section</span>
+        </button>
+        <button
+          type="button"
+          className={`tool ${measuring ? "active" : ""}`}
+          onClick={() => setMeasuring((current) => !current)}
+          title="Đo khoảng cách: bật rồi bấm 2 điểm trên mô hình"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <path d="M3 15 15 3l6 6L9 21l-6-6z" />
+            <path d="M7 11l2 2M10 8l2 2M13 5l2 2" />
+          </svg>
+          <span className="tool-label">Measure</span>
+        </button>
         {onToggleConnectors && (
           <button
             type="button"
@@ -1783,7 +2335,90 @@ export function Viewer({
         )}
       </div>
 
+      {sectionAxis !== "off" && (
+        <div className="section-card">
+          <div className="section-card-head">
+            <span>Section · mặt cắt</span>
+            <button
+              type="button"
+              className="modal-close"
+              onClick={() => setSectionAxis("off")}
+              aria-label="Đóng section"
+            >
+              ×
+            </button>
+          </div>
+          <div className="section-axis">
+            {(["x", "y", "z"] as const).map((axis) => (
+              <button
+                key={axis}
+                type="button"
+                className={sectionAxis === axis ? "active" : ""}
+                onClick={() => {
+                  setSectionAxis(axis);
+                  setPickingSection(false);
+                  setSectionT(1);
+                }}
+              >
+                {axis.toUpperCase()}
+              </button>
+            ))}
+            <button
+              type="button"
+              className={sectionAxis === "custom" ? "active" : ""}
+              onClick={() => setPickingSection(true)}
+              title="Chọn mặt phẳng cắt bằng cách bấm vào một mặt của mô hình"
+            >
+              ⌖
+            </button>
+          </div>
+
+          {pickingSection && (
+            <div className="section-hint">Bấm vào một mặt của mô hình để đặt mặt cắt…</div>
+          )}
+
+          {sectionAxis === "custom" && sectionCustom && (
+            <button
+              type="button"
+              className="section-flip"
+              onClick={() =>
+                setSectionCustom((current) =>
+                  current ? { ...current, normal: current.normal.clone().negate() } : current,
+                )
+              }
+            >
+              Đảo chiều mặt cắt
+            </button>
+          )}
+
+          <div className="section-value">
+            {sectionAxis === "custom" && sectionCustom && model?.bounds
+              ? `${Math.round(
+                  (sectionT - 0.5) *
+                    Math.max(
+                      model.bounds.size.x,
+                      model.bounds.size.y,
+                      model.bounds.size.z,
+                      400,
+                    ),
+                )} mm theo pháp tuyến`
+              : model?.bounds && sectionAxis !== "custom"
+                ? `${Math.round(
+                    model.bounds.min[sectionAxis] +
+                      (model.bounds.max[sectionAxis] - model.bounds.min[sectionAxis]) * sectionT,
+                  )} mm`
+                : "—"}
+          </div>
+          <div className="section-tip">Kéo mũi tên đỏ trên mô hình để dịch mặt cắt</div>
+        </div>
+      )}
+
       {model && dims && <div className="viewer-dims">{dims}</div>}
+
+      {measuring && !measureLabel && (
+        <div className="measure-badge">Bấm điểm thứ nhất trên mô hình · Esc để huỷ</div>
+      )}
+      {measureLabel && <div className="measure-badge">{measureLabel}</div>}
 
       <div className="viewcube-container" ref={cubeHostRef} title="Click a face to align view" />
 
@@ -1926,6 +2561,31 @@ export function Viewer({
               <rect x="7" y="7" width="10" height="10" fill="currentColor" fillOpacity="0.3" />
             </svg>
             <span>Cô lập cấu kiện (Isolate)</span>
+          </button>
+
+          <button
+            type="button"
+            className="menu-item"
+            title="Cắt mặt cắt ngay qua cấu kiện này"
+            onClick={() => {
+              if (contextMenu.normal && contextMenu.center) {
+                setSectionCustom({
+                  normal: contextMenu.normal.clone(),
+                  base: contextMenu.center.clone(),
+                });
+                setSectionAxis("custom");
+                setSectionT(0.5);
+                setPickingSection(false);
+              }
+              setContextMenu(null);
+            }}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M3 3h18v18H3z" strokeDasharray="3 3" />
+              <path d="M3 12h18" />
+              <path d="M12 3v18" opacity="0.4" />
+            </svg>
+            <span>Section từ cấu kiện này</span>
           </button>
 
           {(hiddenPartIds.length > 0 || transparentPartIds.length > 0) && (

@@ -29,6 +29,7 @@ interface Props {
   onModel: (model: string) => void;
   availableModels?: CmdcModel[];
   backends?: AgentBackends;
+  onFocusPart?: (partId: string) => void;
   attachments: UploadedDocument[];
   uploading: boolean;
   onAttach: (files: File[]) => void;
@@ -155,6 +156,7 @@ export function ChatPanel({
   onModel,
   availableModels,
   backends,
+  onFocusPart,
   attachments,
   uploading,
   onAttach,
@@ -525,15 +527,25 @@ export function ChatPanel({
                   <summary>
                     Details · {entry.issues.length} item{entry.issues.length === 1 ? "" : "s"}
                   </summary>
-                  {entry.issues.map((issue, index) => (
-                    <div key={`${issue.path}-${index}`} className={`issue ${issue.severity}`}>
-                      <span className="tag">{issue.severity}</span>
-                      <span>
-                        <span className="where">{issue.path}</span>
-                        {issue.message}
-                      </span>
-                    </div>
-                  ))}
+                  {entry.issues.map((issue, index) => {
+                    const partId = issue.path.startsWith("logic.")
+                      ? issue.path.split(".").pop() ?? null
+                      : null;
+                    return (
+                      <div
+                        key={`${issue.path}-${index}`}
+                        className={`issue ${issue.severity}${partId ? " clickable" : ""}`}
+                        onClick={partId ? () => onFocusPart?.(partId) : undefined}
+                        title={partId ? "Chọn và zoom tới part này trong 3D" : undefined}
+                      >
+                        <span className="tag">{issue.severity}</span>
+                        <span>
+                          <span className="where">{issue.path}</span>
+                          {issue.message}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </details>
               )}
             </div>

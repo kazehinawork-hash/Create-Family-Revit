@@ -29,6 +29,10 @@ interface Props {
   building?: boolean;
   onSaveModel?: () => void;
   onSaveModelAs?: () => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
   onOpenLibrary?: () => void;
   onNewModel?: () => void;
   onLoadDemo?: (key: "fcu" | "pump" | "elbow") => void;
@@ -78,6 +82,10 @@ export function TopBar({
   canBuild,
   onSaveModel,
   onSaveModelAs,
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo,
   onOpenLibrary,
   onNewModel,
   onLoadDemo,
@@ -209,6 +217,37 @@ export function TopBar({
             </svg>
             <span>Library</span>
           </button>
+        )}
+
+        {onUndo && onRedo && (
+          <div className="undo-group">
+            <button
+              type="button"
+              className="btn-secondary icon-button"
+              onClick={onUndo}
+              disabled={!canUndo}
+              title="Hoàn tác (Ctrl+Z)"
+              aria-label="Undo"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M9 14 4 9l5-5" />
+                <path d="M4 9h9a6 6 0 0 1 0 12h-3" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              className="btn-secondary icon-button"
+              onClick={onRedo}
+              disabled={!canRedo}
+              title="Làm lại (Ctrl+Shift+Z / Ctrl+Y)"
+              aria-label="Redo"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="m15 14 5-5-5-5" />
+                <path d="M20 9h-9a6 6 0 0 0 0 12h3" />
+              </svg>
+            </button>
+          </div>
         )}
 
         {hasSpec && onSaveModel && (

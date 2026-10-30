@@ -23,12 +23,15 @@ import {
   uploadDocument,
   fetchSavedModels,
   fetchSavedModelDetail,
+  fetchModelHistory,
+  fetchModelRevision,
   saveModel,
   deleteSavedModel,
   type Health,
   type Lod,
   type UploadedDocument,
   type SavedModelMeta,
+  type SavedModelRevision,
 } from "./lib/api";
 import { formatDuration, type Units } from "./lib/format";
 
@@ -124,6 +127,7 @@ export function App() {
   const [showConnectors, setShowConnectors] = useState(false);
   const [showHandles, setShowHandles] = useState(false);
   const [selectedPartId, setSelectedPartId] = useState<string | null>(null);
+  const [focusPartId, setFocusPartId] = useState<string | null>(null);
   const [hiddenPartIds, setHiddenPartIds] = useState<string[]>([]);
   const [transparentPartIds, setTransparentPartIds] = useState<string[]>([]);
   const [health, setHealth] = useState<Health | null>(null);
@@ -134,7 +138,21 @@ export function App() {
   const [currentModelId, setCurrentModelId] = useState<string | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [savedList, setSavedList] = useState<SavedModelMeta[]>([]);
+  const [historyModelId, setHistoryModelId] = useState<string | null>(null);
+  const [revisions, setRevisions] = useState<SavedModelRevision[]>([]);
+  const [revisionsLoading, setRevisionsLoading] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+
+  // Undo/redo stack for spec edits (parameter typing, handles, agent rewrites).
+  const specRef = useRef<FamilySpec | null>(null);
+  specRef.current = spec;
+  const pastRef = useRef<FamilySpec[]>([]);
+  const futureRef = useRef<FamilySpec[]>([]);
+  const lastRecordRef = useRef(0);
+  const [historyVersion, setHistoryVersion] = useState(0);
+  const canUndo = pastRef.current.length > 0;
+  const canRedo = futureRef.current.length > 0;
+  void historyVersion;
   const [leftWidth, setLeftWidth] = useState(() => readStoredWidth("fa.leftWidth", DEFAULT_LEFT_WIDTH));
   const [rightWidth, setRightWidth] = useState(() =>
     readStoredWidth("fa.rightWidth", DEFAULT_RIGHT_WIDTH),
@@ -194,6 +212,17 @@ export function App() {
   };
 
   const analysis = useMemo(() => (spec ? analyzeSpec(spec) : null), [spec]);
+
+  // Parts that the layout checks flagged (paths look like logic.drain-pan.<partId>).
+  const issuePartIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const issue of analysis?.issues ?? []) {
+      if (!issue.path.startsWith("logic.")) continue;
+      const partId = issue.path.split(".").pop();
+      if (partId) ids.add(partId);
+    }
+    return [...ids];
+  }, [analysis]);
 
   // Typing in a parameter field re-solves the geometry; defer it so the input stays smooth.
   const deferredModel = useDeferredValue(analysis?.model ?? null);
@@ -260,6 +289,84 @@ export function App() {
   const pushEntry = (entry: Omit<ChatEntry, "id">) => {
     setEntries((current) => [...current, { ...entry, id: newId() }]);
   };
+
+  /**
+   * Single entry point for spec changes so undo/redo sees every edit.
+   * Rapid changes (typing in a parameter) coalesce into one history step.
+   */
+  const applySpec = (
+    next: FamilySpec | null,
+    options: { record?: boolean; reset?: boolean } = {},
+  ) => {
+    const { record = true, reset = false } = options;
+    const current = specRef.current;
+
+    if (reset) {
+      pastRef.current = [];
+      futureRef.current = [];
+      lastRecordRef.current = 0;
+    } else if (record && current && next && current !== next) {
+      const now = Date.now();
+      if (now - lastRecordRef.current > 400 || pastRef.current.length === 0) {
+        pastRef.current.push(current);
+        if (pastRef.current.length > 60) pastRef.current.shift();
+      }
+      lastRecordRef.current = now;
+      futureRef.current = [];
+    }
+
+    setSpec(next);
+    setHistoryVersion((version) => version + 1);
+  };
+
+  const undoSpec = () => {
+    const previous = pastRef.current.pop();
+    const current = specRef.current;
+    if (!previous) return;
+    if (current) futureRef.current.push(current);
+    lastRecordRef.current = 0;
+    setSpec(previous);
+    setNative(false);
+    setHistoryVersion((version) => version + 1);
+  };
+
+  const redoSpec = () => {
+    const next = futureRef.current.pop();
+    const current = specRef.current;
+    if (!next) return;
+    if (current) pastRef.current.push(current);
+    lastRecordRef.current = 0;
+    setSpec(next);
+    setNative(false);
+    setHistoryVersion((version) => version + 1);
+  };
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const typing =
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable);
+      if (typing || !(event.ctrlKey || event.metaKey)) return;
+
+      const key = event.key.toLowerCase();
+      if (key === "z" && !event.shiftKey) {
+        event.preventDefault();
+        undoSpec();
+      } else if ((key === "z" && event.shiftKey) || key === "y") {
+        event.preventDefault();
+        redoSpec();
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+    // Handlers only touch refs and stable setters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleAttach = async (files: File[]) => {
     setUploading(true);
@@ -366,7 +473,7 @@ export function App() {
 
           const { stats } = event;
           receivedSpec = true;
-          setSpec(event.spec);
+          applySpec(event.spec);
           setNative(false);
           const dims = stats.bounds ? `${stats.bounds.x} × ${stats.bounds.y} × ${stats.bounds.z} mm` : "";
 
@@ -435,6 +542,17 @@ export function App() {
     setHiddenPartIds([]);
   };
 
+  const handleIsolatePart = (partId: string) => {
+    const all = analysis?.model.parts.map((part) => part.id) ?? [];
+    setHiddenPartIds(all.filter((id) => id !== partId));
+    setSelectedPartId(partId);
+  };
+
+  const handleFocusPart = (partId: string) => {
+    setSelectedPartId(partId);
+    setFocusPartId(partId);
+  };
+
   const handleToggleTransparentPart = (partId: string) => {
     setTransparentPartIds((current) =>
       current.includes(partId) ? current.filter((id) => id !== partId) : [...current, partId],
@@ -446,36 +564,35 @@ export function App() {
   };
 
   const handleUpdateParameter = (name: string, value: number | string) => {
-    setSpec((current) => {
-      if (!current) return current;
-      return {
-        ...current,
-        parameters: current.parameters.map((param) =>
-          param.name === name ? { ...param, value, formula: undefined } : param,
-        ),
-      };
+    const current = specRef.current;
+    if (!current) return;
+    applySpec({
+      ...current,
+      parameters: current.parameters.map((param) =>
+        param.name === name ? { ...param, value, formula: undefined } : param,
+      ),
     });
     setNative(false);
   };
 
   const handleAddParameter = (draft: { name: string; type: ParameterType; value: number | string }) => {
-    setSpec((current) => {
-      if (!current) return current;
-      const taken = new Set(current.parameters.map((param) => paramKey(param.name)));
-      let name = draft.name;
-      let suffix = 2;
-      while (taken.has(paramKey(name))) {
-        name = `${draft.name} ${suffix}`;
-        suffix += 1;
-      }
-      const parameter: FamilyParameter = {
-        name,
-        type: draft.type,
-        group: draft.type === "Length" || draft.type === "Angle" ? "Dimensions" : "Data",
-        value: draft.value,
-      };
-      return { ...current, parameters: [...current.parameters, parameter] };
-    });
+    const current = specRef.current;
+    if (!current) return;
+
+    const taken = new Set(current.parameters.map((param) => paramKey(param.name)));
+    let name = draft.name;
+    let suffix = 2;
+    while (taken.has(paramKey(name))) {
+      name = `${draft.name} ${suffix}`;
+      suffix += 1;
+    }
+    const parameter: FamilyParameter = {
+      name,
+      type: draft.type,
+      group: draft.type === "Length" || draft.type === "Angle" ? "Dimensions" : "Data",
+      value: draft.value,
+    };
+    applySpec({ ...current, parameters: [...current.parameters, parameter] });
     setNative(false);
   };
 
@@ -614,7 +731,7 @@ export function App() {
       const copySpec: FamilySpec = { ...spec, name };
       const res = await saveModel({ name, spec: copySpec, entries });
       if (res.ok && res.id) {
-        setSpec(copySpec);
+        applySpec(copySpec);
         setCurrentModelId(res.id);
         setToast({
           text: "Đã lưu thành bản mới!",
@@ -632,15 +749,41 @@ export function App() {
 
   const handleOpenLibrary = async () => {
     setLibraryOpen(true);
+    setHistoryModelId(null);
     const list = await fetchSavedModels();
     setSavedList(list);
+  };
+
+  const handleOpenHistory = async (id: string) => {
+    setHistoryModelId(id);
+    setRevisionsLoading(true);
+    setRevisions(await fetchModelHistory(id));
+    setRevisionsLoading(false);
+  };
+
+  const handleRestoreRevision = async (stamp: string) => {
+    if (!historyModelId) return;
+    const revision = await fetchModelRevision(historyModelId, stamp);
+    if (!revision?.spec) {
+      setToast({ text: "Không đọc được bản lưu này", tone: "error" });
+      return;
+    }
+    applySpec(revision.spec, { reset: true });
+    setCurrentModelId(historyModelId);
+    setHistoryModelId(null);
+    setLibraryOpen(false);
+    setToast({
+      text: "Đã khôi phục bản lưu",
+      sub: new Date(revision.savedAt).toLocaleString(),
+      tone: "ok",
+    });
   };
 
   const handleLoadModel = async (id: string) => {
     try {
       const detail = await fetchSavedModelDetail(id);
       if (detail && detail.spec) {
-        setSpec(detail.spec);
+        applySpec(detail.spec, { reset: true });
         setCurrentModelId(detail.id);
         if (detail.spec.lod) handleLod(detail.spec.lod);
         if (Array.isArray(detail.entries) && detail.entries.length > 0) {
@@ -693,7 +836,7 @@ export function App() {
     if (spec && !window.confirm("Bắt đầu mô hình mới? Hãy chắc chắn bạn đã bấm Save nếu muốn lưu mô hình hiện tại.")) {
       return;
     }
-    setSpec(null);
+    applySpec(null, { reset: true });
     setCurrentModelId(null);
     setEntries([
       {
@@ -801,7 +944,7 @@ export function App() {
     const parsed = validateSpec(demoRaw).spec;
 
     // Reset viewport and start simulated Agent run
-    setSpec(null);
+    applySpec(null, { reset: true });
     setSelectedPartId(null);
     setHiddenPartIds([]);
     setTransparentPartIds([]);
@@ -835,11 +978,11 @@ export function App() {
         stage: "generating",
         message: `Đang dựng: ${allParts[0]?.name || "Khung chính"} (1/${allParts.length})`,
       });
-      setSpec({
+      applySpec({
         ...parsed,
         parts: allParts.slice(0, 1),
         connectors: [],
-      });
+      }, { record: false });
     }, baseDelay);
 
     // Các part tiếp theo mọc dần lên
@@ -849,11 +992,11 @@ export function App() {
           stage: "generating",
           message: `Đang dựng: ${allParts[i - 1]?.name || `Part ${i}`} (${i}/${allParts.length})`,
         });
-        setSpec({
+        applySpec({
           ...parsed,
           parts: allParts.slice(0, i),
           connectors: i === allParts.length ? parsed.connectors : [],
-        });
+        }, { record: false });
       }, baseDelay + (i - 1) * partStep);
     }
 
@@ -869,7 +1012,7 @@ export function App() {
       setRunning(false);
       setRunStartedAt(null);
       setStage(null);
-      setSpec(parsed);
+      applySpec(parsed, { record: false });
 
       const partCount = parsed.parts?.length ?? 0;
       const paramCount = parsed.parameters?.length ?? 0;
@@ -912,6 +1055,10 @@ export function App() {
         building={building}
         onSaveModel={handleSaveModel}
         onSaveModelAs={handleSaveModelAs}
+        onUndo={undoSpec}
+        onRedo={redoSpec}
+        canUndo={canUndo}
+        canRedo={canRedo}
         onOpenLibrary={handleOpenLibrary}
         onNewModel={handleNewModel}
         onLoadDemo={handleLoadDemo}
@@ -948,6 +1095,7 @@ export function App() {
           onModel={handleModel}
           availableModels={health?.models}
           backends={health?.backends}
+          onFocusPart={handleFocusPart}
           attachments={attachments}
           uploading={uploading}
           onAttach={handleAttach}
@@ -991,6 +1139,8 @@ export function App() {
           transparentPartIds={transparentPartIds}
           onToggleTransparentPart={handleToggleTransparentPart}
           onResetTransparent={handleResetTransparent}
+          issuePartIds={issuePartIds}
+          focusPartId={focusPartId}
           onUpdateParameter={handleUpdateParameter}
           status={
             running && stage
@@ -1026,6 +1176,8 @@ export function App() {
             onToggleHidePart={handleToggleHidePart}
             transparentPartIds={transparentPartIds}
             onToggleTransparentPart={handleToggleTransparentPart}
+            onIsolatePart={handleIsolatePart}
+            issuePartIds={issuePartIds}
             onUpdateParameter={handleUpdateParameter}
             onAddParameter={handleAddParameter}
           />
@@ -1047,7 +1199,13 @@ export function App() {
       )}
 
       {libraryOpen && (
-        <div className="modal-backdrop" onClick={() => setLibraryOpen(false)}>
+        <div
+          className="modal-backdrop"
+          onClick={() => {
+            setLibraryOpen(false);
+            setHistoryModelId(null);
+          }}
+        >
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <div className="title-row">
@@ -1061,13 +1219,58 @@ export function App() {
                 <button type="button" className="btn-ghost" onClick={handleNewModel}>
                   + Dựng mô hình mới
                 </button>
-                <button type="button" className="modal-close" onClick={() => setLibraryOpen(false)}>
+                <button
+                  type="button"
+                  className="modal-close"
+                  onClick={() => {
+                    setLibraryOpen(false);
+                    setHistoryModelId(null);
+                  }}
+                >
                   ×
                 </button>
               </div>
             </div>
 
             <div className="modal-body">
+              {historyModelId && (
+                <div className="history-panel">
+                  <div className="history-head">
+                    <strong>
+                      Lịch sử: {savedList.find((item) => item.id === historyModelId)?.name ?? historyModelId}
+                    </strong>
+                    <button type="button" className="btn-ghost" onClick={() => setHistoryModelId(null)}>
+                      Đóng
+                    </button>
+                  </div>
+                  {revisionsLoading ? (
+                    <p className="sub">Đang tải lịch sử…</p>
+                  ) : revisions.length === 0 ? (
+                    <p className="sub">
+                      Chưa có bản cũ. Lịch sử bắt đầu ghi từ lần Save tiếp theo của mô hình này.
+                    </p>
+                  ) : (
+                    <div className="history-list">
+                      {revisions.map((revision) => (
+                        <div key={revision.stamp} className="history-row">
+                          <span>{new Date(revision.savedAt).toLocaleString()}</span>
+                          <span className="sub">
+                            {revision.parts} parts · {revision.parameters} params
+                          </span>
+                          <button
+                            type="button"
+                            className="btn-ghost"
+                            onClick={() => void handleRestoreRevision(revision.stamp)}
+                          >
+                            Khôi phục
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {savedList.length === 0 ? (
                 <div className="empty-library">
                   <p>Chưa có mô hình nào được lưu trong thư viện.</p>
@@ -1083,17 +1286,33 @@ export function App() {
                     >
                       <div className="card-top">
                         <span className="model-cat">{item.category}</span>
-                        <button
-                          type="button"
-                          className="btn-delete-model"
-                          title="Xoá mô hình này"
-                          onClick={(e) => handleDeleteModel(item.id, e)}
-                        >
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <polyline points="3 6 5 6 21 6" />
-                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                          </svg>
-                        </button>
+                        <div className="card-actions">
+                          <button
+                            type="button"
+                            className="btn-history-model"
+                            title="Xem lịch sử các bản lưu"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              void handleOpenHistory(item.id);
+                            }}
+                          >
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <circle cx="12" cy="12" r="9" />
+                              <path d="M12 7v5l3 2" />
+                            </svg>
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-delete-model"
+                            title="Xoá mô hình này"
+                            onClick={(e) => handleDeleteModel(item.id, e)}
+                          >
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <polyline points="3 6 5 6 21 6" />
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                            </svg>
+                          </button>
+                        </div>
                       </div>
                       <h4 className="model-name">{item.name}</h4>
                       <div className="model-meta">
