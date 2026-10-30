@@ -34,8 +34,10 @@ function collect(): { name: string; raw: unknown }[] {
 describe("sample specs still resolve", () => {
   const specs = collect();
 
-  it("finds the sample library", () => {
-    expect(specs.length).toBeGreaterThanOrEqual(8);
+  it("finds the example specs", () => {
+    // saved-models/ is local studio output and is not tracked, so CI only has the
+    // two hand-written examples in spec/examples.
+    expect(specs.length).toBeGreaterThanOrEqual(2);
   });
 
   for (const spec of specs) {
