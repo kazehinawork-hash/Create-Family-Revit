@@ -82,6 +82,9 @@ export function solidGeometry(solid: ResolvedSolid): THREE.BufferGeometry {
 
   if (solid.kind === "cylinder") {
     const height = Math.abs(solid.height);
+    // Chord length ~10 mm: small pipes stay light, large drums get smooth circles.
+    const adaptiveSegments = Math.ceil((2 * Math.PI * solid.radius) / 10);
+    const segments = Math.min(96, Math.max(16, solid.segments, adaptiveSegments));
     let geometry: THREE.BufferGeometry;
 
     if (solid.innerRadius > 0) {
@@ -92,9 +95,9 @@ export function solidGeometry(solid: ResolvedSolid): THREE.BufferGeometry {
         new THREE.Vector2(solid.innerRadius, height),
         new THREE.Vector2(solid.innerRadius, 0),
       ];
-      geometry = new THREE.LatheGeometry(profile, solid.segments);
+      geometry = new THREE.LatheGeometry(profile, segments);
     } else {
-      geometry = new THREE.CylinderGeometry(solid.radius, solid.radius, height, solid.segments, 1, false);
+      geometry = new THREE.CylinderGeometry(solid.radius, solid.radius, height, segments, 1, false);
       geometry.translate(0, height / 2, 0);
     }
 
@@ -135,6 +138,71 @@ export interface PartGeometry {
   geometry: THREE.BufferGeometry;
   hasCuts: boolean;
   cutFailed: boolean;
+}
+
+/**
+ * Edge lines for a CSG result. EdgesGeometry keeps edges that only have one adjacent
+ * face, and CSG leaves plenty of those along its triangulation — they show up as
+ * diagonal scratches across flat faces. Only real two-face creases are kept here.
+ */
+export function csgEdgeGeometry(geometry: THREE.BufferGeometry, thresholdDeg = 24): THREE.BufferGeometry {
+  const position = geometry.getAttribute("position");
+  const index = geometry.getIndex();
+  const a = new THREE.Vector3();
+  const b = new THREE.Vector3();
+  const c = new THREE.Vector3();
+  const ab = new THREE.Vector3();
+  const ac = new THREE.Vector3();
+  const normal = new THREE.Vector3();
+
+  const keyOf = (vector: THREE.Vector3): string =>
+    `${vector.x.toFixed(3)}|${vector.y.toFixed(3)}|${vector.z.toFixed(3)}`;
+
+  interface Edge {
+    a: THREE.Vector3;
+    b: THREE.Vector3;
+    normals: THREE.Vector3[];
+  }
+
+  const edges = new Map<string, Edge>();
+  const addEdge = (p: THREE.Vector3, q: THREE.Vector3) => {
+    const keyP = keyOf(p);
+    const keyQ = keyOf(q);
+    if (keyP === keyQ) return;
+    const key = keyP < keyQ ? `${keyP}~${keyQ}` : `${keyQ}~${keyP}`;
+    let edge = edges.get(key);
+    if (!edge) {
+      edge = { a: p.clone(), b: q.clone(), normals: [] };
+      edges.set(key, edge);
+    }
+    edge.normals.push(normal.clone());
+  };
+
+  const count = index ? index.count : position.count;
+  for (let i = 0; i < count; i += 3) {
+    const ia = index ? index.getX(i) : i;
+    const ib = index ? index.getX(i + 1) : i + 1;
+    const ic = index ? index.getX(i + 2) : i + 2;
+    a.fromBufferAttribute(position, ia);
+    b.fromBufferAttribute(position, ib);
+    c.fromBufferAttribute(position, ic);
+    normal.crossVectors(ab.subVectors(b, a), ac.subVectors(c, a)).normalize();
+    addEdge(a, b);
+    addEdge(b, c);
+    addEdge(c, a);
+  }
+
+  const threshold = Math.cos((thresholdDeg * Math.PI) / 180);
+  const points: number[] = [];
+  for (const edge of edges.values()) {
+    if (edge.normals.length !== 2) continue;
+    if (edge.normals[0].dot(edge.normals[1]) >= threshold) continue;
+    points.push(edge.a.x, edge.a.y, edge.a.z, edge.b.x, edge.b.y, edge.b.z);
+  }
+
+  const outline = new THREE.BufferGeometry();
+  outline.setAttribute("position", new THREE.Float32BufferAttribute(points, 3));
+  return outline;
 }
 
 export function buildPartGeometry(part: ResolvedPart): PartGeometry {

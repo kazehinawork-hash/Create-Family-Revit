@@ -4,7 +4,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { formatDimensions, type Units } from "../lib/format";
-import { buildPartGeometry, partColor, partMaterialProps } from "../lib/three-build";
+import { buildPartGeometry, csgEdgeGeometry, partColor, partMaterialProps } from "../lib/three-build";
 
 interface PartCacheEntry {
   geometryKey: string;
@@ -97,6 +97,9 @@ export function Viewer({
   const hostRef = useRef<HTMLDivElement>(null);
   const cubeHostRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef<SceneState | null>(null);
+  // The scene only renders when something actually changed: camera motion fires a
+  // "change" event, geometry/style effects mark it dirty. Saves GPU when idle.
+  const renderDirtyRef = useRef(true);
   const modelRef = useRef<ResolvedModel | null>(model);
   const onSelectPartRef = useRef(onSelectPart);
   onSelectPartRef.current = onSelectPart;
@@ -251,6 +254,10 @@ export function Viewer({
       }
     });
 
+    controls.addEventListener("change", () => {
+      renderDirtyRef.current = true;
+    });
+
     // Standard CAD / Revit mouse mapping:
     // Left click: Rotate / Orbit
     // Middle click (or Right click): Pan / Rê khung hình
@@ -315,6 +322,7 @@ export function Viewer({
       renderer.setSize(width, height, false);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
+      renderDirtyRef.current = true;
     };
     const observer = new ResizeObserver(resize);
     observer.observe(host);
@@ -917,6 +925,7 @@ export function Viewer({
         camera.position.lerpVectors(animStartPos, animEndPos, ease);
         controls.target.lerpVectors(animStartTarget, animEndTarget, ease);
         controls.update();
+        renderDirtyRef.current = true;
       }
 
       // Turntable exhibition rotation when explicitly toggled by user
@@ -928,7 +937,10 @@ export function Viewer({
       }
 
       controls.update();
-      renderer.render(scene, camera);
+      if (renderDirtyRef.current) {
+        renderDirtyRef.current = false;
+        renderer.render(scene, camera);
+      }
 
       if (cubeRenderer && cubeScene && cubeCamera) {
         // Sync cube camera rotation with main scene camera
@@ -977,6 +989,7 @@ export function Viewer({
     state.key.castShadow = shadowsEnabled;
     state.shadowPlane.visible = shadowsEnabled;
     state.renderer.shadowMap.needsUpdate = true;
+    renderDirtyRef.current = true;
     state.scene.traverse((object) => {
       const mesh = object as THREE.Mesh;
       if (!mesh.isMesh) return;
@@ -1055,6 +1068,7 @@ export function Viewer({
       state.camera.updateProjectionMatrix();
       state.controls.target.copy(center);
       state.controls.update();
+      renderDirtyRef.current = true;
     },
     [],
   );
@@ -1106,21 +1120,27 @@ export function Viewer({
 
     const applyStyle = (entry: PartCacheEntry, style: ReturnType<typeof styleOf>) => {
       const { meshMaterial: material, edgeMaterial } = entry;
-      const transparent = style.isSelected || style.isTransparent;
-      material.color.set(style.color);
-      material.metalness = style.isSelected ? Math.max(0.1, style.metalness) : style.metalness;
-      material.roughness = style.isSelected ? Math.max(0.2, style.roughness) : style.roughness;
+      // Selection keeps the block solid; only "Make transparent" in the context menu
+      // turns a part see-through.
+      const transparent = style.isTransparent;
+      const transparencyChanged = material.transparent !== transparent;
+      material.color.set(style.isSelected ? 0xb7cff0 : style.color);
+      material.metalness = style.metalness;
+      material.roughness = style.roughness;
       material.transparent = transparent;
-      material.opacity = style.isSelected ? 0.55 : style.isTransparent ? (style.isClearance ? 0.07 : 0.35) : 1;
+      material.opacity = style.isTransparent ? (style.isClearance ? 0.07 : 0.35) : 1;
       material.depthWrite = !transparent;
-      material.emissive.set(style.color);
-      material.emissiveIntensity = style.isAnimating ? 0.55 : 0;
+      material.emissive.set(style.isSelected ? 0x2f6fd0 : style.color);
+      material.emissiveIntensity = style.isSelected ? 0.04 : style.isAnimating ? 0.55 : 0;
       material.polygonOffsetFactor = style.isSelected ? -1 : 1;
+      if (transparencyChanged) material.needsUpdate = true;
+
+      edgeMaterial.visible = true;
 
       if (style.isSelected) {
-        edgeMaterial.color.setHex(0x0078d4); // Viền xanh Revit sắc nét bao quanh part đang chọn
-        edgeMaterial.opacity = 1;
-        edgeMaterial.transparent = false;
+        edgeMaterial.color.setHex(0x3f8ce8); // Viền xanh Revit dịu quanh part đang chọn
+        edgeMaterial.opacity = 0.75;
+        edgeMaterial.transparent = true;
       } else if (style.isAnimating) {
         edgeMaterial.color.setHex(0x2f7d5b); // green edge on the part that just appeared
         edgeMaterial.opacity = 0.95;
@@ -1154,7 +1174,9 @@ export function Viewer({
         polygonOffset: true,
         polygonOffsetUnits: 1,
       });
-      const edgeGeometry = new THREE.EdgesGeometry(geometry, 24);
+      const edgeGeometry = part.cuts.length > 0
+        ? csgEdgeGeometry(geometry, 24)
+        : new THREE.EdgesGeometry(geometry, 24);
       const edgeMaterial = new THREE.LineBasicMaterial({ transparent: true });
       disposables.push(geometry, meshMaterial, edgeGeometry, edgeMaterial);
 
@@ -1228,6 +1250,7 @@ export function Viewer({
 
     if (geometryChanged || styleChanged) {
       state.renderer.shadowMap.needsUpdate = true;
+      renderDirtyRef.current = true;
     }
   }, [model, materials, selectedPartId, hiddenPartIds, transparentPartIds, visiblePartCount, animatingPartName]);
 
@@ -1238,6 +1261,7 @@ export function Viewer({
     for (const item of state.disposables) item.dispose();
     state.disposables = [];
     state.grid.visible = showGrid;
+    renderDirtyRef.current = true;
 
     if (!model) {
       state.refPlanesGroup.clear();
