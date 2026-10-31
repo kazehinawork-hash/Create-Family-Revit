@@ -208,6 +208,7 @@ export interface BuildStats {
   driving?: string[];
   unlabelled?: string[];
   inert?: string[];
+  flex?: string;
 }
 
 export interface BuildResult {

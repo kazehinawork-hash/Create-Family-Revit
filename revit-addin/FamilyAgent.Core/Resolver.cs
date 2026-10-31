@@ -59,7 +59,13 @@ namespace FamilyAgent.Core
         public Vec3d Origin;
         public Vec3d Size;
         public Vec3d Base;
+        public Vec3d Center;
         public double Radius;
+        public double RadiusBottom;
+        public double RadiusTop;
+        public double TubeRadius;
+        public double Angle;
+        public double StartAngle;
         public double InnerRadius;
         public double Height;
         public double RotationZ;
@@ -72,6 +78,20 @@ namespace FamilyAgent.Core
         public int Segments = 48;
     }
 
+    public sealed class ResolvedAnchor
+    {
+        public string X;
+        public string Y;
+        public string Z;
+
+        public string ForAxis(string axis)
+        {
+            if (axis == "x") return X;
+            if (axis == "y") return Y;
+            return Z;
+        }
+    }
+
     public sealed class ResolvedPart
     {
         public string Id;
@@ -80,6 +100,7 @@ namespace FamilyAgent.Core
         public string Color;
         public ResolvedSolid Solid;
         public List<ResolvedSolid> Cuts = new List<ResolvedSolid>();
+        public ResolvedAnchor Anchor;
         public int ArrayCount = 1;
         public string ArrayAxis = "x";
         public double ArraySpacing;
@@ -128,6 +149,15 @@ namespace FamilyAgent.Core
         public static bool IsNumeric(string type) => NumericTypes.Contains(type ?? "Length");
 
         public static ParameterSet Resolve(FamilySpec spec)
+        {
+            return Resolve(spec, null);
+        }
+
+        /// <summary>
+        /// Resolves the spec, optionally taking current values from Revit for base
+        /// parameters. Formulas always win over an override, so derived sizes stay derived.
+        /// </summary>
+        public static ParameterSet Resolve(FamilySpec spec, IDictionary<string, double> overrides)
         {
             var set = new ParameterSet();
             var byName = new Dictionary<string, FamilyParameter>(StringComparer.OrdinalIgnoreCase);
@@ -216,6 +246,13 @@ namespace FamilyAgent.Core
                         resolved.Error = ex.Message;
                         resolved.Number = 0;
                     }
+                    return resolved;
+                }
+
+                if (overrides != null &&
+                    overrides.TryGetValue(parameter.Name, out var overrideValue))
+                {
+                    resolved.Number = Normalise(parameter.Type, overrideValue);
                     return resolved;
                 }
 

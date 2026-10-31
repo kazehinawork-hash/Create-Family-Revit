@@ -113,6 +113,15 @@
               "axis": { "enum": ["x", "y", "z"] },
               "spacing": { "type": ["number", "string"] }
             }
+          },
+          "anchor": {
+            "type": "object",
+            "description": "Pins which face is locked to the reference planes, per axis.",
+            "properties": {
+              "x": { "enum": ["min", "max"] },
+              "y": { "enum": ["min", "max"] },
+              "z": { "enum": ["min", "max"] }
+            }
           }
         }
       }
@@ -160,6 +169,33 @@
             "height": { "$ref": "#/$defs/numeric", "description": "May be negative to extrude backwards." },
             "axis": { "enum": ["x", "y", "z"] },
             "segments": { "type": "integer", "minimum": 12, "maximum": 96 }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "base", "radiusBottom", "radiusTop", "height"],
+          "properties": {
+            "kind": { "const": "frustum" },
+            "base": { "$ref": "#/$defs/vec3", "description": "Centre of the base face." },
+            "radiusBottom": { "$ref": "#/$defs/numeric" },
+            "radiusTop": { "$ref": "#/$defs/numeric", "description": "Radius at the far end. 0 makes a cone." },
+            "height": { "$ref": "#/$defs/numeric", "description": "May be negative to extrude backwards." },
+            "axis": { "enum": ["x", "y", "z"] },
+            "segments": { "type": "integer", "minimum": 12, "maximum": 96 }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "center", "radius", "tubeRadius"],
+          "properties": {
+            "kind": { "const": "bend" },
+            "center": { "$ref": "#/$defs/vec3", "description": "Point on the revolution axis." },
+            "radius": { "$ref": "#/$defs/numeric", "description": "Distance from the axis to the tube centreline." },
+            "tubeRadius": { "$ref": "#/$defs/numeric" },
+            "angle": { "$ref": "#/$defs/numeric", "description": "Sweep angle in degrees. Default 90." },
+            "startAngle": { "$ref": "#/$defs/numeric", "description": "Start rotation around the axis, in degrees." },
+            "plane": { "enum": ["xy", "xz", "yz"] },
+            "segments": { "type": "integer", "minimum": 8, "maximum": 96 }
           }
         },
         {

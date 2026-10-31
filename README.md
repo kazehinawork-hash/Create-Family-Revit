@@ -130,6 +130,11 @@ Sau đó mở Revit 2024:
   `Documents\FamilyAgent\out\<tên>.rfa`.
 - Nếu Revit chưa mở, spec được đưa vào `Documents\FamilyAgent\queue\`; mở Revit và bấm
   **Build pending**.
+- **Rebuild from spec**: spec JSON được nhúng vào file `.rfa`. Sau khi sửa tham số trong
+  Revit, bấm **Rebuild from spec** trên tab Family Agent — hình học được tính lại từ spec
+  bằng **giá trị tham số hiện tại** trong Revit, cho kết quả giống studio (không phụ thuộc
+  constraint solver). Đây là cách đạt parity đầy đủ cho các trường hợp ràng buộc chưa
+  compile được.
 - Nút khác: **Build from file…** (chọn một spec JSON bất kỳ), **Studio bridge** (bật/tắt).
 
 Tắt bridge tự động: đặt biến môi trường `FAMILY_AGENT_BRIDGE=0` trước khi mở Revit.
@@ -168,8 +173,12 @@ Mọi trường số nhận số hoặc biểu thức, tham số tham chiếu b�
 
 Primitive: `box` (origin = tâm mặt đáy; `cornerRadius` bo 4 góc đứng, đơn vị mm, tự kẹp
 về nửa cạnh ngắn), `cylinder` (base = tâm mặt đáy, `height` âm để
-chạy ngược trục, `innerRadius` để làm ống), `prism` (polygon 2D extruded).
-`cuts` trừ khối, `array` nhân bản theo trục.
+chạy ngược trục, `innerRadius` để làm ống), `frustum` (côn/cụt nón: `radiusBottom`,
+`radiusTop`, `radiusTop: 0` thành hình nón — dùng cho côn thu, cổ gió loe, vòng quạt),
+`bend` (cút tròn: tiết diện tròn `tubeRadius` quay quanh trục ở khoảng cách `radius`,
+`angle` mặc định 90°; `plane` chọn mặt phẳng), `prism` (polygon 2D extruded).
+`cuts` trừ khối, `array` nhân bản theo trục, `anchor` ghim mặt nào bị điều khiển mỗi trục
+(`{"x":"min","y":"max"}`).
 
 Cú pháp biểu thức dùng chung cho cả TS và C#: `+ - * / % ^`, `abs sqrt round roundup
 rounddown sin cos tan asin acos atan exp ln log pi()` (lượng giác theo độ), hằng số độ dài
@@ -204,9 +213,21 @@ kích thước (ví dụ FCU mẫu: 1970 × 1720 × 596 mm, 17 parts).
 ## 7. Test
 
 ```bash
-npm test          # spec-core (vitest) + self-test C#
+npm test          # spec-core (vitest) + server + web (vitest) + self-test C#
+npm run test:e2e  # Playwright: studio shell + API validation
+npm run lint      # ESLint
 npm run addin:test
 ```
+
+Chấm chất lượng spec (schema, logic, tỉ lệ part gắn tham số, tham số chết):
+
+```bash
+npm run eval
+npm run eval -- --json          # máy đọc
+npm run eval -- --specs spec/examples
+```
+
+Xem số draw call của viewer: mở studio với `?debug=1`.
 
 Thử agent mà không cần UI:
 
@@ -216,9 +237,20 @@ node scripts/try-design.mjs "Horizontal fan coil 080, 1910 x 1600 x 560 casing"
 
 ## 8. Giới hạn hiện tại
 
-- **Hình học được "nung" tại lúc build.** Tham số và formula được tạo trong family, nhưng
-  hình học chưa ràng buộc vào reference plane + dimension, nên sửa tham số trong Revit
-  không làm model co giãn. Muốn đổi kích thước: sửa trong studio → build lại.
+- **Hình học dùng form native** (Extrusion / Void / Blend / Revolution) và được lock vào
+  reference plane ở **một mặt mỗi trục**, với dimension mặt–mặt cùng solid. Vì vậy đổi
+  tham số làm đúng mặt được gắn di chuyển; các part khác chỉ chạy theo nếu toạ độ của chúng
+  là formula tham chiếu cùng tham số. Với các trường hợp solver chưa compile được, dùng
+  **Rebuild from spec** để dựng lại chính xác như studio.
+- **Frustum** dựng bằng `Revolution` (native form). Chiều cao drive được nhờ dimension
+  mặt–mặt; bán kính có radial dimension nhưng Revit coi đó là **reference dimension** nên
+  không co giãn. `NewRevolveForms` (profile line + dimension) bị Revit từ chối khi profile
+  chạm trục ("operation is not permitted in this type of family"), nên muốn bán kính drive
+  cần nested family hoặc một sketch profile khác. Build trả `flex` trong stats để thấy
+  tham số nào còn "still".
+- **Bend** dựng bằng `Revolution` (native form) nên hình đúng, nhưng profile đang "nung"
+  tại lúc build: `radius`/`tubeRadius` chưa có dimension nên chưa drive. `anchor` hiện chỉ
+  chọn mặt bị lock mỗi trục (vẫn một mặt/trục), chưa phải ràng buộc hai chiều đầy đủ.
 - Formula nào Revit từ chối (sai đơn vị, tham chiếu vòng) sẽ được thay bằng giá trị đã tính,
   kèm cảnh báo trong kết quả build.
 - Chưa có MEP connector, chưa tạo nhiều type, chưa có tag/schedule/annotation.

@@ -2,14 +2,70 @@ import fs from "node:fs";
 import path from "node:path";
 import express from "express";
 import { analyzeSpec } from "@family/spec-core";
-import { config } from "./config.js";
+import { config, ROOT } from "./config.js";
 import { design } from "./designer.js";
 import { buildFamily } from "./bridge.js";
 import { agentStatus, detectAgentBackends, getCmdcModels } from "./agents.js";
 import { bridgeAlive, ensureBridge, findRevitExe } from "./revit.js";
 import { createPortablePackage } from "./portable.js";
+import { writeJsonAtomic } from "./files.js";
+import {
+  checkOutboundUrl,
+  createRateLimiter,
+  INLINE_EXTENSIONS,
+  isAllowedHost,
+  isAllowedOrigin,
+  isSafeUpload,
+  safeDownloadPath,
+} from "./security.js";
+import {
+  buildRequest,
+  designRequest,
+  firstIssue,
+  modelSaveRequest,
+  uploadRequest,
+} from "./schemas.js";
 
 const app = express();
+app.disable("x-powered-by");
+
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader(
+    "Content-Security-Policy",
+    "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; " +
+      "script-src 'self'; connect-src 'self'; font-src 'self' data:; worker-src 'self' blob:",
+  );
+  next();
+});
+
+// DNS-rebinding pages can reach a loopback server; only answer localhost names.
+app.use((req, res, next) => {
+  if (isAllowedHost(req.headers.host, config.allowedHosts)) {
+    next();
+    return;
+  }
+  res.status(403).json({ error: "Host not allowed" });
+});
+
+// State-changing calls from a browser must come from the studio origin.
+app.use((req, res, next) => {
+  if (req.method === "GET" || req.method === "HEAD" || req.method === "OPTIONS") {
+    next();
+    return;
+  }
+  if (isAllowedOrigin(req.headers.origin, req.headers.host, config.allowedHosts)) {
+    next();
+    return;
+  }
+  res.status(403).json({ error: "Origin not allowed" });
+});
+
+const designLimiter = createRateLimiter({ windowMs: 60_000, max: 6 });
+const buildLimiter = createRateLimiter({ windowMs: 60_000, max: 12 });
+
 app.use(express.json({ limit: "30mb" }));
 
 function normalizeAttachments(raw) {
@@ -31,13 +87,13 @@ function normalizeAttachments(raw) {
 
 app.post("/api/upload", (req, res) => {
   try {
-    const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
-    const data = typeof req.body?.data === "string" ? req.body.data : "";
-    if (!name || !data) {
-      res.status(400).json({ error: "name and data (base64) are required" });
+    const parsed = uploadRequest.safeParse(req.body || {});
+    if (!parsed.success) {
+      res.status(400).json({ error: firstIssue(parsed) });
       return;
     }
 
+    const { name, data } = parsed.data;
     const buffer = Buffer.from(data.replace(/^data:[^,]*,/, ""), "base64");
     if (!buffer.length) {
       res.status(400).json({ error: "The file is empty" });
@@ -45,6 +101,10 @@ app.post("/api/upload", (req, res) => {
     }
     if (buffer.length > 20 * 1024 * 1024) {
       res.status(413).json({ error: "Files up to 20 MB are supported" });
+      return;
+    }
+    if (!isSafeUpload(name)) {
+      res.status(415).json({ error: "Unsupported file type" });
       return;
     }
 
@@ -66,14 +126,23 @@ app.post("/api/upload", (req, res) => {
 });
 
 app.get("/api/uploads/:name", (req, res) => {
-  const uploadsRoot = path.resolve(config.dirs.uploads);
-  const name = path.basename(String(req.params.name || ""));
-  const target = path.join(uploadsRoot, name);
-  if (!name || !target.startsWith(uploadsRoot + path.sep) || !fs.existsSync(target)) {
+  const target = safeDownloadPath(
+    path.join(config.dirs.uploads, path.basename(String(req.params.name || ""))),
+    [config.dirs.uploads],
+  );
+  if (!target) {
     res.status(404).json({ error: "Not found" });
     return;
   }
-  res.sendFile(target, { dotfiles: "allow" });
+
+  const extension = path.extname(target).toLowerCase();
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  // Images and PDFs may render inline; everything else is a download so the browser
+  // never executes an uploaded file inside the studio origin.
+  if (!INLINE_EXTENSIONS.has(extension)) {
+    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(path.basename(target))}"`);
+  }
+  res.sendFile(target, { dotfiles: "deny" });
 });
 
 // Cheap liveness probe: the studio polls this while waiting, /api/health is too heavy
@@ -89,6 +158,11 @@ app.post("/api/verify-api", async (req, res) => {
     return res.json({ ok: false, error: "Chưa nhập API Key" });
   }
 
+  const guard = checkOutboundUrl(baseUrl || "https://api.openai.com/v1");
+  if (!guard.ok) {
+    return res.json({ ok: false, error: guard.error });
+  }
+
   const url = (baseUrl || "").toLowerCase();
   try {
     if (url.includes("googleapis.com")) {
@@ -96,7 +170,6 @@ app.post("/api/verify-api", async (req, res) => {
       const endpoint = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey.trim()}`;
       const testRes = await fetch(endpoint, { signal: AbortSignal.timeout(6000) });
       if (!testRes.ok) {
-        const errText = await testRes.text().catch(() => "");
         return res.json({ ok: false, status: testRes.status, error: "API Key Google không hợp lệ hoặc không có quyền truy cập." });
       }
       return res.json({ ok: true, provider: "Google Gemini" });
@@ -131,6 +204,7 @@ app.post("/api/verify-api", async (req, res) => {
     const testUrl = `${endpoint}/models`;
     const testRes = await fetch(testUrl, {
       headers: { Authorization: `Bearer ${apiKey.trim()}` },
+      redirect: "error",
       signal: AbortSignal.timeout(6000),
     });
 
@@ -173,15 +247,21 @@ app.get("/api/health", async (_req, res) => {
 });
 
 app.post("/api/design", async (req, res) => {
-  const prompt = typeof req.body?.prompt === "string" ? req.body.prompt.trim() : "";
-  if (!prompt) {
-    res.status(400).json({ error: "A prompt is required" });
+  const limit = designLimiter(req.ip);
+  if (!limit.allowed) {
+    res.setHeader("Retry-After", String(limit.retryAfter));
+    res.status(429).json({ error: "Too many design runs. Wait a few seconds and try again." });
     return;
   }
-  if (prompt.length > 50000) {
-    res.status(400).json({ error: "The prompt is too long (50000 characters max)" });
+
+  const parsed = designRequest.safeParse(req.body || {});
+  if (!parsed.success) {
+    res.status(400).json({ error: firstIssue(parsed) });
     return;
   }
+
+  const body = parsed.data;
+  const prompt = body.prompt;
 
   res.writeHead(200, {
     "Content-Type": "text/event-stream; charset=utf-8",
@@ -211,11 +291,11 @@ app.post("/api/design", async (req, res) => {
   try {
     const result = await design({
       prompt,
-      currentSpec: req.body?.spec ?? null,
-      lod: req.body?.lod,
-      model: typeof req.body?.model === "string" && req.body.model.trim() ? req.body.model.trim() : undefined,
-      customApiConfig: req.body?.customApiConfig,
-      attachments: normalizeAttachments(req.body?.attachments),
+      currentSpec: body.spec ?? null,
+      lod: body.lod,
+      model: body.model,
+      customApiConfig: body.customApiConfig,
+      attachments: normalizeAttachments(body.attachments),
       signal: controller.signal,
       emit,
     });
@@ -246,7 +326,20 @@ app.post("/api/design", async (req, res) => {
 });
 
 app.post("/api/build", async (req, res) => {
-  const analysis = analyzeSpec(req.body?.spec);
+  const limit = buildLimiter(req.ip);
+  if (!limit.allowed) {
+    res.setHeader("Retry-After", String(limit.retryAfter));
+    res.status(429).json({ ok: false, error: "Too many build requests. Wait a few seconds." });
+    return;
+  }
+
+  const parsed = buildRequest.safeParse(req.body || {});
+  if (!parsed.success) {
+    res.status(400).json({ ok: false, error: firstIssue(parsed) });
+    return;
+  }
+
+  const analysis = analyzeSpec(parsed.data.spec);
 
   if (!analysis.ok) {
     res.status(400).json({
@@ -280,7 +373,7 @@ app.post("/api/export-portable", async (req, res) => {
 
   try {
     const pkg = await createPortablePackage(analysis.spec);
-    res.download(pkg.zipPath, pkg.fileName, (err) => {
+    res.download(pkg.zipPath, pkg.fileName, () => {
       pkg.cleanup();
     });
   } catch (err) {
@@ -289,15 +382,24 @@ app.post("/api/export-portable", async (req, res) => {
   }
 });
 
+// Downloads are limited to the folders the studio writes: a query string must never
+// be able to read an arbitrary file from the machine.
+const DOWNLOAD_ROOTS = [
+  config.dirs.out,
+  config.dirs.saved,
+  config.dirs.uploads,
+  path.join(ROOT, "spec"),
+];
+
 app.get("/api/download-rfa", (req, res) => {
   const filePath = req.query?.path;
   if (!filePath || typeof filePath !== "string") {
     res.status(400).send("Path is required");
     return;
   }
-  const resolved = path.resolve(filePath);
-  if (!fs.existsSync(resolved)) {
-    res.status(404).send("File not found");
+  const resolved = safeDownloadPath(filePath, DOWNLOAD_ROOTS);
+  if (!resolved) {
+    res.status(403).send("File is outside the allowed folders");
     return;
   }
   res.download(resolved);
@@ -309,9 +411,9 @@ app.get("/api/download-spec", (req, res) => {
     res.status(400).send("File path is required");
     return;
   }
-  const resolved = path.resolve(specPath);
-  if (!fs.existsSync(resolved)) {
-    res.status(404).send("Spec file not found");
+  const resolved = safeDownloadPath(specPath, DOWNLOAD_ROOTS);
+  if (!resolved) {
+    res.status(403).send("Spec is outside the allowed folders");
     return;
   }
   res.download(resolved);
@@ -430,7 +532,7 @@ app.get("/api/models/:id/history", (req, res) => {
 app.get("/api/models/:id/history/:stamp", (req, res) => {
   try {
     const id = safeModelId(req.params.id);
-    const stamp = path.basename(String(req.params.stamp || "")).replace(/[^\w.\-]+/g, "");
+    const stamp = path.basename(String(req.params.stamp || "")).replace(/[^\w.-]+/g, "");
     const filePath = path.join(historyDir(id), `${stamp}.json`);
     if (!stamp || !fs.existsSync(filePath)) {
       res.status(404).json({ error: "Revision not found" });
@@ -445,11 +547,14 @@ app.get("/api/models/:id/history/:stamp", (req, res) => {
 app.post("/api/models", (req, res) => {
   try {
     ensureSavedDir();
-    const { id, name, spec, entries } = req.body || {};
-    if (!spec || !spec.name) {
-      res.status(400).json({ error: "spec is required" });
+
+    const parsed = modelSaveRequest.safeParse(req.body || {});
+    if (!parsed.success) {
+      res.status(400).json({ error: firstIssue(parsed) });
       return;
     }
+
+    const { id, name, spec, entries } = parsed.data;
     const modelId = id
       ? path.basename(id).replace(/[^\w.\- ]+/g, "_")
       : `${Date.now()}-${(name || spec.name).toLowerCase().replace(/[^\w]+/g, "-").slice(0, 50)}`;
@@ -465,7 +570,7 @@ app.post("/api/models", (req, res) => {
       entries: Array.isArray(entries) ? entries : [],
       savedAt: Date.now(),
     };
-    fs.writeFileSync(filePath, JSON.stringify(payload, null, 2), "utf8");
+    writeJsonAtomic(filePath, payload);
     res.json({ ok: true, id: modelId, name: payload.name });
   } catch (error) {
     res.status(500).json({ error: error?.message || String(error) });
@@ -499,9 +604,9 @@ app.use((req, res) => {
   res.status(404).json({ error: "Not found" });
 });
 
-app.listen(config.port, () => {
+app.listen(config.port, config.host, () => {
   const status = agentStatus();
-  console.log(`Family Agent API on http://localhost:${config.port}`);
+  console.log(`Family Agent API on http://${config.host}:${config.port}`);
   console.log(`  agent     ${status.provider} · ${status.model}`);
   console.log(`  revit     ${config.bridge.url}`);
   console.log(`  output    ${config.dirs.out}`);

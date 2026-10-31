@@ -12,6 +12,7 @@
   "dependencies": {
     "@family/spec-core": "*",
     "express": "^5.1.0",
-    "pdf-parse": "^1.1.1"
+    "pdf-parse": "^1.1.1",
+    "zod": "^4.6.7"
   }
 }

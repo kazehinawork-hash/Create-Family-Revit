@@ -32,6 +32,27 @@ export interface ResolvedCylinder {
   segments: number;
 }
 
+export interface ResolvedFrustum {
+  kind: "frustum";
+  base: Vec3n;
+  radiusBottom: number;
+  radiusTop: number;
+  height: number;
+  axis: Axis;
+  segments: number;
+}
+
+export interface ResolvedBend {
+  kind: "bend";
+  center: Vec3n;
+  radius: number;
+  tubeRadius: number;
+  angle: number;
+  startAngle: number;
+  plane: "xy" | "xz" | "yz";
+  segments: number;
+}
+
 export interface ResolvedPrism {
   kind: "prism";
   plane: "xy" | "xz" | "yz";
@@ -40,7 +61,12 @@ export interface ResolvedPrism {
   to: number;
 }
 
-export type ResolvedSolid = ResolvedBox | ResolvedCylinder | ResolvedPrism;
+export type ResolvedSolid =
+  | ResolvedBox
+  | ResolvedCylinder
+  | ResolvedFrustum
+  | ResolvedBend
+  | ResolvedPrism;
 
 export interface ResolvedPart {
   id: string;
@@ -158,6 +184,43 @@ function solidBounds(solid: ResolvedSolid): Bounds {
     return bounds;
   }
 
+  if (solid.kind === "frustum") {
+    const { base, height, axis } = solid;
+    const radius = Math.max(solid.radiusBottom, solid.radiusTop);
+    const end = { ...base };
+    end[axis] += height;
+    grow(bounds, {
+      x: Math.min(base.x, end.x) - (axis === "x" ? 0 : radius),
+      y: Math.min(base.y, end.y) - (axis === "y" ? 0 : radius),
+      z: Math.min(base.z, end.z) - (axis === "z" ? 0 : radius),
+    });
+    grow(bounds, {
+      x: Math.max(base.x, end.x) + (axis === "x" ? 0 : radius),
+      y: Math.max(base.y, end.y) + (axis === "y" ? 0 : radius),
+      z: Math.max(base.z, end.z) + (axis === "z" ? 0 : radius),
+    });
+    return bounds;
+  }
+
+  if (solid.kind === "bend") {
+    const reach = solid.radius + solid.tubeRadius;
+    const axial = solid.tubeRadius;
+    const { center, plane } = solid;
+
+    // Conservative envelope: the swept ring covers the whole circle, not only the arc.
+    if (plane === "xy") {
+      grow(bounds, { x: center.x - reach, y: center.y - reach, z: center.z - axial });
+      grow(bounds, { x: center.x + reach, y: center.y + reach, z: center.z + axial });
+    } else if (plane === "xz") {
+      grow(bounds, { x: center.x - reach, y: center.y - axial, z: center.z - reach });
+      grow(bounds, { x: center.x + reach, y: center.y + axial, z: center.z + reach });
+    } else {
+      grow(bounds, { x: center.x - axial, y: center.y - reach, z: center.z - reach });
+      grow(bounds, { x: center.x + axial, y: center.y + reach, z: center.z + reach });
+    }
+    return bounds;
+  }
+
   const aValues = solid.points.map((point) => point[0]);
   const bValues = solid.points.map((point) => point[1]);
   const aMin = Math.min(...aValues);
@@ -222,7 +285,7 @@ export function resolveModel(
       return evaluateNode(compileExpression(text), resolution.lookup);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`${path}: ${message}`);
+      throw new Error(`${path}: ${message}`, { cause: error });
     }
   };
 
@@ -274,6 +337,59 @@ export function resolveModel(
         height: num(solid.height as Numeric, `${path}.height`),
         axis,
         segments,
+      };
+    }
+
+    if (kind === "frustum") {
+      const axis = (solid.axis as Axis | undefined) ?? "z";
+      if (!["x", "y", "z"].includes(axis)) throw new Error(`${path}.axis must be x, y or z`);
+      const radiusBottom = num(solid.radiusBottom as Numeric, `${path}.radiusBottom`);
+      const radiusTop = num(solid.radiusTop as Numeric, `${path}.radiusTop`);
+      if (radiusBottom < 0 || radiusTop < 0) {
+        throw new Error(`${path} radii must be zero or greater`);
+      }
+      if (radiusBottom <= 0 && radiusTop <= 0) {
+        throw new Error(`${path} needs at least one radius greater than zero`);
+      }
+      const height = num(solid.height as Numeric, `${path}.height`);
+      if (Math.abs(height) < 1e-9) throw new Error(`${path}.height must not be zero`);
+      const segments = Math.min(96, Math.max(12, Number(solid.segments) || DEFAULT_SEGMENTS));
+      return {
+        kind: "frustum",
+        base: numVec(solid.base as { x: Numeric; y: Numeric; z: Numeric }, `${path}.base`),
+        radiusBottom,
+        radiusTop,
+        height,
+        axis,
+        segments,
+      };
+    }
+
+    if (kind === "bend") {
+      const plane = (solid.plane as "xy" | "xz" | "yz" | undefined) ?? "xy";
+      if (!["xy", "xz", "yz"].includes(plane)) {
+        throw new Error(`${path}.plane must be xy, xz or yz`);
+      }
+      const radius = num(solid.radius as Numeric, `${path}.radius`);
+      const tubeRadius = num(solid.tubeRadius as Numeric, `${path}.tubeRadius`);
+      if (radius <= 0) throw new Error(`${path}.radius must be greater than zero`);
+      if (tubeRadius <= 0) throw new Error(`${path}.tubeRadius must be greater than zero`);
+      if (tubeRadius >= radius) {
+        throw new Error(`${path}.tubeRadius must be smaller than radius`);
+      }
+      const angle = num(solid.angle as Numeric | undefined, `${path}.angle`, 90);
+      if (!(angle > 0) || angle > 360) {
+        throw new Error(`${path}.angle must be between 0 and 360 degrees`);
+      }
+      return {
+        kind: "bend",
+        center: numVec(solid.center as { x: Numeric; y: Numeric; z: Numeric }, `${path}.center`),
+        radius,
+        tubeRadius,
+        angle,
+        startAngle: num(solid.startAngle as Numeric | undefined, `${path}.startAngle`, 0),
+        plane,
+        segments: Math.min(96, Math.max(8, Number(solid.segments) || 48)),
       };
     }
 

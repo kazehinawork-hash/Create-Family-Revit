@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Autodesk.Revit.DB;
 using FamilyAgent.Core;
+using CoreParameterSet = FamilyAgent.Core.ParameterSet;
 
 namespace FamilyAgent.Addin
 {
@@ -14,7 +15,8 @@ namespace FamilyAgent.Addin
             Document document,
             ResolvedModel model,
             IDictionary<string, MaterialDef> materials,
-            List<string> warnings)
+            List<string> warnings,
+            IDictionary<long, ResolvedPart> partByForm)
         {
             var forms = new List<Element>();
 
@@ -25,7 +27,16 @@ namespace FamilyAgent.Addin
                     for (var index = 0; index < Math.Max(1, part.ArrayCount); index += 1)
                     {
                         var offset = ArrayOffsetMm(part, index);
-                        var body = CreateForm(document, part.Solid, offset, true);
+
+                        // A Z-axis frustum becomes a Revolution: its circular edges stay true
+                        // and can take dimensions, unlike a fully tessellated Blend.
+                        Element body = null;
+                        if (part.Solid.Kind == "frustum" && IsProfileFrustum(part.Solid))
+                        {
+                            body = CreateFrustumRevolve(document, part.Solid, offset, warnings);
+                        }
+
+                        body = body ?? CreateForm(document, part.Solid, offset, true);
 
                         if (body == null)
                         {
@@ -49,6 +60,12 @@ namespace FamilyAgent.Addin
                             MaterialColor(part, materials),
                             warnings);
                         forms.Add(body);
+                        if (partByForm != null && body.Id != ElementId.InvalidElementId)
+                        {
+                            // LockGeometry needs to know which part a form belongs to in
+                            // order to honour its anchor.
+                            partByForm[body.Id.Value] = part;
+                        }
 
                         if (part.Solid.Kind == "cylinder" && part.Solid.InnerRadius > 0)
                         {
@@ -98,12 +115,14 @@ namespace FamilyAgent.Addin
             }
         }
 
-        private static Extrusion CreateForm(Document document, ResolvedSolid solid, Vec3d offset, bool isSolid)
+        private static Element CreateForm(Document document, ResolvedSolid solid, Vec3d offset, bool isSolid)
         {
             switch (solid.Kind)
             {
                 case "box": return CreateBoxForm(document, solid, offset, isSolid);
                 case "cylinder": return CreateCylinderForm(document, solid, offset, solid.Radius, isSolid, false);
+                case "frustum": return CreateFrustumForm(document, solid, offset, isSolid);
+                case "bend": return CreateBendForm(document, solid, offset, isSolid);
                 case "prism": return CreatePrismForm(document, solid, offset, isSolid);
                 default: return null;
             }
@@ -258,6 +277,147 @@ namespace FamilyAgent.Addin
             }
 
             return Extrude(document, plane, points, end, isSolid);
+        }
+
+        /// <summary>
+        /// A truncated cone is a native Blend between two circular profiles. Revit calls it
+        /// a blend, but it edits like any other family form and flexes with the parameters.
+        /// </summary>
+        private static Element CreateFrustumForm(
+            Document document,
+            ResolvedSolid solid,
+            Vec3d offset,
+            bool isSolid)
+        {
+            var height = Ft(Math.Abs(solid.Height));
+            if (height <= 1e-9) throw new InvalidOperationException("frustum has a zero height");
+
+            var direction = AxisUnit(solid.Axis) * (solid.Height >= 0 ? 1 : -1);
+            var basePoint = new XYZ(
+                Ft(solid.Base.X + offset.X),
+                Ft(solid.Base.Y + offset.Y),
+                Ft(solid.Base.Z + offset.Z));
+
+            // Radii follow the extrusion direction, so a negative height swaps the ends.
+            var bottomRadius = Ft(solid.Height >= 0 ? solid.RadiusBottom : solid.RadiusTop);
+            var topRadius = Ft(solid.Height >= 0 ? solid.RadiusTop : solid.RadiusBottom);
+
+            // A blend profile cannot collapse to a point; a cone keeps a hairline top.
+            const double minRadius = 0.5 / MmPerFoot;
+            bottomRadius = Math.Max(bottomRadius, minRadius);
+            topRadius = Math.Max(topRadius, minRadius);
+
+            var plane = PlaneAt(basePoint, direction);
+            var segments = Math.Max(12, solid.Segments);
+            var bottom = CirclePoints(plane, basePoint, bottomRadius, segments);
+            var top = CirclePoints(plane, basePoint + direction * height, topRadius, segments);
+
+            var profile1 = LoopArray(bottom);
+            var profile2 = LoopArray(top);
+            return document.FamilyCreate.NewBlend(
+                isSolid,
+                profile1,
+                profile2,
+                SketchPlane.Create(document, plane));
+        }
+
+        private static List<XYZ> CirclePoints(Plane plane, XYZ center, double radius, int segments)
+        {
+            var points = new List<XYZ>(segments);
+            for (var i = 0; i < segments; i += 1)
+            {
+                var angle = 2 * Math.PI * i / segments;
+                points.Add(
+                    center
+                    + plane.XVec * (Math.Cos(angle) * radius)
+                    + plane.YVec * (Math.Sin(angle) * radius));
+            }
+            return points;
+        }
+
+        private static CurveArray LoopArray(IList<XYZ> points)
+        {
+            var array = new CurveArray();
+            foreach (var curve in Loop(points)) array.Append(curve);
+            return array;
+        }
+
+        /// <summary>
+        /// A round elbow is a circular profile revolved around an axis, which Revit stores
+        /// as a native Revolution. The profile plane contains the axis and the radial
+        /// direction, so the sweep stays planar and can be edited in the family.
+        /// </summary>
+        private static Element CreateBendForm(
+            Document document,
+            ResolvedSolid solid,
+            Vec3d offset,
+            bool isSolid)
+        {
+            var radius = Ft(solid.Radius);
+            var tube = Ft(solid.TubeRadius);
+            if (radius <= 0 || tube <= 0) throw new InvalidOperationException("bend has a zero radius");
+            if (tube >= radius) throw new InvalidOperationException("bend tubeRadius must be smaller than radius");
+
+            var center = new XYZ(
+                Ft(solid.Center.X + offset.X),
+                Ft(solid.Center.Y + offset.Y),
+                Ft(solid.Center.Z + offset.Z));
+
+            XYZ axisUnit;
+            XYZ u;
+            XYZ v;
+            switch (solid.Plane)
+            {
+                case "xz":
+                    axisUnit = XYZ.BasisY;
+                    u = XYZ.BasisX;
+                    v = XYZ.BasisZ;
+                    break;
+                case "yz":
+                    axisUnit = XYZ.BasisX;
+                    u = XYZ.BasisY;
+                    v = XYZ.BasisZ;
+                    break;
+                default:
+                    axisUnit = XYZ.BasisZ;
+                    u = XYZ.BasisX;
+                    v = XYZ.BasisY;
+                    break;
+            }
+
+            var start = solid.StartAngle * DegToRad;
+            var radial = (u * Math.Cos(start) + v * Math.Sin(start)).Normalize();
+            var profileCenter = center + radial * radius;
+
+            var plane = Plane.CreateByOriginAndBasis(profileCenter, radial, axisUnit);
+            var segments = Math.Max(8, solid.Segments);
+            var points = new List<XYZ>(segments);
+            for (var i = 0; i < segments; i += 1)
+            {
+                var t = 2 * Math.PI * i / segments;
+                points.Add(
+                    profileCenter
+                    + radial * (Math.Cos(t) * tube)
+                    + axisUnit * (Math.Sin(t) * tube));
+            }
+
+            var profile = new CurveArrArray();
+            profile.Append(LoopArray(points));
+
+            var axis = Line.CreateUnbound(center, axisUnit);
+            var sketchPlane = SketchPlane.Create(document, plane);
+            var angle = solid.Angle * DegToRad;
+
+            try
+            {
+                return document.FamilyCreate.NewRevolution(isSolid, profile, sketchPlane, axis, 0, angle);
+            }
+            catch
+            {
+                // The sketch-plane normal decides the sweep direction; -angle is the
+                // same bend on the other side of the start plane.
+                return document.FamilyCreate.NewRevolution(isSolid, profile, sketchPlane, axis, 0, -angle);
+            }
         }
 
         private static Extrusion CreatePrismForm(Document document, ResolvedSolid solid, Vec3d offset, bool isSolid)

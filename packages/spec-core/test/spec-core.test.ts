@@ -195,6 +195,199 @@ describe("rounded box corners", () => {
   });
 });
 
+describe("part anchor", () => {
+  const spec = (anchor: unknown) => ({
+    schemaVersion: "1.0",
+    name: "Anchored",
+    category: "Generic Model",
+    units: "mm",
+    parameters: [],
+    parts: [
+      {
+        id: "body",
+        name: "Body",
+        anchor,
+        solid: { kind: "box", origin: { x: 0, y: 0, z: 0 }, size: { x: 100, y: 100, z: 100 } },
+      },
+    ],
+  });
+
+  it("keeps valid min/max sides", () => {
+    const analysis = analyzeSpec(spec({ x: "min", z: "max" }));
+    expect(analysis.ok).toBe(true);
+    expect(analysis.spec.parts[0].anchor).toEqual({ x: "min", z: "max" });
+  });
+
+  it("rejects an unknown side", () => {
+    const analysis = analyzeSpec(spec({ x: "left" }));
+    expect(analysis.ok).toBe(false);
+    expect(analysis.errors.some((issue) => /anchor/.test(issue.path))).toBe(true);
+  });
+});
+
+describe("bend primitive", () => {
+  const spec = (solid: Record<string, unknown>) => ({
+    schemaVersion: "1.0",
+    name: "Elbow",
+    category: "Pipe Fitting",
+    units: "mm",
+    parameters: [],
+    parts: [{ id: "elbow", name: "Elbow", solid }],
+  });
+
+  const base = {
+    kind: "bend",
+    center: { x: 0, y: 0, z: 0 },
+    radius: 150,
+    tubeRadius: 40,
+    angle: 90,
+    plane: "xy",
+  };
+
+  it("resolves the bend radius, tube and angle", () => {
+    const analysis = analyzeSpec(spec(base));
+    expect(analysis.ok).toBe(true);
+    const solid = analysis.model.parts[0].solid;
+    expect(solid.kind).toBe("bend");
+    if (solid.kind === "bend") {
+      expect(solid.radius).toBe(150);
+      expect(solid.tubeRadius).toBe(40);
+      expect(solid.angle).toBe(90);
+      expect(solid.plane).toBe("xy");
+      expect(solid.startAngle).toBe(0);
+    }
+  });
+
+  it("sizes the bounds from the bend radius plus the tube", () => {
+    const analysis = analyzeSpec(spec(base));
+    expect(analysis.model.bounds?.size.x).toBe(380);
+    expect(analysis.model.bounds?.size.y).toBe(380);
+    expect(analysis.model.bounds?.size.z).toBe(80);
+  });
+
+  it("defaults the angle to 90 degrees", () => {
+    const { angle: _angle, ...withoutAngle } = base;
+    void _angle;
+    const analysis = analyzeSpec(spec(withoutAngle));
+    const solid = analysis.model.parts[0].solid;
+    expect(solid.kind).toBe("bend");
+    if (solid.kind === "bend") expect(solid.angle).toBe(90);
+  });
+
+  it("rejects a tube thicker than the bend radius", () => {
+    const analysis = analyzeSpec(spec({ ...base, tubeRadius: 150 }));
+    expect(analysis.ok).toBe(false);
+    expect(analysis.errors.some((issue) => /tubeRadius/.test(issue.message))).toBe(true);
+  });
+
+  it("takes the radius from a parameter", () => {
+    const analysis = analyzeSpec({
+      ...spec({ ...base, radius: "[Bend Radius]" }),
+      parameters: [{ name: "Bend Radius", type: "Length", value: 200 }],
+    });
+    const solid = analysis.model.parts[0].solid;
+    expect(solid.kind).toBe("bend");
+    if (solid.kind === "bend") expect(solid.radius).toBe(200);
+  });
+});
+
+describe("unused parameters", () => {
+  const spec = (parameters: FamilySpec["parameters"], width: number | string) => ({
+    schemaVersion: "1.0",
+    name: "Dead weight",
+    category: "Generic Model",
+    units: "mm",
+    parameters,
+    parts: [
+      {
+        id: "body",
+        name: "Body",
+        solid: { kind: "box", origin: { x: 0, y: 0, z: 0 }, size: { x: width, y: 100, z: 100 } },
+      },
+    ],
+  });
+
+  it("warns about a numeric parameter that nothing references", () => {
+    const analysis = analyzeSpec(spec([{ name: "Forgotten", type: "Length", value: 50 }], 100));
+    expect(analysis.ok).toBe(true);
+    expect(
+      analysis.issues.some(
+        (issue) => issue.path === "parameters.Forgotten" && /never used/.test(issue.message),
+      ),
+    ).toBe(true);
+  });
+
+  it("accepts a parameter that drives geometry", () => {
+    const analysis = analyzeSpec(spec([{ name: "Width", type: "Length", value: 100 }], "[Width]"));
+    expect(analysis.issues.some((issue) => /never used/.test(issue.message))).toBe(false);
+  });
+
+  it("accepts text metadata without geometry references", () => {
+    const analysis = analyzeSpec(spec([{ name: "Manufacturer", type: "Text", value: "ACME" }], 100));
+    expect(analysis.issues.some((issue) => /never used/.test(issue.message))).toBe(false);
+  });
+});
+
+describe("frustum primitive", () => {
+  const spec = (solid: Record<string, unknown>) => ({
+    schemaVersion: "1.0",
+    name: "Cone",
+    category: "Generic Model",
+    units: "mm",
+    parameters: [],
+    parts: [{ id: "cone", name: "Cone", solid }],
+  });
+
+  const base = {
+    kind: "frustum",
+    base: { x: 0, y: 0, z: 0 },
+    radiusBottom: 200,
+    radiusTop: 80,
+    height: 300,
+  };
+
+  it("resolves radii, height and axis", () => {
+    const analysis = analyzeSpec(spec(base));
+    expect(analysis.ok).toBe(true);
+    const solid = analysis.model.parts[0].solid;
+    expect(solid.kind).toBe("frustum");
+    if (solid.kind === "frustum") {
+      expect(solid.radiusBottom).toBe(200);
+      expect(solid.radiusTop).toBe(80);
+      expect(solid.height).toBe(300);
+      expect(solid.axis).toBe("z");
+    }
+  });
+
+  it("sizes the bounds from the larger radius", () => {
+    const analysis = analyzeSpec(spec(base));
+    expect(analysis.model.bounds?.size.x).toBe(400);
+    expect(analysis.model.bounds?.size.y).toBe(400);
+    expect(analysis.model.bounds?.size.z).toBe(300);
+  });
+
+  it("accepts a cone with a zero top radius", () => {
+    const analysis = analyzeSpec(spec({ ...base, radiusTop: 0 }));
+    expect(analysis.ok).toBe(true);
+  });
+
+  it("rejects a frustum with two zero radii", () => {
+    const analysis = analyzeSpec(spec({ ...base, radiusBottom: 0, radiusTop: 0 }));
+    expect(analysis.ok).toBe(false);
+    expect(analysis.errors.some((issue) => /radius/i.test(issue.message))).toBe(true);
+  });
+
+  it("takes the radius from a parameter", () => {
+    const analysis = analyzeSpec({
+      ...spec({ ...base, radiusBottom: "[Diameter] / 2", radiusTop: 0 }),
+      parameters: [{ name: "Diameter", type: "Length", value: 300 }],
+    });
+    const solid = analysis.model.parts[0].solid;
+    expect(solid.kind).toBe("frustum");
+    if (solid.kind === "frustum") expect(solid.radiusBottom).toBe(150);
+  });
+});
+
 describe("layout logic checks", () => {
   const layout = (panZ: number) => ({
     schemaVersion: "1.0",

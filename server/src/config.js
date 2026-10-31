@@ -30,6 +30,12 @@ const home = os.homedir();
 
 export const config = {
   port: Number(process.env.PORT || 8787),
+  /** Loopback by default: the studio and the Revit bridge are local tools. */
+  host: process.env.HOST || "127.0.0.1",
+  allowedHosts: (process.env.ALLOWED_HOSTS || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean),
   agent: {
     provider: (process.env.AGENT_PROVIDER || "commandcode").toLowerCase(),
     command: process.env.COMMAND_CODE_BIN || "cmdc",
@@ -49,6 +55,8 @@ export const config = {
   bridge: {
     url: (process.env.REVIT_BRIDGE_URL || "http://127.0.0.1:8765").replace(/\/+$/, ""),
     timeoutMs: Number(process.env.REVIT_BRIDGE_TIMEOUT || 300000),
+    // Optional shared secret. Must match FAMILY_AGENT_TOKEN in the Revit process.
+    token: process.env.REVIT_BRIDGE_TOKEN || "",
   },
   revit: {
     exe: process.env.REVIT_EXE || "",

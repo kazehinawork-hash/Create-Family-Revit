@@ -38,6 +38,7 @@ export function findRevitExe() {
 export async function bridgeAlive() {
   try {
     const response = await fetch(`${config.bridge.url}/health`, {
+      headers: config.bridge.token ? { "X-Family-Token": config.bridge.token } : undefined,
       signal: AbortSignal.timeout(1500),
     });
     return response.ok;

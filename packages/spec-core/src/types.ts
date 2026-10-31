@@ -67,6 +67,37 @@ export interface CylinderSolid {
   segments?: number;
 }
 
+export interface FrustumSolid {
+  kind: "frustum";
+  /** Centre of the base face. */
+  base: Vec3;
+  /** Radius at the base. */
+  radiusBottom: Numeric;
+  /** Radius at the far end. Zero makes a cone. */
+  radiusTop: Numeric;
+  /** May be negative to extrude against the axis direction. */
+  height: Numeric;
+  axis?: Axis;
+  segments?: number;
+}
+
+export interface BendSolid {
+  kind: "bend";
+  /** Point on the revolution axis (the centre of the torus). */
+  center: Vec3;
+  /** Distance from the axis to the tube centreline. */
+  radius: Numeric;
+  /** Radius of the circular section. */
+  tubeRadius: Numeric;
+  /** Sweep angle in degrees. Defaults to 90 (an elbow). */
+  angle?: Numeric;
+  /** Rotation of the start of the bend around the axis, in degrees. */
+  startAngle?: Numeric;
+  /** Plane containing the arc: xy (axis Z), xz (axis Y), yz (axis X). */
+  plane?: "xy" | "xz" | "yz";
+  segments?: number;
+}
+
 export interface PrismSolid {
   kind: "prism";
   plane: "xy" | "xz" | "yz";
@@ -77,13 +108,20 @@ export interface PrismSolid {
   to: Numeric;
 }
 
-export type SolidPrimitive = BoxSolid | CylinderSolid | PrismSolid;
+export type SolidPrimitive = BoxSolid | CylinderSolid | FrustumSolid | BendSolid | PrismSolid;
 
 export interface PartArray {
   /** Number, or an expression resolving to a whole number (e.g. "[Fin Count]"). */
   count: Numeric;
   axis: Axis;
   spacing: Numeric;
+}
+
+export interface PartAnchor {
+  /** Which face of this part is driven on the X axis. */
+  x?: "min" | "max";
+  y?: "min" | "max";
+  z?: "min" | "max";
 }
 
 export interface FamilyPart {
@@ -94,6 +132,8 @@ export interface FamilyPart {
   material?: string;
   color?: string;
   array?: PartArray;
+  /** Pins which face the builder locks to the reference planes, per axis. */
+  anchor?: PartAnchor;
 }
 
 export interface MaterialDef {

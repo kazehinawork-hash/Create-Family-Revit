@@ -46,6 +46,12 @@ namespace FamilyAgent.Core
                 Num(value.Y, $"{path}.y"),
                 Num(value.Z, $"{path}.z"));
 
+            string Side(string value)
+            {
+                var text = (value ?? string.Empty).Trim().ToLowerInvariant();
+                return text == "min" || text == "max" ? text : null;
+            }
+
             ResolvedSolid ResolveSolid(SolidPrimitive raw, string path)
             {
                 if (raw == null) throw new ExpressionException($"{path} is missing");
@@ -93,6 +99,64 @@ namespace FamilyAgent.Core
                     };
                 }
 
+                if (kind == "frustum")
+                {
+                    var axis = (raw.Axis ?? "z").Trim().ToLowerInvariant();
+                    if (axis != "x" && axis != "y" && axis != "z")
+                        throw new ExpressionException($"{path}.axis must be x, y or z");
+
+                    var radiusBottom = Num(raw.RadiusBottom, $"{path}.radiusBottom");
+                    var radiusTop = Num(raw.RadiusTop, $"{path}.radiusTop");
+                    if (radiusBottom < 0 || radiusTop < 0)
+                        throw new ExpressionException($"{path} radii must be zero or greater");
+                    if (radiusBottom <= 0 && radiusTop <= 0)
+                        throw new ExpressionException($"{path} needs at least one radius greater than zero");
+
+                    var height = Num(raw.Height, $"{path}.height");
+                    if (Math.Abs(height) < 1e-9)
+                        throw new ExpressionException($"{path}.height must not be zero");
+
+                    return new ResolvedSolid
+                    {
+                        Kind = "frustum",
+                        Base = Vec(raw.Base, $"{path}.base"),
+                        RadiusBottom = radiusBottom,
+                        RadiusTop = radiusTop,
+                        Height = height,
+                        Axis = axis,
+                        Segments = Math.Min(96, Math.Max(12, raw.Segments ?? 48)),
+                    };
+                }
+
+                if (kind == "bend")
+                {
+                    var plane = (raw.Plane ?? "xy").Trim().ToLowerInvariant();
+                    if (plane != "xy" && plane != "xz" && plane != "yz")
+                        throw new ExpressionException($"{path}.plane must be xy, xz or yz");
+
+                    var radius = Num(raw.Radius, $"{path}.radius");
+                    var tube = Num(raw.TubeRadius, $"{path}.tubeRadius");
+                    if (!(radius > 0)) throw new ExpressionException($"{path}.radius must be greater than zero");
+                    if (!(tube > 0)) throw new ExpressionException($"{path}.tubeRadius must be greater than zero");
+                    if (tube >= radius) throw new ExpressionException($"{path}.tubeRadius must be smaller than radius");
+
+                    var angle = Num(raw.Angle, $"{path}.angle", 90);
+                    if (!(angle > 0) || angle > 360)
+                        throw new ExpressionException($"{path}.angle must be between 0 and 360 degrees");
+
+                    return new ResolvedSolid
+                    {
+                        Kind = "bend",
+                        Center = Vec(raw.Center, $"{path}.center"),
+                        Radius = radius,
+                        TubeRadius = tube,
+                        Angle = angle,
+                        StartAngle = Num(raw.StartAngle, $"{path}.startAngle", 0),
+                        Plane = plane,
+                        Segments = Math.Min(96, Math.Max(8, raw.Segments ?? 48)),
+                    };
+                }
+
                 if (kind == "prism")
                 {
                     var plane = (raw.Plane ?? "xy").Trim().ToLowerInvariant();
@@ -134,6 +198,18 @@ namespace FamilyAgent.Core
                 {
                     if (raw == null) throw new ExpressionException($"{path} must be an object");
 
+                    var anchor = raw.Anchor == null
+                        ? null
+                        : new ResolvedAnchor
+                        {
+                            X = Side(raw.Anchor.X),
+                            Y = Side(raw.Anchor.Y),
+                            Z = Side(raw.Anchor.Z),
+                        };
+
+                    if (anchor != null && anchor.X == null && anchor.Y == null && anchor.Z == null)
+                        anchor = null;
+
                     var part = new ResolvedPart
                     {
                         Id = string.IsNullOrWhiteSpace(raw.Id) ? $"part-{index + 1}" : raw.Id,
@@ -141,6 +217,7 @@ namespace FamilyAgent.Core
                         Material = raw.Material,
                         Color = raw.Color,
                         Solid = ResolveSolid(raw.Solid, $"{path}.solid"),
+                        Anchor = anchor,
                     };
 
                     if (raw.Cuts != null)
@@ -245,6 +322,54 @@ namespace FamilyAgent.Core
                     Math.Max(solid.Base.X, end.X) + rx,
                     Math.Max(solid.Base.Y, end.Y) + ry,
                     Math.Max(solid.Base.Z, end.Z) + rz));
+                return bounds;
+            }
+
+            if (solid.Kind == "frustum")
+            {
+                var end = solid.Base;
+                if (solid.Axis == "x") end.X += solid.Height;
+                else if (solid.Axis == "y") end.Y += solid.Height;
+                else end.Z += solid.Height;
+
+                var radius = Math.Max(solid.RadiusBottom, solid.RadiusTop);
+                var rx = solid.Axis == "x" ? 0 : radius;
+                var ry = solid.Axis == "y" ? 0 : radius;
+                var rz = solid.Axis == "z" ? 0 : radius;
+
+                bounds.Grow(new Vec3d(
+                    Math.Min(solid.Base.X, end.X) - rx,
+                    Math.Min(solid.Base.Y, end.Y) - ry,
+                    Math.Min(solid.Base.Z, end.Z) - rz));
+                bounds.Grow(new Vec3d(
+                    Math.Max(solid.Base.X, end.X) + rx,
+                    Math.Max(solid.Base.Y, end.Y) + ry,
+                    Math.Max(solid.Base.Z, end.Z) + rz));
+                return bounds;
+            }
+
+            if (solid.Kind == "bend")
+            {
+                var reach = solid.Radius + solid.TubeRadius;
+                var axial = solid.TubeRadius;
+                var c = solid.Center;
+
+                if (solid.Plane == "xy")
+                {
+                    bounds.Grow(new Vec3d(c.X - reach, c.Y - reach, c.Z - axial));
+                    bounds.Grow(new Vec3d(c.X + reach, c.Y + reach, c.Z + axial));
+                }
+                else if (solid.Plane == "xz")
+                {
+                    bounds.Grow(new Vec3d(c.X - reach, c.Y - axial, c.Z - reach));
+                    bounds.Grow(new Vec3d(c.X + reach, c.Y + axial, c.Z + reach));
+                }
+                else
+                {
+                    bounds.Grow(new Vec3d(c.X - axial, c.Y - reach, c.Z - reach));
+                    bounds.Grow(new Vec3d(c.X + axial, c.Y + reach, c.Z + reach));
+                }
+
                 return bounds;
             }
 
