@@ -365,7 +365,7 @@ export function App() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
     // Handlers only touch refs and stable setters.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, []);
 
   const handleAttach = async (files: File[]) => {

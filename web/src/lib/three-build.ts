@@ -108,6 +108,59 @@ export function solidGeometry(solid: ResolvedSolid): THREE.BufferGeometry {
     return geometry;
   }
 
+  if (solid.kind === "frustum") {
+    const height = Math.abs(solid.height);
+    const radius = Math.max(solid.radiusBottom, solid.radiusTop);
+    const adaptiveSegments = Math.ceil((2 * Math.PI * radius) / 10);
+    const segments = Math.min(96, Math.max(16, solid.segments, adaptiveSegments));
+    const geometry = new THREE.CylinderGeometry(
+      solid.radiusTop,
+      solid.radiusBottom,
+      height,
+      segments,
+      1,
+      false,
+    );
+    geometry.translate(0, height / 2, 0);
+
+    const direction = axisDirection(solid.axis, solid.height);
+    const quaternion = new THREE.Quaternion().setFromUnitVectors(UP, direction);
+    geometry.applyQuaternion(quaternion);
+    geometry.translate(solid.base.x, solid.base.y, solid.base.z);
+    return geometry;
+  }
+
+  if (solid.kind === "bend") {
+    const arc = (solid.angle * Math.PI) / 180;
+    const tubular = Math.min(96, Math.max(8, solid.segments));
+    const geometry = new THREE.TorusGeometry(
+      solid.radius,
+      solid.tubeRadius,
+      12,
+      tubular,
+      arc,
+    );
+
+    // Three builds the torus around +Y with the ring in XZ; rotate that axis onto the
+    // plane normal, then apply the start angle around the same axis.
+    const axis =
+      solid.plane === "xy"
+        ? new THREE.Vector3(0, 0, 1)
+        : solid.plane === "xz"
+          ? new THREE.Vector3(0, 1, 0)
+          : new THREE.Vector3(1, 0, 0);
+    geometry.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(UP, axis));
+
+    if (solid.startAngle) {
+      geometry.applyMatrix4(
+        new THREE.Matrix4().makeRotationAxis(axis, (solid.startAngle * Math.PI) / 180),
+      );
+    }
+
+    geometry.translate(solid.center.x, solid.center.y, solid.center.z);
+    return geometry;
+  }
+
   const shape = new THREE.Shape(solid.points.map(([a, b]) => new THREE.Vector2(a, b)));
   const depth = Math.max(Math.abs(solid.to - solid.from), 0.01);
   const geometry = new THREE.ExtrudeGeometry(shape, {
@@ -144,65 +197,164 @@ export interface PartGeometry {
  * Edge lines for a CSG result. EdgesGeometry keeps edges that only have one adjacent
  * face, and CSG leaves plenty of those along its triangulation — they show up as
  * diagonal scratches across flat faces. Only real two-face creases are kept here.
+ *
+ * Vertices are welded by position first (CSG returns per-triangle vertices), then
+ * edges are keyed by an integer pair. The previous string-keyed version allocated a
+ * map entry and two vectors per edge, which dominated the main thread on big cuts.
  */
 export function csgEdgeGeometry(geometry: THREE.BufferGeometry, thresholdDeg = 24): THREE.BufferGeometry {
   const position = geometry.getAttribute("position");
-  const index = geometry.getIndex();
-  const a = new THREE.Vector3();
-  const b = new THREE.Vector3();
-  const c = new THREE.Vector3();
-  const ab = new THREE.Vector3();
-  const ac = new THREE.Vector3();
-  const normal = new THREE.Vector3();
+  if (!position) return new THREE.BufferGeometry();
 
-  const keyOf = (vector: THREE.Vector3): string =>
-    `${vector.x.toFixed(3)}|${vector.y.toFixed(3)}|${vector.z.toFixed(3)}`;
+  // Guard: a pathological cut is not worth freezing the viewer for an outline.
+  const sourceIndex = geometry.getIndex();
+  const triangleCount = Math.floor((sourceIndex ? sourceIndex.count : position.count) / 3);
+  if (triangleCount > 400_000) return new THREE.BufferGeometry();
 
-  interface Edge {
-    a: THREE.Vector3;
-    b: THREE.Vector3;
-    normals: THREE.Vector3[];
+  const sourceCount = position.count;
+  const lookup = new Map<string, number>();
+  const welded: number[] = [];
+  const remap = new Uint32Array(sourceCount);
+
+  for (let i = 0; i < sourceCount; i += 1) {
+    const x = position.getX(i);
+    const y = position.getY(i);
+    const z = position.getZ(i);
+    const key = `${Math.round(x * 1000)}|${Math.round(y * 1000)}|${Math.round(z * 1000)}`;
+    let index = lookup.get(key);
+    if (index === undefined) {
+      index = welded.length / 3;
+      lookup.set(key, index);
+      welded.push(x, y, z);
+    }
+    remap[i] = index;
   }
 
-  const edges = new Map<string, Edge>();
-  const addEdge = (p: THREE.Vector3, q: THREE.Vector3) => {
-    const keyP = keyOf(p);
-    const keyQ = keyOf(q);
-    if (keyP === keyQ) return;
-    const key = keyP < keyQ ? `${keyP}~${keyQ}` : `${keyQ}~${keyP}`;
-    let edge = edges.get(key);
-    if (!edge) {
-      edge = { a: p.clone(), b: q.clone(), normals: [] };
-      edges.set(key, edge);
-    }
-    edge.normals.push(normal.clone());
+  const indices = new Uint32Array(triangleCount * 3);
+  for (let i = 0; i < indices.length; i += 1) {
+    indices[i] = remap[sourceIndex ? sourceIndex.getX(i) : i];
+  }
+
+  const faceNormals = new Float32Array(triangleCount * 3);
+  const ax = { x: 0, y: 0, z: 0 };
+  const bx = { x: 0, y: 0, z: 0 };
+  const cx = { x: 0, y: 0, z: 0 };
+
+  const point = (index: number, target: { x: number; y: number; z: number }) => {
+    target.x = welded[index * 3];
+    target.y = welded[index * 3 + 1];
+    target.z = welded[index * 3 + 2];
   };
 
-  const count = index ? index.count : position.count;
-  for (let i = 0; i < count; i += 3) {
-    const ia = index ? index.getX(i) : i;
-    const ib = index ? index.getX(i + 1) : i + 1;
-    const ic = index ? index.getX(i + 2) : i + 2;
-    a.fromBufferAttribute(position, ia);
-    b.fromBufferAttribute(position, ib);
-    c.fromBufferAttribute(position, ic);
-    normal.crossVectors(ab.subVectors(b, a), ac.subVectors(c, a)).normalize();
-    addEdge(a, b);
-    addEdge(b, c);
-    addEdge(c, a);
+  for (let face = 0; face < triangleCount; face += 1) {
+    point(indices[face * 3], ax);
+    point(indices[face * 3 + 1], bx);
+    point(indices[face * 3 + 2], cx);
+    const ux = bx.x - ax.x;
+    const uy = bx.y - ax.y;
+    const uz = bx.z - ax.z;
+    const vx = cx.x - ax.x;
+    const vy = cx.y - ax.y;
+    const vz = cx.z - ax.z;
+    let nx = uy * vz - uz * vy;
+    let ny = uz * vx - ux * vz;
+    let nz = ux * vy - uy * vx;
+    const length = Math.hypot(nx, ny, nz) || 1;
+    nx /= length;
+    ny /= length;
+    nz /= length;
+    faceNormals[face * 3] = nx;
+    faceNormals[face * 3 + 1] = ny;
+    faceNormals[face * 3 + 2] = nz;
+  }
+
+  const vertexCount = welded.length / 3;
+  // faceA is the first face using the edge, faceB the second; -2 marks non-manifold.
+  const edges = new Map<number, { faceA: number; faceB: number }>();
+
+  const register = (from: number, to: number, face: number) => {
+    const lo = from < to ? from : to;
+    const hi = from < to ? to : from;
+    const key = lo * vertexCount + hi;
+    const edge = edges.get(key);
+    if (!edge) {
+      edges.set(key, { faceA: face, faceB: -1 });
+    } else if (edge.faceB === -1 && edge.faceA !== face) {
+      edge.faceB = face;
+    } else {
+      edge.faceB = -2;
+    }
+  };
+
+  for (let face = 0; face < triangleCount; face += 1) {
+    const a = indices[face * 3];
+    const b = indices[face * 3 + 1];
+    const c = indices[face * 3 + 2];
+    register(a, b, face);
+    register(b, c, face);
+    register(c, a, face);
   }
 
   const threshold = Math.cos((thresholdDeg * Math.PI) / 180);
   const points: number[] = [];
-  for (const edge of edges.values()) {
-    if (edge.normals.length !== 2) continue;
-    if (edge.normals[0].dot(edge.normals[1]) >= threshold) continue;
-    points.push(edge.a.x, edge.a.y, edge.a.z, edge.b.x, edge.b.y, edge.b.z);
+
+  for (const [key, edge] of edges) {
+    if (edge.faceB < 0) continue;
+    const a = edge.faceA * 3;
+    const b = edge.faceB * 3;
+    const dot =
+      faceNormals[a] * faceNormals[b] +
+      faceNormals[a + 1] * faceNormals[b + 1] +
+      faceNormals[a + 2] * faceNormals[b + 2];
+    if (dot >= threshold) continue;
+
+    const lo = Math.floor(key / vertexCount);
+    const hi = key - lo * vertexCount;
+    points.push(
+      welded[lo * 3], welded[lo * 3 + 1], welded[lo * 3 + 2],
+      welded[hi * 3], welded[hi * 3 + 1], welded[hi * 3 + 2],
+    );
   }
 
   const outline = new THREE.BufferGeometry();
   outline.setAttribute("position", new THREE.Float32BufferAttribute(points, 3));
   return outline;
+}
+
+/**
+ * One LineSegments for every copy in an array instead of one per copy. Vertices are
+ * cheap compared with draw calls, and the solid itself is drawn as an InstancedMesh.
+ */
+export function instanceEdgeGeometry(
+  edgeGeometry: THREE.BufferGeometry,
+  count: number,
+  axis: "x" | "y" | "z",
+  spacing: number,
+): THREE.BufferGeometry | null {
+  const position = edgeGeometry.getAttribute("position");
+  if (!position || count < 2) return null;
+
+  const perCopy = position.count;
+  const total = perCopy * count;
+  if (total > 800_000) return null;
+
+  const out = new Float32Array(total * 3);
+  let offset = 0;
+  for (let copy = 0; copy < count; copy += 1) {
+    const dx = axis === "x" ? spacing * copy : 0;
+    const dy = axis === "y" ? spacing * copy : 0;
+    const dz = axis === "z" ? spacing * copy : 0;
+    for (let vertex = 0; vertex < perCopy; vertex += 1) {
+      out[offset] = position.getX(vertex) + dx;
+      out[offset + 1] = position.getY(vertex) + dy;
+      out[offset + 2] = position.getZ(vertex) + dz;
+      offset += 3;
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(out, 3));
+  return geometry;
 }
 
 export function buildPartGeometry(part: ResolvedPart): PartGeometry {

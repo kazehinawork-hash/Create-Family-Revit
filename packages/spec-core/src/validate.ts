@@ -48,7 +48,7 @@ function sanitizeId(value: string, fallback: string): string {
   return cleaned || fallback;
 }
 
-const SOLID_KINDS = ["box", "cylinder", "prism"];
+const SOLID_KINDS = ["box", "cylinder", "frustum", "bend", "prism"];
 
 function checkSolid(raw: unknown, path: string, issues: Issue[]): void {
   if (!isObject(raw)) {
@@ -111,6 +111,43 @@ function checkSolid(raw: unknown, path: string, issues: Issue[]): void {
     if (raw.height === undefined) {
       issues.push({ severity: "error", path: `${path}.height`, message: "height is required" });
     }
+  } else if (kind === "frustum") {
+    requireVec("base");
+    if (raw.radiusBottom === undefined) {
+      issues.push({
+        severity: "error",
+        path: `${path}.radiusBottom`,
+        message: "radiusBottom is required",
+      });
+    }
+    if (raw.radiusTop === undefined) {
+      issues.push({
+        severity: "error",
+        path: `${path}.radiusTop`,
+        message: "radiusTop is required (use 0 for a cone)",
+      });
+    }
+    if (raw.height === undefined) {
+      issues.push({ severity: "error", path: `${path}.height`, message: "height is required" });
+    }
+    if (raw.axis !== undefined && !["x", "y", "z"].includes(text(raw.axis))) {
+      issues.push({ severity: "error", path: `${path}.axis`, message: "axis must be x, y or z" });
+    }
+  } else if (kind === "bend") {
+    requireVec("center");
+    if (raw.radius === undefined) {
+      issues.push({ severity: "error", path: `${path}.radius`, message: "radius is required" });
+    }
+    if (raw.tubeRadius === undefined) {
+      issues.push({
+        severity: "error",
+        path: `${path}.tubeRadius`,
+        message: "tubeRadius is required",
+      });
+    }
+    if (raw.plane !== undefined && !["xy", "xz", "yz"].includes(text(raw.plane))) {
+      issues.push({ severity: "error", path: `${path}.plane`, message: "plane must be xy, xz or yz" });
+    }
   } else if (kind === "prism") {
     if (!["xy", "xz", "yz"].includes(text(raw.plane))) {
       issues.push({ severity: "error", path: `${path}.plane`, message: "plane must be xy, xz or yz" });
@@ -125,6 +162,24 @@ function checkSolid(raw: unknown, path: string, issues: Issue[]): void {
     if (raw.from === undefined || raw.to === undefined) {
       issues.push({ severity: "error", path, message: "from and to are required" });
     }
+  }
+}
+
+/** Collects every "[Parameter Name]" reference anywhere inside a raw subtree. */
+function collectReferences(value: unknown, into: Set<string>): void {
+  if (value === null || value === undefined) return;
+  if (typeof value === "string") {
+    for (const match of value.matchAll(/\[([^\]]+)\]/g)) {
+      into.add(match[1].trim().toLowerCase());
+    }
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) collectReferences(item, into);
+    return;
+  }
+  if (typeof value === "object") {
+    for (const item of Object.values(value as Json)) collectReferences(item, into);
   }
 }
 
@@ -361,6 +416,27 @@ export function validateSpec(raw: unknown): ValidationResult {
       }
     }
 
+    let anchor: FamilyPart["anchor"];
+    if (entry.anchor !== undefined) {
+      if (!isObject(entry.anchor)) {
+        issues.push({ severity: "error", path: `${path}.anchor`, message: "anchor must be an object" });
+      } else {
+        for (const axis of ["x", "y", "z"] as const) {
+          const rawSide = text(entry.anchor[axis]);
+          if (!rawSide) continue;
+          if (rawSide !== "min" && rawSide !== "max") {
+            issues.push({
+              severity: "error",
+              path: `${path}.anchor.${axis}`,
+              message: "anchor side must be min or max",
+            });
+            continue;
+          }
+          anchor = { ...anchor, [axis]: rawSide };
+        }
+      }
+    }
+
     parts.push({
       id,
       name: text(entry.name) || id,
@@ -369,8 +445,26 @@ export function validateSpec(raw: unknown): ValidationResult {
       solid: entry.solid as FamilyPart["solid"],
       cuts: Array.isArray(entry.cuts) ? (entry.cuts as FamilyPart["cuts"]) : [],
       array,
+      anchor,
     });
   });
+
+  // Numeric parameters exist to drive geometry; one that nothing references is dead
+  // weight in the finished family. Text/YesNo parameters are legitimate metadata.
+  const referenced = new Set<string>();
+  collectReferences({ parts: root.parts, connectors: root.connectors }, referenced);
+  for (const parameter of parameters) {
+    if (parameter.formula) collectReferences(parameter.formula, referenced);
+  }
+  for (const parameter of parameters) {
+    if (parameter.type === "Text" || parameter.type === "YesNo") continue;
+    if (referenced.has(paramKey(parameter.name))) continue;
+    issues.push({
+      severity: "warning",
+      path: `parameters.${parameter.name}`,
+      message: "Parameter is declared but never used by a formula or a geometry field",
+    });
+  }
 
   const materials = Array.isArray(root.materials)
     ? root.materials

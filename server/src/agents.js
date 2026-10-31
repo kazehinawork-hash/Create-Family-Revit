@@ -15,7 +15,7 @@ function flatten(messages) {
     .map((message) => `${message.role === "assistant" ? "ASSISTANT" : "USER"}:\n${message.content}`)
     .join("\n\n---\n\n");
 
-  return `${system}\n\n---\n\n${turns}\n\nCRITICAL OUTPUT REQUIREMENT:\n- Return ONLY a single raw JSON object representing the complete spec.\n- Do NOT write conversational explanations, markdown notes, or preface text before or after the JSON.\n- Ensure all quotes and brackets inside string expressions (e.g. \"[Casing Length] / 2\") are properly closed and valid JSON.`;
+  return `${system}\n\n---\n\n${turns}\n\nCRITICAL OUTPUT REQUIREMENT:\n- Return ONLY a single raw JSON object representing the complete spec.\n- Do NOT write conversational explanations, markdown notes, or preface text before or after the JSON.\n- Ensure all quotes and brackets inside string expressions (e.g. "[Casing Length] / 2") are properly closed and valid JSON.`;
 }
 
 function extractResult(stdout) {
@@ -103,27 +103,26 @@ function killTree(child) {
   try { child.kill("SIGTERM"); } catch { /* ignore */ }
 }
 
-function runCommandCode(prompt, timeoutMs, model, cwd, onProgress, signal, maxTurns = 3) {
+/**
+ * Shared lifecycle for every CLI backend: spawn, stream JSON progress, timeout,
+ * abort, kill the process tree and collect stdout/stderr. The three backends used to
+ * carry three near-identical copies of this ~100 line block.
+ */
+function runCliProcess({
+  tag,
+  executable,
+  args,
+  prompt,
+  cwd,
+  timeoutMs,
+  signal,
+  onProgress,
+  onStdoutLine,
+}) {
   return new Promise((resolve, reject) => {
-    let executable = config.agent.command;
-    let args = [];
-    const chosen = model || config.agent.model;
-
-    if (chosen && chosen.startsWith("agy:")) {
-      executable = "agy";
-      const agyModel = safeArg(chosen.slice(4));
-      args = ["--output-format", "json", "--model", agyModel, "--dangerously-skip-permissions"];
-    } else {
-      args = ["-p", "--output-format", "json", "--skip-onboarding", "--max-turns", String(maxTurns)];
-      const effort = (config.agent.effort || "").trim().toLowerCase();
-      if (["off", "high", "max"].includes(effort)) args.push("--effort", effort);
-      const safeChosen = safeArg(chosen);
-      if (safeChosen) args.push("-m", safeChosen);
-    }
-
     const started = Date.now();
     console.log(
-      `[agent] spawn ${executable} model=${chosen || "default"} cwd=${cwd || os.tmpdir()} prompt=${prompt.length}B`,
+      `[agent${tag}] spawn ${executable} cwd=${cwd || os.tmpdir()} prompt=${prompt.length}B`,
     );
 
     let child;
@@ -132,77 +131,91 @@ function runCommandCode(prompt, timeoutMs, model, cwd, onProgress, signal, maxTu
         cwd: cwd || os.tmpdir(),
         stdio: ["pipe", "pipe", "pipe"],
         windowsHide: true,
-        env: process.env,
       });
-    } catch (err) {
-      return reject(new LlmError(`Failed to spawn CLI (${executable}): ${err.message}`));
+    } catch (error) {
+      reject(new LlmError(`Failed to spawn "${executable}": ${error.message}`));
+      return;
     }
 
     let stdout = "";
     let stderr = "";
     let buffer = "";
+    let settled = false;
+    let timer = null;
+    let onAbort = null;
 
-    const timer = setTimeout(() => {
-      console.warn(`[agent] timeout after ${timeoutMs}ms, killing ${executable}`);
-      killTree(child);
-      reject(new LlmError(`Agent run timed out after ${Math.round(timeoutMs / 1000)}s`));
+    const finish = (callback) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      if (signal && onAbort) signal.removeEventListener("abort", onAbort);
+      callback();
+    };
+
+    const fail = (message) => {
+      finish(() => {
+        killTree(child);
+        reject(new LlmError(message));
+      });
+    };
+
+    timer = setTimeout(() => {
+      console.warn(`[agent${tag}] timeout after ${timeoutMs}ms`);
+      fail(`Agent run timed out after ${Math.round(timeoutMs / 1000)}s`);
     }, timeoutMs);
 
-    const onAbort = () => {
-      console.log(`[agent] aborted by user, killing ${executable}`);
-      killTree(child);
-      reject(new LlmError("Agent run was cancelled"));
+    onAbort = () => {
+      console.log(`[agent${tag}] aborted by user`);
+      fail("Agent run was cancelled");
     };
 
     if (signal) {
       if (signal.aborted) {
-        killTree(child);
-        return reject(new LlmError("Agent run was cancelled"));
+        fail("Agent run was cancelled");
+        return;
       }
       signal.addEventListener("abort", onAbort, { once: true });
     }
 
-    const finish = (callback) => {
-      clearTimeout(timer);
-      if (signal) signal.removeEventListener("abort", onAbort);
-      callback();
-    };
-
     child.stdout.on("data", (chunk) => {
       const text = chunk.toString();
       stdout += text;
-      buffer += text;
 
-      const lines = buffer.split(/\r?\n/);
-      buffer = lines.pop() ?? "";
+      if (onStdoutLine) {
+        buffer += text;
+        const lines = buffer.split(/\r?\n/);
+        buffer = lines.pop() ?? "";
 
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed.startsWith("{")) continue;
-        try {
-          const event = JSON.parse(trimmed);
-          const description = describeEvent(event);
-          if (description && onProgress) {
-            onProgress(description);
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith("{")) continue;
+          try {
+            onStdoutLine(JSON.parse(trimmed));
+          } catch {
+            /* partial or non JSON line */
           }
-        } catch {
-          /* partial or non JSON line */
         }
+        return;
       }
+
+      if (onProgress) onProgress("Writing the spec");
     });
 
-    child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
 
     child.on("error", (error) => {
-      console.error(`[agent] spawn error: ${error.message}`);
+      console.error(`[agent${tag}] spawn error: ${error.message}`);
       finish(() => reject(new LlmError(`Could not run "${executable}": ${error.message}`)));
     });
 
     child.on("close", (code) => {
       console.log(
-        `[agent] exit ${code} in ${Math.round((Date.now() - started) / 1000)}s stdout=${stdout.length}B stderr=${stderr.length}B`,
+        `[agent${tag}] exit ${code} in ${Math.round((Date.now() - started) / 1000)}s ` +
+          `stdout=${stdout.length}B stderr=${stderr.length}B`,
       );
-      if (stderr.trim()) console.log(`[agent] stderr: ${stderr.trim().slice(-600)}`);
+      if (stderr.trim()) console.log(`[agent${tag}] stderr: ${stderr.trim().slice(-600)}`);
       finish(() => resolve({ code: code ?? 0, stdout, stderr }));
     });
 
@@ -210,188 +223,98 @@ function runCommandCode(prompt, timeoutMs, model, cwd, onProgress, signal, maxTu
       child.stdin.write(prompt);
       child.stdin.end();
     } catch (error) {
-      finish(() => reject(new LlmError(`Could not send prompt to ${executable}: ${error.message}`)));
+      finish(() =>
+        reject(new LlmError(`Could not send prompt to "${executable}": ${error.message}`)),
+      );
     }
+  });
+}
+
+function runCommandCode(prompt, timeoutMs, model, cwd, onProgress, signal, maxTurns = 3) {
+  const chosen = model || config.agent.model;
+  let executable = config.agent.command;
+  let args;
+
+  if (chosen && chosen.startsWith("agy:")) {
+    executable = "agy";
+    args = [
+      "--output-format",
+      "json",
+      "--model",
+      safeArg(chosen.slice(4)),
+      "--dangerously-skip-permissions",
+    ];
+  } else {
+    args = ["-p", "--output-format", "json", "--skip-onboarding", "--max-turns", String(maxTurns)];
+
+    const effort = (config.agent.effort || "").trim().toLowerCase();
+    if (["off", "high", "max"].includes(effort)) args.push("--effort", effort);
+
+    const safeChosen = safeArg(chosen);
+    if (safeChosen) args.push("-m", safeChosen);
+  }
+
+  return runCliProcess({
+    tag: "",
+    executable,
+    args,
+    prompt,
+    cwd,
+    timeoutMs,
+    signal,
+    onStdoutLine: (event) => {
+      const description = describeEvent(event);
+      if (description && onProgress) onProgress(description);
+    },
   });
 }
 
 function runCodexCli(prompt, timeoutMs, model, cwd, onProgress, signal) {
-  return new Promise((resolve, reject) => {
-    const executable = config.agent.codexBin || "codex";
-    let rawModel = model.startsWith("codex:") ? model.slice(6) : model;
-    let effort = null;
-    if (rawModel.includes(":")) {
-      const parts = rawModel.split(":");
-      rawModel = safeArg(parts[0]);
-      effort = safeArg(parts[1]); // low, medium, high
-    }
+  const executable = config.agent.codexBin || "codex";
+  let rawModel = model.startsWith("codex:") ? model.slice(6) : model;
+  let effort = null;
 
-    const args = ["exec", "--json", "--dangerously-bypass-approvals-and-sandbox", "--skip-git-repo-check"];
-    if (effort) {
-      args.push("-c", `model_reasoning_effort="${effort}"`);
-    }
-    if (rawModel && rawModel !== "default") {
-      args.push("-m", rawModel);
-    }
-    args.push("-");
+  if (rawModel.includes(":")) {
+    const [name, reasoning] = rawModel.split(":");
+    rawModel = safeArg(name);
+    effort = safeArg(reasoning); // low, medium, high
+  }
 
-    const started = Date.now();
-    console.log(`[agent:codex] spawn ${executable} model=${rawModel || "default"}${effort ? ` (${effort})` : ""} cwd=${cwd || os.tmpdir()}`);
+  const args = ["exec", "--json", "--dangerously-bypass-approvals-and-sandbox", "--skip-git-repo-check"];
+  if (effort) args.push("-c", `model_reasoning_effort="${effort}"`);
+  if (rawModel && rawModel !== "default") args.push("-m", rawModel);
+  args.push("-");
 
-    let child;
-    try {
-      child = spawnCli(executable, args, {
-        cwd: cwd || undefined,
-        stdio: ["pipe", "pipe", "pipe"],
-        windowsHide: true,
-      });
-    } catch (err) {
-      return reject(new LlmError(`Failed to spawn Codex CLI (${executable}): ${err.message}`));
-    }
-
-    let stdout = "";
-    let stderr = "";
-    let buffer = "";
-
-    const timer = setTimeout(() => {
-      console.warn(`[agent:codex] timeout after ${timeoutMs}ms, killing codex`);
-      killTree(child);
-      reject(new LlmError(`Codex CLI timed out after ${Math.round(timeoutMs / 1000)}s`));
-    }, timeoutMs);
-
-    const onAbort = () => {
-      console.log(`[agent:codex] aborted by user, killing codex`);
-      killTree(child);
-      reject(new LlmError("Codex CLI run was cancelled"));
-    };
-
-    if (signal) {
-      if (signal.aborted) {
-        killTree(child);
-        return reject(new LlmError("Codex CLI run was cancelled"));
-      }
-      signal.addEventListener("abort", onAbort, { once: true });
-    }
-
-    const finish = (callback) => {
-      clearTimeout(timer);
-      if (signal) signal.removeEventListener("abort", onAbort);
-      callback();
-    };
-
-    child.stdout.on("data", (chunk) => {
-      const text = chunk.toString();
-      stdout += text;
-      buffer += text;
-
-      const lines = buffer.split(/\r?\n/);
-      buffer = lines.pop() ?? "";
-
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed.startsWith("{")) continue;
-        try {
-          const event = JSON.parse(trimmed);
-          const desc = describeEvent(event);
-          if (desc && onProgress) onProgress(desc);
-        } catch {
-          /* not json */
-        }
-      }
-    });
-
-    child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
-
-    child.on("error", (error) => {
-      console.error(`[agent:codex] spawn error: ${error.message}`);
-      finish(() => reject(new LlmError(`Could not run Codex CLI: ${error.message}`)));
-    });
-
-    child.on("close", (code) => {
-      console.log(`[agent:codex] exit ${code} in ${Math.round((Date.now() - started) / 1000)}s`);
-      if (stderr.trim()) console.log(`[agent:codex] stderr: ${stderr.trim().slice(-600)}`);
-      finish(() => resolve({ code: code ?? 0, stdout, stderr }));
-    });
-
-    try {
-      child.stdin.write(prompt);
-      child.stdin.end();
-    } catch (error) {
-      finish(() => reject(new LlmError(`Could not send prompt to Codex: ${error.message}`)));
-    }
+  return runCliProcess({
+    tag: ":codex",
+    executable,
+    args,
+    prompt,
+    cwd,
+    timeoutMs,
+    signal,
+    onStdoutLine: (event) => {
+      const description = describeEvent(event);
+      if (description && onProgress) onProgress(description);
+    },
   });
 }
 
 function runClaudeCli(prompt, timeoutMs, model, cwd, onProgress, signal) {
-  return new Promise((resolve, reject) => {
-    const executable = config.agent.claudeBin || "claude";
-    const claudeModel = safeArg(model.startsWith("claude:") ? model.slice(7) : model);
-    const args = ["-p", "--output-format", "json"];
-    if (claudeModel && claudeModel !== "default") {
-      args.push("-m", claudeModel);
-    }
+  const executable = config.agent.claudeBin || "claude";
+  const claudeModel = safeArg(model.startsWith("claude:") ? model.slice(7) : model);
+  const args = ["-p", "--output-format", "json"];
+  if (claudeModel && claudeModel !== "default") args.push("-m", claudeModel);
 
-    const started = Date.now();
-    console.log(`[agent:claude] spawn ${executable} model=${claudeModel || "default"} cwd=${cwd || os.tmpdir()}`);
-
-    let child;
-    try {
-      child = spawnCli(executable, args, {
-        cwd: cwd || undefined,
-        stdio: ["pipe", "pipe", "pipe"],
-        windowsHide: true,
-      });
-    } catch (err) {
-      return reject(new LlmError(`Failed to spawn Claude CLI (${executable}): ${err.message}`));
-    }
-
-    let stdout = "";
-    let stderr = "";
-
-    const timer = setTimeout(() => {
-      killTree(child);
-      reject(new LlmError(`Claude CLI timed out after ${Math.round(timeoutMs / 1000)}s`));
-    }, timeoutMs);
-
-    const onAbort = () => {
-      killTree(child);
-      reject(new LlmError("Claude CLI run was cancelled"));
-    };
-
-    if (signal) {
-      if (signal.aborted) {
-        killTree(child);
-        return reject(new LlmError("Claude CLI run was cancelled"));
-      }
-      signal.addEventListener("abort", onAbort, { once: true });
-    }
-
-    const finish = (callback) => {
-      clearTimeout(timer);
-      if (signal) signal.removeEventListener("abort", onAbort);
-      callback();
-    };
-
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString();
-      if (onProgress) onProgress("Writing the spec");
-    });
-    child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
-
-    child.on("error", (error) => {
-      finish(() => reject(new LlmError(`Could not run Claude CLI: ${error.message}`)));
-    });
-
-    child.on("close", (code) => {
-      finish(() => resolve({ code: code ?? 0, stdout, stderr }));
-    });
-
-    try {
-      child.stdin.write(prompt);
-      child.stdin.end();
-    } catch (error) {
-      finish(() => reject(new LlmError(`Could not send prompt to Claude: ${error.message}`)));
-    }
+  return runCliProcess({
+    tag: ":claude",
+    executable,
+    args,
+    prompt,
+    cwd,
+    timeoutMs,
+    signal,
+    onProgress,
   });
 }
 

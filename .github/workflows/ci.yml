@@ -26,6 +26,9 @@ jobs:
       - name: Install
         run: npm ci --include=dev
 
+      - name: Lint
+        run: npm run lint
+
       - name: Build spec-core
         run: npm run build:core
 
@@ -35,8 +38,40 @@ jobs:
       - name: Test server
         run: npm run test -w server
 
+      - name: Test web
+        run: npm run test -w web
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Spec quality report
+        run: node scripts/eval.mjs
+
       - name: Build web
         run: npm run build -w web
+
+  e2e:
+    name: studio e2e
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci --include=dev
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Build spec-core
+        run: npm run build:core
+
+      - name: Run Playwright
+        run: npm run test:e2e
 
   core:
     name: add-in core (c#)

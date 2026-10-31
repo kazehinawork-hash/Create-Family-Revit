@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Net;
 using System.Text;
 using System.Threading;
+using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
@@ -18,6 +20,20 @@ namespace FamilyAgent.Addin
     {
         public static readonly BridgeServer Instance = new BridgeServer();
 
+        /// <summary>
+        /// Optional shared secret. Set FAMILY_AGENT_TOKEN before starting Revit and the same
+        /// value as REVIT_BRIDGE_TOKEN for the studio; every bridge call must then carry it.
+        /// </summary>
+        private static readonly string Token =
+            Environment.GetEnvironmentVariable("FAMILY_AGENT_TOKEN") ?? string.Empty;
+
+        private static bool TokenIsValid(string provided)
+        {
+            if (string.IsNullOrEmpty(Token)) return true;
+            return !string.IsNullOrEmpty(provided) &&
+                   string.Equals(provided, Token, StringComparison.Ordinal);
+        }
+
         private static readonly JsonSerializerSettings JsonSettings = new JsonSerializerSettings
         {
             ContractResolver = new CamelCasePropertyNamesContractResolver(),
@@ -27,8 +43,10 @@ namespace FamilyAgent.Addin
         private readonly HttpListener _listener = new HttpListener();
         private readonly BuildRequestHandler _handler = new BuildRequestHandler();
         private readonly InspectRequestHandler _inspector = new InspectRequestHandler();
+        private readonly RebuildRequestHandler _rebuilder = new RebuildRequestHandler();
         private ExternalEvent _externalEvent;
         private ExternalEvent _inspectEvent;
+        private ExternalEvent _rebuildEvent;
         private Thread _thread;
         private volatile bool _running;
 
@@ -50,6 +68,9 @@ namespace FamilyAgent.Addin
 
                 _inspectEvent = _inspectEvent ?? ExternalEvent.Create(_inspector);
                 _inspector.Event = _inspectEvent;
+
+                _rebuildEvent = _rebuildEvent ?? ExternalEvent.Create(_rebuilder);
+                _rebuilder.Event = _rebuildEvent;
 
                 _listener.Prefixes.Clear();
                 _listener.Prefixes.Add($"http://127.0.0.1:{port}/");
@@ -96,6 +117,13 @@ namespace FamilyAgent.Addin
         {
             try
             {
+                if (!TokenIsValid(context.Request.Headers["X-Family-Token"]))
+                {
+                    Respond(context, 401,
+                        JsonConvert.SerializeObject(new { ok = false, error = "Unauthorized" }));
+                    return;
+                }
+
                 var path = context.Request.Url?.AbsolutePath ?? "/";
 
                 if (context.Request.HttpMethod == "GET" && path == "/health")
@@ -106,6 +134,23 @@ namespace FamilyAgent.Addin
 
                 if (context.Request.HttpMethod != "POST" || path != "/build")
                 {
+                    if (context.Request.HttpMethod == "POST" && path == "/rebuild")
+                    {
+                        string rebuildBody;
+                        using (var reader = new StreamReader(context.Request.InputStream, Encoding.UTF8))
+                        {
+                            rebuildBody = reader.ReadToEnd();
+                        }
+
+                        if (!_rebuilder.TryQueue(rebuildBody, context))
+                        {
+                            Respond(context, 409,
+                                JsonConvert.SerializeObject(new { ok = false, error = "Revit is busy with another build" }));
+                        }
+
+                        return;
+                    }
+
                     if (context.Request.HttpMethod == "POST" && path == "/inspect")
                     {
                         // Diagnostic endpoint: only when the operator opts in.
@@ -256,6 +301,130 @@ namespace FamilyAgent.Addin
                 public string Path { get; set; }
                 public string Parameter { get; set; }
                 public double Percent { get; set; }
+            }
+        }
+
+        /// <summary>
+        /// Test/automation endpoint: open a saved family, set one parameter, rebuild it from
+        /// the stored spec, save it, and report the stats. The same code path the ribbon
+        /// "Rebuild from spec" button uses, without needing a human click.
+        /// </summary>
+        private sealed class RebuildRequestHandler : IExternalEventHandler
+        {
+            private readonly object _gate = new object();
+            private string _json;
+            private HttpListenerContext _context;
+            private bool _busy;
+
+            public ExternalEvent Event;
+
+            public bool TryQueue(string json, HttpListenerContext context)
+            {
+                lock (_gate)
+                {
+                    if (_busy) return false;
+                    _busy = true;
+                    _json = json;
+                    _context = context;
+                }
+
+                Event?.Raise();
+                return true;
+            }
+
+            public void Execute(UIApplication app)
+            {
+                string json;
+                HttpListenerContext context;
+
+                lock (_gate)
+                {
+                    json = _json;
+                    context = _context;
+                }
+
+                try
+                {
+                    var request = JsonConvert.DeserializeObject<RebuildRequest>(json) ?? new RebuildRequest();
+                    if (string.IsNullOrWhiteSpace(request.Path) || !File.Exists(request.Path))
+                        throw new FileNotFoundException("Family not found", request.Path);
+
+                    var document = app.Application.OpenDocumentFile(request.Path);
+
+                    try
+                    {
+                        var manager = document.FamilyManager;
+                        if (manager.CurrentType == null)
+                        {
+                            manager.CurrentType = manager.Types.Cast<FamilyType>().FirstOrDefault()
+                                                  ?? manager.NewType("Type 1");
+                        }
+
+                        if (!string.IsNullOrWhiteSpace(request.Parameter) && request.Value > 0)
+                        {
+                            Autodesk.Revit.DB.FamilyParameter target = null;
+                            foreach (Autodesk.Revit.DB.FamilyParameter candidate in manager.Parameters)
+                            {
+                                if (string.Equals(
+                                        candidate.Definition?.Name,
+                                        request.Parameter,
+                                        StringComparison.OrdinalIgnoreCase))
+                                {
+                                    target = candidate;
+                                    break;
+                                }
+                            }
+
+                            if (target == null)
+                                throw new InvalidOperationException($"Parameter \"{request.Parameter}\" not found");
+
+                            using (var transaction = new Transaction(document, "Family Agent — set parameter"))
+                            {
+                                transaction.Start();
+                                manager.Set(target, request.Value / 304.8);
+                                transaction.Commit();
+                            }
+                        }
+
+                        var result = FamilyBuilder.Rebuild(document);
+
+                        if (result.Ok)
+                        {
+                            try { document.Save(); }
+                            catch (Exception ex) { result.Warnings.Add("Save: " + ex.Message); }
+                        }
+
+                        Respond(context, result.Ok ? 200 : 500,
+                            JsonConvert.SerializeObject(new { ok = result.Ok, result }, JsonSettings));
+                    }
+                    finally
+                    {
+                        try { document.Close(false); } catch { }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Respond(context, 500,
+                        JsonConvert.SerializeObject(new { ok = false, error = ex.Message }, JsonSettings));
+                }
+                finally
+                {
+                    lock (_gate)
+                    {
+                        _busy = false;
+                        _json = null;
+                        _context = null;
+                    }
+                }
+            }
+
+            public string GetName() => "Family Agent rebuild";
+
+            private sealed class RebuildRequest
+            {
+                public string Path { get; set; }
+                public string Parameter { get; set; }
+                public double Value { get; set; }
             }
         }
 

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { config } from "./config.js";
+import { writeJsonAtomic } from "./files.js";
 
 export function slugify(name) {
   return (
@@ -16,7 +17,7 @@ export function queueFile(spec) {
   fs.mkdirSync(config.dirs.queue, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const file = path.join(config.dirs.queue, `${stamp}-${slugify(spec.name)}.json`);
-  fs.writeFileSync(file, JSON.stringify(spec, null, 2), "utf8");
+  writeJsonAtomic(file, spec);
   return file;
 }
 
@@ -39,7 +40,10 @@ export async function buildFamily(spec) {
   try {
     response = await fetch(`${config.bridge.url}/build`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(config.bridge.token ? { "X-Family-Token": config.bridge.token } : {}),
+      },
       body: JSON.stringify(spec),
       signal: AbortSignal.timeout(config.bridge.timeoutMs),
     });

@@ -109,6 +109,7 @@ namespace FamilyAgent.Addin
             Document document,
             PlaneSkeleton skeleton,
             IList<Element> forms,
+            IDictionary<long, ResolvedPart> partByForm,
             out HashSet<string> lockedFormAxes,
             List<string> warnings)
         {
@@ -134,9 +135,12 @@ namespace FamilyAgent.Addin
                     var faces = new List<FaceCandidate>();
                     CollectFaces(form, options, skeleton, faces);
 
+                    ResolvedPart part = null;
+                    if (partByForm != null) partByForm.TryGetValue(form.Id.Value, out part);
+
                     foreach (PlaneAxis axis in new[] { PlaneAxis.X, PlaneAxis.Y, PlaneAxis.Z })
                     {
-                        var best = ChooseFace(faces, axis);
+                        var best = ChooseFace(faces, axis, part?.Anchor);
                         if (best == null) continue;
 
                         var view = axis == PlaneAxis.Z ? skeleton.Elevation : skeleton.Plan;
@@ -204,8 +208,10 @@ namespace FamilyAgent.Addin
 
             foreach (var form in forms)
             {
-                var extrusion = form as Extrusion;
-                if (extrusion == null || !extrusion.IsSolid) continue;
+                // Extrusions and blends both expose planar faces; a labelled face-to-face
+                // dimension is what makes a thickness or a frustum height drive the form.
+                var solidForm = form as GenericForm;
+                if (solidForm == null || !solidForm.IsSolid) continue;
 
                 var byAxis = new Dictionary<PlaneAxis, List<FaceCandidate>>
                 {
@@ -214,7 +220,7 @@ namespace FamilyAgent.Addin
                     { PlaneAxis.Z, new List<FaceCandidate>() },
                 };
 
-                CollectAllFaces(extrusion, options, byAxis);
+                CollectAllFaces(solidForm, options, byAxis);
                 if (byAxis.Values.Any(list => list.Count > 1)) perForm.Add((form.Id.Value, byAxis));
             }
 
@@ -287,6 +293,124 @@ namespace FamilyAgent.Addin
             catch (Exception ex)
             {
                 warnings.Add($"Face dimensions stopped: {ex.Message}");
+            }
+
+            return created;
+        }
+
+        /// <summary>
+        /// Radii cannot be measured face-to-face: a circle needs a radial dimension. This
+        /// finds the circular edges of blends and cylinders whose radius matches a base
+        /// length parameter, then labels them so the parameter drives the profile.
+        /// </summary>
+        private static int CreateRadialDimensions(
+            Document document,
+            PlaneSkeleton skeleton,
+            IList<Element> forms,
+            CoreParameterSet parameters,
+            HashSet<string> solved,
+            List<string> warnings)
+        {
+            if (skeleton.Plan == null || forms == null || forms.Count == 0) return 0;
+
+            var candidates = parameters.Ordered
+                .Where(parameter =>
+                    !solved.Contains(parameter.Name) &&
+                    IsType(parameter.Type, "Length") &&
+                    parameter.Number.HasValue &&
+                    Math.Abs(parameter.Number.Value) > 0.5)
+                .ToList();
+            if (candidates.Count == 0) return 0;
+
+            var options = new Options { ComputeReferences = true, DetailLevel = ViewDetailLevel.Fine };
+            var circles = new List<(Reference Reference, double Radius, XYZ Point)>();
+
+            foreach (var form in forms)
+            {
+                var solidForm = form as GenericForm;
+                if (solidForm == null || !solidForm.IsSolid) continue;
+
+                GeometryElement geometry;
+                try { geometry = form.get_Geometry(options); } catch { continue; }
+                if (geometry == null) continue;
+
+                foreach (var geometryObject in geometry)
+                {
+                    var solid = geometryObject as Solid;
+                    if (solid == null) continue;
+
+                    foreach (Edge edge in solid.Edges)
+                    {
+                        if (edge.Reference == null) continue;
+
+                        Curve curve;
+                        try { curve = edge.AsCurve(); } catch { continue; }
+
+                        var arc = curve as Arc;
+                        if (arc == null) continue;
+
+                        // Only circles in plan can take a radial dimension in the plan view.
+                        if (Math.Abs(Math.Abs(arc.Normal.Z) - 1) > 0.01) continue;
+
+                        XYZ point;
+                        try { point = arc.Evaluate(0.0, true); } catch { continue; }
+                        circles.Add((edge.Reference, arc.Radius, point));
+                    }
+                }
+            }
+
+            if (circles.Count == 0) return 0;
+
+            var created = 0;
+
+            foreach (var parameter in candidates)
+            {
+                var target = Ft(Math.Abs(parameter.Number.Value));
+                var match = circles.FirstOrDefault(circle =>
+                    Math.Abs(circle.Radius - target) < 0.5 / MmPerFoot);
+                if (match.Reference == null) continue;
+
+                var familyParameter = FindParameter(document.FamilyManager, parameter.Name);
+                if (familyParameter == null) continue;
+
+                try
+                {
+                    using (var step = new Transaction(document, "Family Agent — radial dimension"))
+                    {
+                        step.Start();
+
+                        var dimension = document.FamilyCreate.NewRadialDimension(
+                            skeleton.Plan,
+                            match.Reference,
+                            match.Point);
+
+                        if (dimension == null)
+                        {
+                            step.RollBack();
+                            continue;
+                        }
+
+                        dimension.FamilyLabel = familyParameter;
+                        if (dimension.FamilyLabel == null)
+                        {
+                            step.RollBack();
+                            continue;
+                        }
+
+                        if (step.Commit() == TransactionStatus.Committed)
+                        {
+                            created += 1;
+                            solved.Add(parameter.Name);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    if (warnings.Count < 40)
+                    {
+                        warnings.Add($"Radial dimension for \"{parameter.Name}\": {ex.Message}");
+                    }
+                }
             }
 
             return created;
@@ -485,11 +609,22 @@ namespace FamilyAgent.Addin
             }
         }
 
-        private static FaceCandidate ChooseFace(List<FaceCandidate> faces, PlaneAxis axis)
+        private static FaceCandidate ChooseFace(
+            List<FaceCandidate> faces,
+            PlaneAxis axis,
+            ResolvedAnchor anchor)
         {
             var onAxis = faces.Where(candidate => candidate.Axis == axis).ToList();
             if (onAxis.Count == 0) return null;
             if (onAxis.Count == 1) return onAxis[0];
+
+            var side = anchor?.ForAxis(
+                axis == PlaneAxis.X ? "x" : axis == PlaneAxis.Y ? "y" : "z");
+
+            // An explicit anchor is a modelling decision ("this door grows to the right"),
+            // so honour it before the default outermost-face guess.
+            if (side == "min") return onAxis.OrderBy(candidate => candidate.Coordinate).First();
+            if (side == "max") return onAxis.OrderByDescending(candidate => candidate.Coordinate).First();
 
             // The face furthest from the datum wins: that is the one an overall dimension
             // measures, and the one that cannot collapse the form onto itself.
@@ -497,39 +632,34 @@ namespace FamilyAgent.Addin
         }
 
         /// <summary>
-        /// Build-time proof that the constraints work: drags a labelled reference plane and
-        /// reports whether the geometry followed, then puts it back. The bridge cannot use
-        /// FamilyManager.Set, but moving the plane is the same edit the user makes in Revit.
-        /// Runs only with FAMILY_AGENT_PROBE=1.
+        /// Build-time proof that the parameters work: changes each base length by 10%, asks
+        /// Revit to regenerate, and reports whether the geometry followed. Setting the
+        /// family parameter is the same edit the user makes in the type dialog, so it tests
+        /// plane dimensions and face dimensions alike. The transaction is rolled back.
         /// </summary>
-        private static string SelfCheck(Document document, PlaneSkeleton skeleton, CoreParameterSet parameters)
+        private static string SelfCheck(Document document, CoreParameterSet parameters)
         {
             var report = new StringBuilder();
+            var manager = document.FamilyManager;
+            var currentType = manager.CurrentType;
+            if (currentType == null) return "no current type; ";
+
             var before = ModelSignature(document);
             var tried = 0;
 
             foreach (var parameter in parameters.Ordered)
             {
-                if (tried >= 6) break;
+                if (tried >= 4) break;
                 if (!IsType(parameter.Type, "Length")) continue;
                 if (!string.IsNullOrWhiteSpace(parameter.Formula)) continue;
                 if (!parameter.Number.HasValue) continue;
 
-                var millimetres = Math.Abs(parameter.Number.Value);
-                if (millimetres < 1) continue;
+                var familyParameter = FindParameter(manager, parameter.Name);
+                if (familyParameter == null) continue;
 
-                var target = Ft(millimetres);
-                var candidate = skeleton.Planes.FirstOrDefault(entry =>
-                    entry.Drives &&
-                    Math.Abs(Math.Abs(entry.Coordinate) - target) < 1.0 / MmPerFoot);
-
-                if (candidate == null) continue;
+                var current = currentType.AsDouble(familyParameter);
+                if (!current.HasValue || Math.Abs(current.Value) < 1e-9) continue;
                 tried += 1;
-
-                var delta = new XYZ(
-                    candidate.Axis == PlaneAxis.X ? 50.0 / MmPerFoot : 0,
-                    candidate.Axis == PlaneAxis.Y ? 50.0 / MmPerFoot : 0,
-                    candidate.Axis == PlaneAxis.Z ? 50.0 / MmPerFoot : 0);
 
                 var label = parameter.Name + ": ";
 
@@ -538,7 +668,7 @@ namespace FamilyAgent.Addin
                     using (var transaction = SilentTransaction(document, "self-check", new FailureCollector()))
                     {
                         transaction.Start();
-                        ElementTransformUtils.MoveElement(document, candidate.Plane.Id, delta);
+                        manager.Set(familyParameter, current.Value * 1.1 + 0.001);
                         document.Regenerate();
 
                         report.Append(label)
@@ -566,11 +696,19 @@ namespace FamilyAgent.Addin
             var signature = 0.0;
             var options = new Options { ComputeReferences = false, DetailLevel = ViewDetailLevel.Fine };
 
-            foreach (var extrusion in new FilteredElementCollector(document)
-                         .OfClass(typeof(Extrusion))
-                         .Cast<Extrusion>())
+            var forms = new FilteredElementCollector(document)
+                .OfClass(typeof(Extrusion))
+                .Cast<Element>()
+                .Concat(new FilteredElementCollector(document)
+                    .OfClass(typeof(Blend))
+                    .Cast<Element>())
+                .Concat(new FilteredElementCollector(document)
+                    .OfClass(typeof(Revolution))
+                    .Cast<Element>());
+
+            foreach (var form in forms)
             {
-                var geometry = extrusion.get_Geometry(options);
+                var geometry = form.get_Geometry(options);
                 if (geometry == null) continue;
 
                 foreach (var geometryObject in geometry)

@@ -109,6 +109,26 @@ namespace FamilyAgent.Addin
 
     [Transaction(TransactionMode.Manual)]
     [Regeneration(RegenerationOption.Manual)]
+    public sealed class RebuildCommand : IExternalCommand
+    {
+        public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)
+        {
+            try
+            {
+                var result = FamilyBuilder.Rebuild(commandData.Application);
+                Commands.ShowResult(result);
+            }
+            catch (Exception ex)
+            {
+                TaskDialog.Show("Family Agent", ex.Message);
+            }
+
+            return Result.Succeeded;
+        }
+    }
+
+    [Transaction(TransactionMode.Manual)]
+    [Regeneration(RegenerationOption.Manual)]
     public sealed class ToggleBridgeCommand : IExternalCommand
     {
         public Result Execute(ExternalCommandData commandData, ref string message, ElementSet elements)

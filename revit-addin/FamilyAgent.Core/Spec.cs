@@ -74,7 +74,13 @@ namespace FamilyAgent.Core
         public Vec3 Origin { get; set; }
         public Vec3 Size { get; set; }
         public Vec3 Base { get; set; }
+        public Vec3 Center { get; set; }
         public Num? Radius { get; set; }
+        public Num? RadiusBottom { get; set; }
+        public Num? RadiusTop { get; set; }
+        public Num? TubeRadius { get; set; }
+        public Num? Angle { get; set; }
+        public Num? StartAngle { get; set; }
         public Num? InnerRadius { get; set; }
         public Num? Height { get; set; }
         public Num? RotationZ { get; set; }
@@ -94,6 +100,13 @@ namespace FamilyAgent.Core
         public Num Spacing { get; set; }
     }
 
+    public sealed class PartAnchor
+    {
+        public string X { get; set; }
+        public string Y { get; set; }
+        public string Z { get; set; }
+    }
+
     public sealed class FamilyPart
     {
         public string Id { get; set; }
@@ -103,6 +116,7 @@ namespace FamilyAgent.Core
         public SolidPrimitive Solid { get; set; }
         public List<SolidPrimitive> Cuts { get; set; }
         public PartArray Array { get; set; }
+        public PartAnchor Anchor { get; set; }
     }
 
     public sealed class FamilyParameter

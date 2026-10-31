@@ -18,6 +18,9 @@ namespace FamilyAgent.Addin
                     "0",
                     StringComparison.OrdinalIgnoreCase))
             {
+                // Idling does not fire on the Revit start screen, so the listener has to
+                // start here; build requests are queued through an ExternalEvent and only
+                // execute when Revit is idle.
                 BridgeServer.Instance.Start(Commands.BridgePort());
             }
 
@@ -92,8 +95,20 @@ namespace FamilyAgent.Addin
                 ToolTip = "Start or stop the local studio bridge (127.0.0.1:8765).",
             };
 
+            var rebuild = new PushButtonData(
+                "FamilyAgentRebuild",
+                "Rebuild\nfrom spec",
+                assemblyPath,
+                "FamilyAgent.Addin.Commands.RebuildCommand")
+            {
+                ToolTip = "Rebuild the geometry from the spec stored in this family, using the current parameter values.",
+                LongDescription =
+                    "Recomputes every part from the stored Family Agent spec after you edit parameters in Revit.",
+            };
+
             panel.AddItem(buildFile);
             panel.AddItem(buildPending);
+            panel.AddItem(rebuild);
             panel.AddSeparator();
             panel.AddItem(bridge);
         }
