@@ -116,6 +116,25 @@ namespace FamilyAgent.Addin
             try
             {
                 var result = FamilyBuilder.Rebuild(commandData.Application);
+
+                // The bridge saves the document itself; the ribbon command must do the
+                // same or the rebuild is lost when Revit closes.
+                if (result.Ok)
+                {
+                    try
+                    {
+                        var document = commandData.Application.ActiveUIDocument?.Document;
+                        if (document != null && !document.IsReadOnly && !string.IsNullOrWhiteSpace(document.PathName))
+                        {
+                            document.Save();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        result.Warnings.Add("The rebuilt family could not be saved: " + ex.Message);
+                    }
+                }
+
                 Commands.ShowResult(result);
             }
             catch (Exception ex)

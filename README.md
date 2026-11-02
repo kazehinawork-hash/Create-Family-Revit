@@ -176,9 +176,12 @@ về nửa cạnh ngắn), `cylinder` (base = tâm mặt đáy, `height` âm đ�
 chạy ngược trục, `innerRadius` để làm ống), `frustum` (côn/cụt nón: `radiusBottom`,
 `radiusTop`, `radiusTop: 0` thành hình nón — dùng cho côn thu, cổ gió loe, vòng quạt),
 `bend` (cút tròn: tiết diện tròn `tubeRadius` quay quanh trục ở khoảng cách `radius`,
-`angle` mặc định 90°; `plane` chọn mặt phẳng), `prism` (polygon 2D extruded).
+`angle` mặc định 90°; `plane` chọn mặt phẳng), `prism` (polygon 2D extruded, có
+`holes` để cắt lỗ ngay trong cùng form native), `loft` (2+ profile xếp theo `axis` tại
+các mốc `at` tăng dần — dùng cho chuyển tiết diện chữ nhật ↔ tròn, reducer).
 `cuts` trừ khối, `array` nhân bản theo trục, `anchor` ghim mặt nào bị điều khiển mỗi trục
-(`{"x":"min","y":"max"}`).
+(`{"x":"min","y":"max"}`). Parameter `Length` có thể khai báo `axis: "x|y|z"` để chỉ
+định trục dimension thay vì đoán theo tên.
 
 Cú pháp biểu thức dùng chung cho cả TS và C#: `+ - * / % ^`, `abs sqrt round roundup
 rounddown sin cos tan asin acos atan exp ln log pi()` (lượng giác theo độ), hằng số độ dài
@@ -237,10 +240,11 @@ node scripts/try-design.mjs "Horizontal fan coil 080, 1910 x 1600 x 560 casing"
 
 ## 8. Giới hạn hiện tại
 
-- **Hình học dùng form native** (Extrusion / Void / Blend / Revolution) và được lock vào
-  reference plane ở **một mặt mỗi trục**, với dimension mặt–mặt cùng solid. Vì vậy đổi
-  tham số làm đúng mặt được gắn di chuyển; các part khác chỉ chạy theo nếu toạ độ của chúng
-  là formula tham chiếu cùng tham số. Với các trường hợp solver chưa compile được, dùng
+- **Hình học dùng form native** (Extrusion / Void / Blend / Revolution / SweptBlend) và được
+  lock vào reference plane ở **một mặt mỗi trục**, với dimension mặt–mặt cùng solid. Part có
+  `cuts` hoặc `innerRadius` được **boolean + `FreeFormElement`** để cut chỉ tác dụng trong
+  part đó; các part này không còn native form/constraint, đổi tham số phải dùng
+  **Rebuild from spec**. Với các trường hợp solver chưa compile được, dùng
   **Rebuild from spec** để dựng lại chính xác như studio.
 - **Frustum** dựng bằng `Revolution` (native form). Chiều cao drive được nhờ dimension
   mặt–mặt; bán kính có radial dimension nhưng Revit coi đó là **reference dimension** nên
@@ -248,12 +252,25 @@ node scripts/try-design.mjs "Horizontal fan coil 080, 1910 x 1600 x 560 casing"
   chạm trục ("operation is not permitted in this type of family"), nên muốn bán kính drive
   cần nested family hoặc một sketch profile khác. Build trả `flex` trong stats để thấy
   tham số nào còn "still".
-- **Bend** dựng bằng `Revolution` (native form) nên hình đúng, nhưng profile đang "nung"
+- **Bend**: dựng bằng `Revolution` (native form) nên hình đúng, nhưng profile đang "nung"
   tại lúc build: `radius`/`tubeRadius` chưa có dimension nên chưa drive. `anchor` hiện chỉ
   chọn mặt bị lock mỗi trục (vẫn một mặt/trục), chưa phải ràng buộc hai chiều đầy đủ.
+- **Loft**: Revit dựng bằng `SweptBlend` native (`NewSweptBlend`) với **đúng 2 section**;
+  profile được resample về cùng số điểm nên chuyển được chữ nhật ↔ tròn. Spec có >2 section
+  vẫn preview được trong studio nhưng `.rfa` chỉ dựng section đầu/cuối (có warning); muốn
+  nhiều đoạn thì tách thành nhiều part. Loft chưa có dimension/constraint nên đổi tham số
+  phải dùng **Rebuild from spec**.
+- **Cut trong Revit**: part có `cuts`/`innerRadius` được boolean ngay trong builder và lưu
+  bằng `FreeFormElement`, nên void không còn cắt part khác. Đổi lại part đó mất native
+  form/constraint; `Rebuild from spec` là đường cập nhật. Part không có cut vẫn native.
+- **MEP connector**: đã tạo `ConnectorElement` cho duct/pipe/electrical theo `origin` +
+  `directionVector` trỏ vào một face của form. Flow/pressure trong spec hiện chưa ghi vào
+  connector; chỉ hình học kết nối và system type được tạo.
+- **Chưa có sweep theo polyline và transform xoay tự do**: hình học hiện chỉ có trục X/Y/Z
+  hoặc `plane` cố định; ống/thanh xiên cần thêm primitive mới.
 - Formula nào Revit từ chối (sai đơn vị, tham chiếu vòng) sẽ được thay bằng giá trị đã tính,
   kèm cảnh báo trong kết quả build.
-- Chưa có MEP connector, chưa tạo nhiều type, chưa có tag/schedule/annotation.
+- Chưa tạo nhiều type, chưa có tag/schedule/annotation.
 - Add-in build cho đúng phiên bản Revit đang cài:
   `install.ps1 -RevitVersion 2025 -p:RevitInstallDir "..."` nếu cần bản khác.
 

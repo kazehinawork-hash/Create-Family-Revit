@@ -129,7 +129,9 @@ namespace FamilyAgent.Addin
                 {
                     // Voids are cutters: constraining them makes Revit fail to rebuild the
                     // cut ("Can't make Extrusion") as soon as a driving parameter moves.
-                    var solidForm = form as Extrusion;
+                    // Extrusions, blends and revolutions all derive from GenericForm; the
+                    // blend/revolution cases still get the axis-aligned faces they expose.
+                    var solidForm = form as GenericForm;
                     if (solidForm == null || !solidForm.IsSolid) continue;
 
                     var faces = new List<FaceCandidate>();
@@ -247,7 +249,7 @@ namespace FamilyAgent.Addin
                         var familyParameter = FindParameter(document.FamilyManager, name);
                         if (familyParameter == null) continue;
 
-                        var axis = AxisFor(name);
+                        var axis = AxisFor(parameter.Name, parameter.Axis);
 
                         var done = false;
                         foreach (var candidateAxis in new[] { axis, PlaneAxis.X, PlaneAxis.Y, PlaneAxis.Z })
@@ -704,6 +706,16 @@ namespace FamilyAgent.Addin
                     .Cast<Element>())
                 .Concat(new FilteredElementCollector(document)
                     .OfClass(typeof(Revolution))
+                    .Cast<Element>())
+                .Concat(new FilteredElementCollector(document)
+                    .OfClass(typeof(Form))
+                    .Cast<Element>()
+                    .Where(element => element.GetType() == typeof(Form)))
+                .Concat(new FilteredElementCollector(document)
+                    .OfClass(typeof(SweptBlend))
+                    .Cast<Element>())
+                .Concat(new FilteredElementCollector(document)
+                    .OfClass(typeof(FreeFormElement))
                     .Cast<Element>());
 
             foreach (var form in forms)
@@ -765,12 +777,22 @@ namespace FamilyAgent.Addin
             }
         }
 
-        private static PlaneAxis AxisFor(string name)
+        private static PlaneAxis AxisFor(string name, string explicitAxis = null)
         {
+            var requested = (explicitAxis ?? string.Empty).Trim().ToLowerInvariant();
+            if (requested == "x") return PlaneAxis.X;
+            if (requested == "y") return PlaneAxis.Y;
+            if (requested == "z") return PlaneAxis.Z;
+
             var text = (name ?? string.Empty).ToLowerInvariant();
 
-            if (text.Contains("width") || text.Contains("left") || text.Contains("right")) return PlaneAxis.X;
-            if (text.Contains("depth") || text.Contains("front") || text.Contains("back")) return PlaneAxis.Y;
+            if (text.Contains("width") || text.Contains("length") || text.Contains("left") ||
+                text.Contains("right") || text.Contains("rộng") || text.Contains("ngang") ||
+                text.Contains("dài") || text.Contains("trái") || text.Contains("phải"))
+                return PlaneAxis.X;
+            if (text.Contains("depth") || text.Contains("front") || text.Contains("back") ||
+                text.Contains("sâu") || text.Contains("trước") || text.Contains("sau"))
+                return PlaneAxis.Y;
             return PlaneAxis.Z;
         }
 

@@ -216,6 +216,9 @@ namespace FamilyAgent.Addin
                     document, skeleton, forms, parameters, solvedFaces, result.Warnings);
                 var inert = skeleton.Inert().Where(name => !solvedFaces.Contains(name)).ToList();
 
+                stage = "creating MEP connectors";
+                var connectors = CreateConnectors(document, spec, parameters, forms, result.Warnings);
+
                 stage = "self-checking the parameters";
                 var flex = string.Empty;
                 try
@@ -237,6 +240,9 @@ namespace FamilyAgent.Addin
                     parts = model.Parts.Count,
                     instances = model.Instances,
                     forms = forms.Count(f => f is Extrusion),
+                    lofts = forms.Count(f => f.GetType() == typeof(Form)),
+                    sweptBlends = forms.Count(f => f is SweptBlend),
+                    freeforms = forms.Count(f => f is FreeFormElement),
                     voids = forms.Count(f => f is Extrusion extrusion && !extrusion.IsSolid),
                     refPlanes = skeleton.Created,
                     refDimensions,
@@ -248,7 +254,9 @@ namespace FamilyAgent.Addin
                     flex,
                     faceDimensions,
                     radialDimensions,
+                    connectors,
                     parameters = parameters.Ordered.Count,
+                    volumeMm3 = Math.Round(TotalVolume(forms) * Math.Pow(MmPerFoot, 3)),
                     bounds = new
                     {
                         x = Math.Round(model.Bounds.Size.X),
@@ -388,6 +396,9 @@ namespace FamilyAgent.Addin
                     document, skeleton, forms, parameters, solvedFaces, result.Warnings);
                 var inert = skeleton.Inert().Where(name => !solvedFaces.Contains(name)).ToList();
 
+                stage = "creating MEP connectors";
+                var connectors = CreateConnectors(document, spec, parameters, forms, result.Warnings);
+
                 stage = "self-checking the parameters";
                 var flex = string.Empty;
                 try
@@ -409,6 +420,9 @@ namespace FamilyAgent.Addin
                     parts = model.Parts.Count,
                     instances = model.Instances,
                     forms = forms.Count(f => f is Extrusion),
+                    lofts = forms.Count(f => f.GetType() == typeof(Form)),
+                    sweptBlends = forms.Count(f => f is SweptBlend),
+                    freeforms = forms.Count(f => f is FreeFormElement),
                     voids = forms.Count(f => f is Extrusion extrusion && !extrusion.IsSolid),
                     refPlanes = skeleton.Created,
                     refDimensions,
@@ -420,7 +434,9 @@ namespace FamilyAgent.Addin
                     flex,
                     faceDimensions,
                     radialDimensions,
+                    connectors,
                     parameters = parameters.Ordered.Count,
+                    volumeMm3 = Math.Round(TotalVolume(forms) * Math.Pow(MmPerFoot, 3)),
                     bounds = new
                     {
                         x = Math.Round(model.Bounds.Size.X),
@@ -453,6 +469,27 @@ namespace FamilyAgent.Addin
             }
 
             return result;
+        }
+
+        private static double TotalVolume(IList<Element> forms)
+        {
+            var volume = 0.0;
+            var options = new Options { ComputeReferences = false, DetailLevel = ViewDetailLevel.Fine };
+            foreach (var form in forms)
+            {
+                var generic = form as GenericForm;
+                if (generic == null || !generic.IsSolid) continue;
+
+                GeometryElement geometry;
+                try { geometry = form.get_Geometry(options); } catch { continue; }
+                if (geometry == null) continue;
+
+                foreach (var item in geometry)
+                {
+                    if (item is Solid solid && solid.Volume > 0) volume += solid.Volume;
+                }
+            }
+            return volume;
         }
 
         /// <summary>Current numeric values of the family, in spec units (mm, degrees).</summary>
@@ -508,8 +545,12 @@ namespace FamilyAgent.Addin
                 ids.AddRange(new FilteredElementCollector(document).OfClass(typeof(Blend)).ToElementIds());
                 ids.AddRange(new FilteredElementCollector(document).OfClass(typeof(Revolution)).ToElementIds());
                 ids.AddRange(new FilteredElementCollector(document).OfClass(typeof(Sweep)).ToElementIds());
+                ids.AddRange(new FilteredElementCollector(document).OfClass(typeof(SweptBlend)).ToElementIds());
+                ids.AddRange(new FilteredElementCollector(document).OfClass(typeof(Form)).ToElementIds());
+                ids.AddRange(new FilteredElementCollector(document).OfClass(typeof(FreeFormElement)).ToElementIds());
                 ids.AddRange(new FilteredElementCollector(document).OfClass(typeof(CurveElement)).ToElementIds());
                 ids.AddRange(new FilteredElementCollector(document).OfClass(typeof(ReferencePlane)).ToElementIds());
+                ids.AddRange(new FilteredElementCollector(document).OfClass(typeof(ConnectorElement)).ToElementIds());
 
                 foreach (var id in ids)
                 {
@@ -939,10 +980,16 @@ namespace FamilyAgent.Addin
         /// </summary>
         private static PlaneAxis ChooseAxis(
             string name,
+            string explicitAxis,
             double millimetres,
             ResolvedModel model,
             CoordinateSet coordinates)
         {
+            var requested = (explicitAxis ?? string.Empty).Trim().ToLowerInvariant();
+            if (requested == "x") return PlaneAxis.X;
+            if (requested == "y") return PlaneAxis.Y;
+            if (requested == "z") return PlaneAxis.Z;
+
             var preferred = AxisFor(name);
             var order = new[] { preferred, PlaneAxis.X, PlaneAxis.Y, PlaneAxis.Z };
 
@@ -1071,7 +1118,7 @@ namespace FamilyAgent.Addin
                     ? familyParameter
                     : null;
 
-                var axis = ChooseAxis(parameter.Name, value, model, coordinates);
+                var axis = ChooseAxis(parameter.Name, parameter.Axis, value, model, coordinates);
 
                 if (label != null)
                 {
