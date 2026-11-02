@@ -68,6 +68,22 @@ namespace FamilyAgent.Core
         public bool IsSet => Math.Abs(X.Value) > double.Epsilon || Math.Abs(Y.Value) > double.Epsilon || Math.Abs(Z.Value) > double.Epsilon || X.IsExpression || Y.IsExpression || Z.IsExpression;
     }
 
+    public sealed class LoftProfile
+    {
+        public string Kind { get; set; }
+        public Num? Radius { get; set; }
+        public Num? Width { get; set; }
+        public Num? Height { get; set; }
+        public Num? CornerRadius { get; set; }
+        public List<List<Num>> Points { get; set; }
+    }
+
+    public sealed class LoftSection
+    {
+        public Num At { get; set; }
+        public LoftProfile Profile { get; set; }
+    }
+
     public sealed class SolidPrimitive
     {
         public string Kind { get; set; }
@@ -90,6 +106,8 @@ namespace FamilyAgent.Core
         public string Axis { get; set; }
         public string Plane { get; set; }
         public List<List<Num>> Points { get; set; }
+        public List<List<List<Num>>> Holes { get; set; }
+        public List<LoftSection> Sections { get; set; }
         public int? Segments { get; set; }
     }
 
@@ -128,6 +146,7 @@ namespace FamilyAgent.Core
         public string Formula { get; set; }
         public bool Instance { get; set; }
         public string Description { get; set; }
+        public string Axis { get; set; }
     }
 
     public sealed class MaterialDef
@@ -136,6 +155,23 @@ namespace FamilyAgent.Core
         public string Color { get; set; }
         public double? Metalness { get; set; }
         public double? Roughness { get; set; }
+    }
+
+    public sealed class MepConnector
+    {
+        public string Id { get; set; }
+        public string Name { get; set; }
+        public string SystemType { get; set; }
+        public string Shape { get; set; }
+        public string Direction { get; set; }
+        public Vec3 Origin { get; set; }
+        public Vec3 DirectionVector { get; set; }
+        public Num? Width { get; set; }
+        public Num? Height { get; set; }
+        public Num? Diameter { get; set; }
+        public Num? Flow { get; set; }
+        public string FlowUnit { get; set; }
+        public Num? PressureDrop { get; set; }
     }
 
     public sealed class FamilySpec
@@ -151,6 +187,7 @@ namespace FamilyAgent.Core
         public string Description { get; set; }
         public List<FamilyParameter> Parameters { get; set; } = new List<FamilyParameter>();
         public List<FamilyPart> Parts { get; set; } = new List<FamilyPart>();
+        public List<MepConnector> Connectors { get; set; } = new List<MepConnector>();
         public List<MaterialDef> Materials { get; set; }
         public List<string> Notes { get; set; }
     }

@@ -54,6 +54,194 @@ function axisDirection(axis: "x" | "y" | "z", sign: number): THREE.Vector3 {
   return direction;
 }
 
+function cylinderSegments(radius: number, requested: number): number {
+  const chord = Math.ceil((2 * Math.PI * Math.max(Math.abs(radius), 1)) / 10);
+  return Math.min(96, Math.max(12, requested, chord));
+}
+
+function pushTriangle(indices: number[], handed: number, a: number, b: number, c: number): void {
+  if (handed >= 0) indices.push(a, b, c);
+  else indices.push(a, c, b);
+}
+
+/**
+ * Three's TorusGeometry always lies in the XY plane around Z. A bend needs the ring in
+ * the plane named by the spec (xy / xz / yz), a start angle, and flat end caps so it
+ * matches the solid Revolution built in Revit.
+ */
+function bendGeometry(solid: Extract<ResolvedSolid, { kind: "bend" }>): THREE.BufferGeometry {
+  const u =
+    solid.plane === "yz" ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
+  const v =
+    solid.plane === "xy" ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, 0, 1);
+  const n =
+    solid.plane === "xy"
+      ? new THREE.Vector3(0, 0, 1)
+      : solid.plane === "xz"
+        ? new THREE.Vector3(0, 1, 0)
+        : new THREE.Vector3(1, 0, 0);
+  const handed = u.clone().cross(v).dot(n) >= 0 ? 1 : -1;
+
+  const start = (solid.startAngle * Math.PI) / 180;
+  const sweep = (solid.angle * Math.PI) / 180;
+  const tubular = Math.min(
+    96,
+    Math.max(8, solid.segments, Math.ceil((Math.abs(sweep) * solid.radius) / 10)),
+  );
+  const radial = Math.min(96, Math.max(8, solid.segments));
+  const rows = radial + 1;
+  const positions: number[] = [];
+  const normals: number[] = [];
+  const indices: number[] = [];
+
+  const base = new THREE.Vector3(solid.center.x, solid.center.y, solid.center.z);
+  const pointAt = (angle: number): { center: THREE.Vector3; radial: THREE.Vector3 } => {
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const radialDirection = new THREE.Vector3()
+      .addScaledVector(u, cos)
+      .addScaledVector(v, sin)
+      .normalize();
+    return {
+      center: base.clone().addScaledVector(radialDirection, solid.radius),
+      radial: radialDirection,
+    };
+  };
+
+  for (let i = 0; i <= tubular; i += 1) {
+    const { center, radial: radialDirection } = pointAt(start + (sweep * i) / tubular);
+    for (let j = 0; j <= radial; j += 1) {
+      const phi = (2 * Math.PI * j) / radial;
+      const normal = new THREE.Vector3()
+        .addScaledVector(radialDirection, Math.cos(phi))
+        .addScaledVector(n, Math.sin(phi));
+      const point = center.clone().addScaledVector(normal, solid.tubeRadius);
+      positions.push(point.x, point.y, point.z);
+      normals.push(normal.x, normal.y, normal.z);
+    }
+  }
+
+  for (let i = 0; i < tubular; i += 1) {
+    for (let j = 0; j < radial; j += 1) {
+      const a = i * rows + j;
+      const b = (i + 1) * rows + j;
+      const c = (i + 1) * rows + j + 1;
+      const d = i * rows + j + 1;
+      pushTriangle(indices, handed, a, b, d);
+      pushTriangle(indices, handed, b, c, d);
+    }
+  }
+
+  // A partial revolution has a flat disc at each end in Revit; without caps the preview
+  // looks like an open pipe.
+  if (Math.abs(sweep) < Math.PI * 2 - 1e-9) {
+    const caps = [
+      { ring: 0, angle: start, sign: -1 },
+      { ring: tubular, angle: start + sweep, sign: 1 },
+    ];
+
+    for (const cap of caps) {
+      const { center } = pointAt(cap.angle);
+      const tangent = new THREE.Vector3()
+        .addScaledVector(u, -Math.sin(cap.angle))
+        .addScaledVector(v, Math.cos(cap.angle))
+        .normalize();
+      const normal = tangent.multiplyScalar(cap.sign);
+      const centerIndex = positions.length / 3;
+      positions.push(center.x, center.y, center.z);
+      normals.push(normal.x, normal.y, normal.z);
+
+      const ring = cap.ring * rows;
+      for (let j = 0; j < radial; j += 1) {
+        const a = ring + j;
+        const b = ring + j + 1;
+        if (cap.sign < 0) pushTriangle(indices, handed, centerIndex, a, b);
+        else pushTriangle(indices, handed, centerIndex, b, a);
+      }
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
+  geometry.setIndex(indices);
+  return geometry;
+}
+
+function loftPoint(axis: "x" | "y" | "z", at: number, a: number, b: number): THREE.Vector3 {
+  if (axis === "x") return new THREE.Vector3(at, a, b);
+  if (axis === "y") return new THREE.Vector3(a, at, b);
+  return new THREE.Vector3(a, b, at);
+}
+
+function signedVolume(positions: number[], indices: number[]): number {
+  let volume = 0;
+  for (let index = 0; index < indices.length; index += 3) {
+    const ia = indices[index] * 3;
+    const ib = indices[index + 1] * 3;
+    const ic = indices[index + 2] * 3;
+    const ax = positions[ia];
+    const ay = positions[ia + 1];
+    const az = positions[ia + 2];
+    const bx = positions[ib];
+    const by = positions[ib + 1];
+    const bz = positions[ib + 2];
+    const cx = positions[ic];
+    const cy = positions[ic + 1];
+    const cz = positions[ic + 2];
+    volume += ax * (by * cz - bz * cy) - ay * (bx * cz - bz * cx) + az * (bx * cy - by * cx);
+  }
+  return volume / 6;
+}
+
+function loftGeometry(solid: Extract<ResolvedSolid, { kind: "loft" }>): THREE.BufferGeometry {
+  const sections = solid.sections;
+  const count = sections[0]?.points.length ?? 0;
+  if (sections.length < 2 || count < 3) return new THREE.BufferGeometry();
+
+  const positions: number[] = [];
+  for (const section of sections) {
+    for (const [a, b] of section.points) {
+      const point = loftPoint(solid.axis, section.at, a, b);
+      positions.push(point.x, point.y, point.z);
+    }
+  }
+
+  const indices: number[] = [];
+  for (let section = 0; section < sections.length - 1; section += 1) {
+    for (let point = 0; point < count; point += 1) {
+      const next = (point + 1) % count;
+      const a = section * count + point;
+      const b = (section + 1) * count + point;
+      const c = (section + 1) * count + next;
+      const d = section * count + next;
+      indices.push(a, b, d, b, c, d);
+    }
+  }
+
+  const contour = sections[0].points.map(([a, b]) => new THREE.Vector2(a, b));
+  const triangles = THREE.ShapeUtils.triangulateShape(contour, []);
+  const last = (sections.length - 1) * count;
+  for (const [a, b, c] of triangles) {
+    indices.push(a, c, b);
+    indices.push(last + a, last + b, last + c);
+  }
+
+  if (signedVolume(positions, indices) < 0) {
+    for (let index = 0; index < indices.length; index += 3) {
+      const swap = indices[index + 1];
+      indices[index + 1] = indices[index + 2];
+      indices[index + 2] = swap;
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
 export function solidGeometry(solid: ResolvedSolid): THREE.BufferGeometry {
   if (solid.kind === "box") {
     const { origin, size } = solid;
@@ -83,8 +271,7 @@ export function solidGeometry(solid: ResolvedSolid): THREE.BufferGeometry {
   if (solid.kind === "cylinder") {
     const height = Math.abs(solid.height);
     // Chord length ~10 mm: small pipes stay light, large drums get smooth circles.
-    const adaptiveSegments = Math.ceil((2 * Math.PI * solid.radius) / 10);
-    const segments = Math.min(96, Math.max(16, solid.segments, adaptiveSegments));
+    const segments = cylinderSegments(solid.radius, solid.segments);
     let geometry: THREE.BufferGeometry;
 
     if (solid.innerRadius > 0) {
@@ -111,11 +298,14 @@ export function solidGeometry(solid: ResolvedSolid): THREE.BufferGeometry {
   if (solid.kind === "frustum") {
     const height = Math.abs(solid.height);
     const radius = Math.max(solid.radiusBottom, solid.radiusTop);
-    const adaptiveSegments = Math.ceil((2 * Math.PI * radius) / 10);
-    const segments = Math.min(96, Math.max(16, solid.segments, adaptiveSegments));
+    const segments = cylinderSegments(radius, solid.segments);
+    // A negative height leaves the base where Revit puts it: the radii swap, then the
+    // whole form runs backwards along the axis.
+    const topRadius = solid.height >= 0 ? solid.radiusTop : solid.radiusBottom;
+    const bottomRadius = solid.height >= 0 ? solid.radiusBottom : solid.radiusTop;
     const geometry = new THREE.CylinderGeometry(
-      solid.radiusTop,
-      solid.radiusBottom,
+      topRadius,
+      bottomRadius,
       height,
       segments,
       1,
@@ -131,37 +321,17 @@ export function solidGeometry(solid: ResolvedSolid): THREE.BufferGeometry {
   }
 
   if (solid.kind === "bend") {
-    const arc = (solid.angle * Math.PI) / 180;
-    const tubular = Math.min(96, Math.max(8, solid.segments));
-    const geometry = new THREE.TorusGeometry(
-      solid.radius,
-      solid.tubeRadius,
-      12,
-      tubular,
-      arc,
-    );
+    return bendGeometry(solid);
+  }
 
-    // Three builds the torus around +Y with the ring in XZ; rotate that axis onto the
-    // plane normal, then apply the start angle around the same axis.
-    const axis =
-      solid.plane === "xy"
-        ? new THREE.Vector3(0, 0, 1)
-        : solid.plane === "xz"
-          ? new THREE.Vector3(0, 1, 0)
-          : new THREE.Vector3(1, 0, 0);
-    geometry.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(UP, axis));
-
-    if (solid.startAngle) {
-      geometry.applyMatrix4(
-        new THREE.Matrix4().makeRotationAxis(axis, (solid.startAngle * Math.PI) / 180),
-      );
-    }
-
-    geometry.translate(solid.center.x, solid.center.y, solid.center.z);
-    return geometry;
+  if (solid.kind === "loft") {
+    return loftGeometry(solid);
   }
 
   const shape = new THREE.Shape(solid.points.map(([a, b]) => new THREE.Vector2(a, b)));
+  for (const hole of solid.holes) {
+    shape.holes.push(new THREE.Path(hole.map(([a, b]) => new THREE.Vector2(a, b))));
+  }
   const depth = Math.max(Math.abs(solid.to - solid.from), 0.01);
   const geometry = new THREE.ExtrudeGeometry(shape, {
     depth,

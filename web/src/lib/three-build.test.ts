@@ -61,6 +61,172 @@ describe("solid geometry", () => {
   });
 });
 
+describe("bend geometry", () => {
+  const bend = (plane: "xy" | "xz" | "yz"): ResolvedSolid => ({
+    kind: "bend",
+    center: { x: 0, y: 0, z: 0 },
+    radius: 150,
+    tubeRadius: 40,
+    angle: 90,
+    startAngle: 0,
+    plane,
+    segments: 24,
+  });
+
+  const outward = (geometry: THREE.BufferGeometry) => {
+    const position = geometry.getAttribute("position");
+    const normal = geometry.getAttribute("normal");
+    const index = geometry.getIndex();
+    if (!index) throw new Error("expected indexed geometry");
+    const a = new THREE.Vector3();
+    const b = new THREE.Vector3();
+    const c = new THREE.Vector3();
+    const cross = new THREE.Vector3();
+    const average = new THREE.Vector3();
+    for (let i = 0; i < index.count; i += 3) {
+      const ia = index.getX(i);
+      const ib = index.getX(i + 1);
+      const ic = index.getX(i + 2);
+      a.fromBufferAttribute(position, ia);
+      b.fromBufferAttribute(position, ib);
+      c.fromBufferAttribute(position, ic);
+      cross.crossVectors(b.clone().sub(a), c.clone().sub(a));
+      if (cross.lengthSq() < 1e-9) continue;
+      average.set(
+        normal.getX(ia) + normal.getX(ib) + normal.getX(ic),
+        normal.getY(ia) + normal.getY(ib) + normal.getY(ic),
+        normal.getZ(ia) + normal.getZ(ib) + normal.getZ(ic),
+      );
+      expect(cross.dot(average)).toBeGreaterThan(0);
+    }
+  };
+
+  it("puts the ring in the requested plane", () => {
+    const xy = sizeOf(solidGeometry(bend("xy")));
+    expect(xy.x).toBeCloseTo(190, 1);
+    expect(xy.y).toBeCloseTo(190, 1);
+    expect(xy.z).toBeCloseTo(80, 1);
+
+    const xz = sizeOf(solidGeometry(bend("xz")));
+    expect(xz.x).toBeCloseTo(190, 1);
+    expect(xz.y).toBeCloseTo(80, 1);
+    expect(xz.z).toBeCloseTo(190, 1);
+
+    const yz = sizeOf(solidGeometry(bend("yz")));
+    expect(yz.x).toBeCloseTo(80, 1);
+    expect(yz.y).toBeCloseTo(190, 1);
+    expect(yz.z).toBeCloseTo(190, 1);
+  });
+
+  it("winds every triangle outward, including the end caps", () => {
+    for (const plane of ["xy", "xz", "yz"] as const) outward(solidGeometry(bend(plane)));
+  });
+});
+
+describe("frustum direction", () => {
+  const geometry = (height: number) =>
+    solidGeometry({
+      kind: "frustum",
+      base: { x: 0, y: 0, z: 0 },
+      radiusBottom: 20,
+      radiusTop: 5,
+      height,
+      axis: "z",
+      segments: 24,
+    });
+
+  const radiusAt = (height: number, z: number) => {
+    const position = geometry(height).getAttribute("position");
+    let radius = 0;
+    for (let i = 0; i < position.count; i += 1) {
+      if (Math.abs(position.getZ(i) - z) > 0.01) continue;
+      radius = Math.max(radius, Math.hypot(position.getX(i), position.getY(i)));
+    }
+    return radius;
+  };
+
+  it("keeps radiusBottom on the base for a positive height", () => {
+    expect(radiusAt(40, 0)).toBeCloseTo(20, 1);
+    expect(radiusAt(40, 40)).toBeCloseTo(5, 1);
+  });
+
+  it("keeps the base radius at the base for a negative height", () => {
+    expect(radiusAt(-40, 0)).toBeCloseTo(5, 1);
+    expect(radiusAt(-40, -40)).toBeCloseTo(20, 1);
+  });
+});
+
+describe("prism holes", () => {
+  it("adds an inner wall for a hole loop", () => {
+    const solid: ResolvedSolid = {
+      kind: "prism",
+      plane: "xy",
+      points: [
+        [-50, -50],
+        [50, -50],
+        [50, 50],
+        [-50, 50],
+      ],
+      holes: [
+        [
+          [-10, -10],
+          [10, -10],
+          [10, 10],
+          [-10, 10],
+        ],
+      ],
+      from: 0,
+      to: 20,
+    };
+
+    const withHole = solidGeometry(solid);
+    const withoutHole = solidGeometry({ ...solid, holes: [] });
+    expect(withHole.getAttribute("position").count).toBeGreaterThan(
+      withoutHole.getAttribute("position").count,
+    );
+    const size = sizeOf(withHole);
+    expect(size.x).toBeCloseTo(100);
+    expect(size.y).toBeCloseTo(100);
+    expect(size.z).toBeCloseTo(20);
+  });
+});
+
+describe("loft geometry", () => {
+  it("builds a closed transition between two rings", () => {
+    const solid: ResolvedSolid = {
+      kind: "loft",
+      axis: "z",
+      sections: [
+        {
+          at: 0,
+          points: [
+            [-50, -50],
+            [50, -50],
+            [50, 50],
+            [-50, 50],
+          ],
+        },
+        {
+          at: 100,
+          points: [
+            [-25, -25],
+            [25, -25],
+            [25, 25],
+            [-25, 25],
+          ],
+        },
+      ],
+    };
+
+    const geometry = solidGeometry(solid);
+    const size = sizeOf(geometry);
+    expect(size.x).toBeCloseTo(100);
+    expect(size.y).toBeCloseTo(100);
+    expect(size.z).toBeCloseTo(100);
+    expect(geometry.getIndex()?.count).toBeGreaterThan(0);
+  });
+});
+
 describe("worker transfer", () => {
   it("round-trips positions, normals and index", () => {
     const source = solidGeometry(box);

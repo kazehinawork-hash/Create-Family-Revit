@@ -39,6 +39,53 @@ function coerceNumericText(value: unknown): unknown {
   return Number.isFinite(numeric) ? numeric : value;
 }
 
+/** Returns the value only when it is a plain number after stripping a unit suffix. */
+function literalNumber(value: unknown): number | null {
+  const coerced = coerceNumericText(value);
+  return typeof coerced === "number" && Number.isFinite(coerced) ? coerced : null;
+}
+
+function polygonArea(points: [number, number][]): number {
+  let area = 0;
+  for (let index = 0; index < points.length; index += 1) {
+    const [ax, ay] = points[index];
+    const [bx, by] = points[(index + 1) % points.length];
+    area += ax * by - bx * ay;
+  }
+  return area / 2;
+}
+
+function segmentsCross(
+  a: [number, number],
+  b: [number, number],
+  c: [number, number],
+  d: [number, number],
+): boolean {
+  const cross = (p: [number, number], q: [number, number], r: [number, number]) =>
+    (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0]);
+  const d1 = cross(a, b, c);
+  const d2 = cross(a, b, d);
+  const d3 = cross(c, d, a);
+  const d4 = cross(c, d, b);
+  return ((d1 > 1e-9 && d2 < -1e-9) || (d1 < -1e-9 && d2 > 1e-9)) &&
+    ((d3 > 1e-9 && d4 < -1e-9) || (d3 < -1e-9 && d4 > 1e-9));
+}
+
+function polygonSelfIntersects(points: [number, number][]): boolean {
+  for (let i = 0; i < points.length; i += 1) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    for (let j = i + 1; j < points.length; j += 1) {
+      const adjacent = j === i || j === (i + 1) % points.length || (j + 1) % points.length === i;
+      if (adjacent) continue;
+      const c = points[j];
+      const d = points[(j + 1) % points.length];
+      if (segmentsCross(a, b, c, d)) return true;
+    }
+  }
+  return false;
+}
+
 function sanitizeId(value: string, fallback: string): string {
   const cleaned = value
     .trim()
@@ -48,7 +95,7 @@ function sanitizeId(value: string, fallback: string): string {
   return cleaned || fallback;
 }
 
-const SOLID_KINDS = ["box", "cylinder", "frustum", "bend", "prism"];
+const SOLID_KINDS = ["box", "cylinder", "frustum", "bend", "prism", "loft"];
 
 function checkSolid(raw: unknown, path: string, issues: Issue[]): void {
   if (!isObject(raw)) {
@@ -91,6 +138,18 @@ function checkSolid(raw: unknown, path: string, issues: Issue[]): void {
   if (kind === "box") {
     requireVec("origin");
     requireVec("size");
+    if (isObject(raw.size)) {
+      for (const axis of ["x", "y", "z"]) {
+        const value = literalNumber(raw.size[axis]);
+        if (value !== null && Math.abs(value) < 1e-9) {
+          issues.push({
+            severity: "error",
+            path: `${path}.size.${axis}`,
+            message: `size.${axis} must not be zero`,
+          });
+        }
+      }
+    }
     if (
       raw.cornerRadius !== undefined &&
       raw.cornerRadius !== null &&
@@ -103,6 +162,23 @@ function checkSolid(raw: unknown, path: string, issues: Issue[]): void {
         message: "cornerRadius must be a number or an expression string",
       });
     }
+    const cornerRadius = literalNumber(raw.cornerRadius);
+    if (cornerRadius !== null && cornerRadius < 0) {
+      issues.push({
+        severity: "error",
+        path: `${path}.cornerRadius`,
+        message: "cornerRadius must be zero or greater",
+      });
+    }
+    const rotation = literalNumber(raw.rotationZ);
+    if (rotation !== null && Math.abs(((rotation % 90) + 90) % 90) > 1e-6) {
+      issues.push({
+        severity: "warning",
+        path: `${path}.rotationZ`,
+        message:
+          "A box rotated off the 90° axes builds, but Revit cannot lock its faces to the reference planes; use Rebuild from spec after changing parameters.",
+      });
+    }
   } else if (kind === "cylinder") {
     requireVec("base");
     if (raw.radius === undefined) {
@@ -110,6 +186,29 @@ function checkSolid(raw: unknown, path: string, issues: Issue[]): void {
     }
     if (raw.height === undefined) {
       issues.push({ severity: "error", path: `${path}.height`, message: "height is required" });
+    }
+    const radius = literalNumber(raw.radius);
+    const height = literalNumber(raw.height);
+    const innerRadius = literalNumber(raw.innerRadius);
+    if (radius !== null && radius <= 0) {
+      issues.push({ severity: "error", path: `${path}.radius`, message: "radius must be greater than zero" });
+    }
+    if (height !== null && Math.abs(height) < 1e-9) {
+      issues.push({ severity: "error", path: `${path}.height`, message: "height must not be zero" });
+    }
+    if (innerRadius !== null && innerRadius < 0) {
+      issues.push({
+        severity: "error",
+        path: `${path}.innerRadius`,
+        message: "innerRadius must be zero or greater",
+      });
+    }
+    if (innerRadius !== null && radius !== null && innerRadius >= radius) {
+      issues.push({
+        severity: "error",
+        path: `${path}.innerRadius`,
+        message: "innerRadius must be smaller than radius",
+      });
     }
   } else if (kind === "frustum") {
     requireVec("base");
@@ -133,6 +232,42 @@ function checkSolid(raw: unknown, path: string, issues: Issue[]): void {
     if (raw.axis !== undefined && !["x", "y", "z"].includes(text(raw.axis))) {
       issues.push({ severity: "error", path: `${path}.axis`, message: "axis must be x, y or z" });
     }
+    const radiusBottom = literalNumber(raw.radiusBottom);
+    const radiusTop = literalNumber(raw.radiusTop);
+    const height = literalNumber(raw.height);
+    if (radiusBottom !== null && radiusBottom < 0) {
+      issues.push({
+        severity: "error",
+        path: `${path}.radiusBottom`,
+        message: "radiusBottom must be zero or greater",
+      });
+    }
+    if (radiusTop !== null && radiusTop < 0) {
+      issues.push({
+        severity: "error",
+        path: `${path}.radiusTop`,
+        message: "radiusTop must be zero or greater",
+      });
+    }
+    if (radiusBottom !== null && radiusTop !== null && radiusBottom <= 0 && radiusTop <= 0) {
+      issues.push({
+        severity: "error",
+        path,
+        message: "at least one of radiusBottom and radiusTop must be greater than zero",
+      });
+    }
+    if (height !== null && Math.abs(height) < 1e-9) {
+      issues.push({ severity: "error", path: `${path}.height`, message: "height must not be zero" });
+    }
+    const axis = text(raw.axis) || "z";
+    if (axis !== "z" || (height !== null && height < 0) || (radiusBottom !== null && radiusBottom <= 0)) {
+      issues.push({
+        severity: "warning",
+        path,
+        message:
+          "This frustum uses a tessellated Blend; its radii stay baked. Only a Z-axis, positive-height frustum with radiusBottom > 0 becomes a Revolution.",
+      });
+    }
   } else if (kind === "bend") {
     requireVec("center");
     if (raw.radius === undefined) {
@@ -148,6 +283,33 @@ function checkSolid(raw: unknown, path: string, issues: Issue[]): void {
     if (raw.plane !== undefined && !["xy", "xz", "yz"].includes(text(raw.plane))) {
       issues.push({ severity: "error", path: `${path}.plane`, message: "plane must be xy, xz or yz" });
     }
+    const radius = literalNumber(raw.radius);
+    const tubeRadius = literalNumber(raw.tubeRadius);
+    const angle = literalNumber(raw.angle);
+    if (radius !== null && radius <= 0) {
+      issues.push({ severity: "error", path: `${path}.radius`, message: "radius must be greater than zero" });
+    }
+    if (tubeRadius !== null && tubeRadius <= 0) {
+      issues.push({
+        severity: "error",
+        path: `${path}.tubeRadius`,
+        message: "tubeRadius must be greater than zero",
+      });
+    }
+    if (radius !== null && tubeRadius !== null && tubeRadius >= radius) {
+      issues.push({
+        severity: "error",
+        path: `${path}.tubeRadius`,
+        message: "tubeRadius must be smaller than radius",
+      });
+    }
+    if (angle !== null && (angle <= 0 || angle > 360)) {
+      issues.push({
+        severity: "error",
+        path: `${path}.angle`,
+        message: "angle must be greater than zero and at most 360 degrees",
+      });
+    }
   } else if (kind === "prism") {
     if (!["xy", "xz", "yz"].includes(text(raw.plane))) {
       issues.push({ severity: "error", path: `${path}.plane`, message: "plane must be xy, xz or yz" });
@@ -161,6 +323,203 @@ function checkSolid(raw: unknown, path: string, issues: Issue[]): void {
     }
     if (raw.from === undefined || raw.to === undefined) {
       issues.push({ severity: "error", path, message: "from and to are required" });
+    }
+    const from = literalNumber(raw.from);
+    const to = literalNumber(raw.to);
+    if (from !== null && to !== null && Math.abs(to - from) < 1e-9) {
+      issues.push({ severity: "error", path, message: "from and to must differ" });
+    }
+
+    const toPoint = (value: unknown): [number, number] | null => {
+      if (!Array.isArray(value) || value.length < 2) return null;
+      const a = literalNumber(value[0]);
+      const b = literalNumber(value[1]);
+      return a !== null && b !== null ? [a, b] : null;
+    };
+
+    if (Array.isArray(raw.points)) {
+      const points = raw.points.map(toPoint);
+      if (points.every((point): point is [number, number] => point !== null)) {
+        for (let index = 0; index < points.length; index += 1) {
+          const current = points[index];
+          const next = points[(index + 1) % points.length];
+          if (Math.abs(current[0] - next[0]) < 1e-9 && Math.abs(current[1] - next[1]) < 1e-9) {
+            issues.push({
+              severity: "error",
+              path: `${path}.points[${index}]`,
+              message: "consecutive points must not be identical",
+            });
+            break;
+          }
+        }
+        if (polygonSelfIntersects(points)) {
+          issues.push({
+            severity: "error",
+            path: `${path}.points`,
+            message: "polygon edges intersect each other",
+          });
+        } else if (Math.abs(polygonArea(points)) < 1e-6) {
+          issues.push({ severity: "error", path: `${path}.points`, message: "polygon has zero area" });
+        }
+      }
+    }
+
+    if (raw.holes !== undefined) {
+      if (!Array.isArray(raw.holes)) {
+        issues.push({ severity: "error", path: `${path}.holes`, message: "holes must be an array" });
+      } else {
+        raw.holes.forEach((hole, holeIndex) => {
+          if (!Array.isArray(hole) || hole.length < 3) {
+            issues.push({
+              severity: "error",
+              path: `${path}.holes[${holeIndex}]`,
+              message: "each hole needs at least 3 [a, b] pairs",
+            });
+            return;
+          }
+          const points = hole.map(toPoint);
+          if (points.every((point): point is [number, number] => point !== null)) {
+            if (polygonSelfIntersects(points)) {
+              issues.push({
+                severity: "error",
+                path: `${path}.holes[${holeIndex}]`,
+                message: "hole edges intersect each other",
+              });
+            } else if (Math.abs(polygonArea(points)) < 1e-6) {
+              issues.push({
+                severity: "error",
+                path: `${path}.holes[${holeIndex}]`,
+                message: "hole has zero area",
+              });
+            }
+          }
+        });
+      }
+    }
+  } else if (kind === "loft") {
+    const axis = text(raw.axis) || "z";
+    if (!["x", "y", "z"].includes(axis)) {
+      issues.push({ severity: "error", path: `${path}.axis`, message: "axis must be x, y or z" });
+    }
+    const segments = literalNumber(raw.segments);
+    if (segments !== null && (segments < 8 || segments > 96)) {
+      issues.push({
+        severity: "error",
+        path: `${path}.segments`,
+        message: "segments must be between 8 and 96",
+      });
+    }
+
+    if (!Array.isArray(raw.sections) || raw.sections.length < 2) {
+      issues.push({
+        severity: "error",
+        path: `${path}.sections`,
+        message: "sections needs at least two profiles",
+      });
+    } else {
+      const positions: number[] = [];
+      raw.sections.forEach((section, index) => {
+        if (!isObject(section)) {
+          issues.push({
+            severity: "error",
+            path: `${path}.sections[${index}]`,
+            message: "section must be an object",
+          });
+          return;
+        }
+        if (section.at === undefined) {
+          issues.push({
+            severity: "error",
+            path: `${path}.sections[${index}].at`,
+            message: "at is required",
+          });
+        }
+        const at = literalNumber(section.at);
+        if (at !== null) positions.push(at);
+
+        const profile = section.profile;
+        if (!isObject(profile)) {
+          issues.push({
+            severity: "error",
+            path: `${path}.sections[${index}].profile`,
+            message: "profile must be an object",
+          });
+          return;
+        }
+
+        const profileKind = text(profile.kind);
+        if (profileKind === "circle") {
+          const radius = literalNumber(profile.radius);
+          if (profile.radius === undefined) {
+            issues.push({
+              severity: "error",
+              path: `${path}.sections[${index}].profile.radius`,
+              message: "radius is required",
+            });
+          } else if (radius !== null && radius <= 0) {
+            issues.push({
+              severity: "error",
+              path: `${path}.sections[${index}].profile.radius`,
+              message: "radius must be greater than zero",
+            });
+          }
+        } else if (profileKind === "rect") {
+          for (const field of ["width", "height"]) {
+            if (profile[field] === undefined) {
+              issues.push({
+                severity: "error",
+                path: `${path}.sections[${index}].profile.${field}`,
+                message: `${field} is required`,
+              });
+              continue;
+            }
+            const value = literalNumber(profile[field]);
+            if (value !== null && value <= 0) {
+              issues.push({
+                severity: "error",
+                path: `${path}.sections[${index}].profile.${field}`,
+                message: `${field} must be greater than zero`,
+              });
+            }
+          }
+        } else if (profileKind === "polygon") {
+          if (!Array.isArray(profile.points) || profile.points.length < 3) {
+            issues.push({
+              severity: "error",
+              path: `${path}.sections[${index}].profile.points`,
+              message: "points needs at least 3 [a, b] pairs",
+            });
+          }
+        } else {
+          issues.push({
+            severity: "error",
+            path: `${path}.sections[${index}].profile.kind`,
+            message: "profile.kind must be circle, rect or polygon",
+          });
+        }
+      });
+
+      if (positions.length === raw.sections.length) {
+        for (let index = 1; index < positions.length; index += 1) {
+          if (!(positions[index] > positions[index - 1])) {
+            issues.push({
+              severity: "error",
+              path: `${path}.sections`,
+              message: "sections must be ordered by increasing at",
+            });
+            break;
+          }
+        }
+      }
+
+      if (raw.sections.length > 2) {
+        issues.push({
+          severity: "warning",
+          path: `${path}.sections`,
+          message:
+            "The Revit family builder currently lofts exactly two sections; extra sections preview in the studio but are skipped in the .rfa.",
+        });
+      }
     }
   }
 }
@@ -281,6 +640,27 @@ export function validateSpec(raw: unknown): ValidationResult {
       });
     }
 
+    const axisText = text(entry.axis);
+    let axis: "x" | "y" | "z" | undefined;
+    if (axisText) {
+      if (!["x", "y", "z"].includes(axisText)) {
+        issues.push({
+          severity: "error",
+          path: `${path}.axis`,
+          message: "axis must be x, y or z",
+        });
+      } else {
+        axis = axisText as "x" | "y" | "z";
+        if (type !== "Length") {
+          issues.push({
+            severity: "warning",
+            path: `${path}.axis`,
+            message: "axis only applies to Length parameters and is ignored",
+          });
+        }
+      }
+    }
+
     const formula = text(entry.formula) || undefined;
     let value =
       type === "Text" || type === "YesNo" ? entry.value : coerceNumericText(entry.value);
@@ -315,6 +695,7 @@ export function validateSpec(raw: unknown): ValidationResult {
       group,
       instance: Boolean(entry.instance),
       description: text(entry.description) || undefined,
+      axis,
       formula,
       value: value as number | string | boolean | undefined,
     });

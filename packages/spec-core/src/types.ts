@@ -42,6 +42,8 @@ export interface FamilyParameter {
   instance?: boolean;
   group?: ParameterGroup;
   description?: string;
+  /** Explicit axis this length parameter measures; overrides the name heuristic. */
+  axis?: Axis;
 }
 
 export interface BoxSolid {
@@ -103,12 +105,40 @@ export interface PrismSolid {
   plane: "xy" | "xz" | "yz";
   /** 2D points in the plane axes order: xy => [x, y], xz => [x, z], yz => [y, z]. */
   points: [Numeric, Numeric][];
+  /** Optional inner loops cut out of the extrusion, in the same coordinate order as points. */
+  holes?: [Numeric, Numeric][][];
   /** Extrusion start and end along the plane normal. */
   from: Numeric;
   to: Numeric;
 }
 
-export type SolidPrimitive = BoxSolid | CylinderSolid | FrustumSolid | BendSolid | PrismSolid;
+export type LoftProfile =
+  | { kind: "circle"; radius: Numeric }
+  | { kind: "rect"; width: Numeric; height: Numeric; cornerRadius?: Numeric }
+  | { kind: "polygon"; points: [Numeric, Numeric][] };
+
+export interface LoftSection {
+  /** Position along the loft axis, in millimetres. Sections must be in increasing order. */
+  at: Numeric;
+  profile: LoftProfile;
+}
+
+export interface LoftSolid {
+  kind: "loft";
+  /** Axis the sections are stacked along. Defaults to z. */
+  axis?: Axis;
+  /** Number of points each profile is resampled to. Defaults to 32. */
+  segments?: number;
+  sections: LoftSection[];
+}
+
+export type SolidPrimitive =
+  | BoxSolid
+  | CylinderSolid
+  | FrustumSolid
+  | BendSolid
+  | PrismSolid
+  | LoftSolid;
 
 export interface PartArray {
   /** Number, or an expression resolving to a whole number (e.g. "[Fin Count]"). */

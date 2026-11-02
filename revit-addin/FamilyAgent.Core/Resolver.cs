@@ -37,6 +37,7 @@ namespace FamilyAgent.Core
         public string Group = "Dimensions";
         public string Formula;
         public string Description;
+        public string Axis;
         public string Error;
         public bool Instance;
         public double? Number;
@@ -51,6 +52,12 @@ namespace FamilyAgent.Core
             new Dictionary<string, ResolvedParameter>(StringComparer.OrdinalIgnoreCase);
         public List<string> Errors = new List<string>();
         public Func<string, double> Lookup;
+    }
+
+    public sealed class ResolvedLoftSection
+    {
+        public double At;
+        public List<Vec2d> Points = new List<Vec2d>();
     }
 
     public sealed class ResolvedSolid
@@ -75,6 +82,8 @@ namespace FamilyAgent.Core
         public string Axis = "z";
         public string Plane = "xy";
         public List<Vec2d> Points = new List<Vec2d>();
+        public List<List<Vec2d>> Holes = new List<List<Vec2d>>();
+        public List<ResolvedLoftSection> Sections = new List<ResolvedLoftSection>();
         public int Segments = 48;
     }
 
@@ -218,6 +227,7 @@ namespace FamilyAgent.Core
                         : parameter.Group,
                     Instance = parameter.Instance,
                     Description = parameter.Description,
+                    Axis = parameter.Axis,
                     Formula = string.IsNullOrWhiteSpace(parameter.Formula) ? null : parameter.Formula.Trim(),
                 };
 

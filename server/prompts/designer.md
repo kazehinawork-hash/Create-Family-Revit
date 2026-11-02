@@ -38,8 +38,10 @@ Primitives:
   A truncated cone (cone when `radiusTop` is 0). Use it for conical transitions, round reducers, fan rings and tapered collars — never stack boxes or cylinders to fake a taper.
 - `bend` — `{"kind":"bend","center":{...},"radius":..,"tubeRadius":..,"angle":90,"startAngle":0,"plane":"xy"}`
   A circular section swept along an arc: the round elbow. `radius` is the bend radius to the tube centreline, `plane` picks the arc plane (axis Z for `xy`, Y for `xz`, X for `yz`).
-- `prism` — `{"kind":"prism","plane":"xy|xz|yz","points":[[a,b],...],"from":..,"to":..}`
-  A closed, simple, counter-clockwise polygon extruded between `from` and `to` along the plane normal. 3+ points, no self-intersection, no repeated point.
+- `prism` — `{"kind":"prism","plane":"xy|xz|yz","points":[[a,b],...],"holes":[[[a,b],...]],"from":..,"to":..}`
+  A closed, simple, counter-clockwise polygon extruded between `from` and `to` along the plane normal. 3+ points, no self-intersection, no repeated point. Optional `holes` are inner loops cut out of the same native form — use them for grilles, perforated plates and flanges instead of many `cuts`.
+- `loft` — `{"kind":"loft","axis":"x|y|z","segments":32,"sections":[{"at":0,"profile":{"kind":"rect","width":..,"height":..}},{"at":400,"profile":{"kind":"circle","radius":..}}]}`
+  Two profiles stacked along `axis` at increasing `at`, lofted into one native form. Profiles are `circle` (`radius`), `rect` (`width`, `height`, optional `cornerRadius`) or `polygon` (`points`). Use exactly two sections for a Revit family (rect-to-round transitions, reducers); extra sections preview in the studio but the builder currently skips them, so split longer lofts into separate parts.
 
 Each part needs `id`, `name`, `material`, one `solid`, optional `cuts` (primitives subtracted) and optional `array` (`{"count":4,"axis":"x","spacing":"[Fin Spacing]"}`). Use `array` for repeated fins, louvres, bolts and hangers; never copy coordinates by hand.
 
@@ -50,7 +52,7 @@ Optional `anchor` pins which face the builder locks to the reference planes on e
 - Casing, access doors, top deck or mounting rails, duct collars, electrical box, pipe stubs and internal equipment must all be modelled when the brief implies them.
 - Real thickness: panels, flanges, gaskets and doors are 1.5-30 mm thick and tied to a parameter such as `[Panel Thickness]`. Thin visible edges are thin plates, not solid blocks.
 - Hollow connections: use `innerRadius` on collars, sleeves and fan rings instead of two nested cylinders.
-- Tapered sections: use `frustum` or a true `prism` profile, not a staircase of boxes.
+- Tapered sections: use `frustum` for round-to-round, `loft` for a section that changes shape (rect ↔ round), or a true `prism` profile; never a staircase of boxes.
 - No coincident faces: parts that touch are offset by 0.5-1 mm along the normal to avoid z-fighting and duplicate-face errors in Revit.
 - Nothing pokes through the casing: internal parts stay inside; pipe stubs and collars protrude only 20-80 mm.
 - Symmetry is intentional: floor/ceiling units are centred on X = 0 and Y = 0; repeated details use `array`.
@@ -102,9 +104,9 @@ Mechanical Equipment, Duct Fitting, Duct Elbow, Duct Transition, Duct Tee, Duct 
 
 - **Rectangular elbow**: `prism` whose 2D profile is the true bend outline in the bend plane, extruded across the duct width; flanges at both ends.
 - **Round elbow**: `bend` — a circular `tubeRadius` section revolved around an axis at distance `radius`; `angle` 90 gives a standard elbow, `startAngle` sets which way it turns. Use `plane: "xy"` for a horizontal bend (axis Z), `"xz"` or `"yz"` for the other directions.
-- **Transition / reducer**: `frustum` for round-to-round, `prism` with the true tapered profile for rectangular; taper angle ≤ 30°.
+- **Transition / reducer**: `frustum` for round-to-round; `loft` with a `rect` section at one end and a `circle` section at the other for rectangular-to-round; `prism` with the true tapered profile for rectangular-to-rectangular. Taper angle ≤ 30°.
 - **Tee / branch**: main body plus branch, with a flange on all three ports.
-- Declare one connector per port with the correct size and flow direction.
+- Declare one connector per port with the correct size and flow direction. `origin` and `directionVector` must land on the matching end face; flow/pressure values are informational until the builder writes them.
 
 ## Datasheet handling
 

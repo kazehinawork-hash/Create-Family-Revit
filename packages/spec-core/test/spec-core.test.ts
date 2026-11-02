@@ -258,10 +258,10 @@ describe("bend primitive", () => {
     }
   });
 
-  it("sizes the bounds from the bend radius plus the tube", () => {
+  it("sizes the bounds from the bend arc, not the full ring", () => {
     const analysis = analyzeSpec(spec(base));
-    expect(analysis.model.bounds?.size.x).toBe(380);
-    expect(analysis.model.bounds?.size.y).toBe(380);
+    expect(analysis.model.bounds?.size.x).toBeCloseTo(190, 3);
+    expect(analysis.model.bounds?.size.y).toBeCloseTo(190, 3);
     expect(analysis.model.bounds?.size.z).toBe(80);
   });
 
@@ -288,6 +288,167 @@ describe("bend primitive", () => {
     const solid = analysis.model.parts[0].solid;
     expect(solid.kind).toBe("bend");
     if (solid.kind === "bend") expect(solid.radius).toBe(200);
+  });
+});
+
+describe("loft primitive", () => {
+  const spec = (sections: unknown, axis = "z") => ({
+    schemaVersion: "1.0",
+    name: "Transition",
+    category: "Duct Transition",
+    units: "mm",
+    parameters: [],
+    parts: [
+      {
+        id: "transition",
+        name: "Transition",
+        solid: { kind: "loft", axis, segments: 16, sections },
+      },
+    ],
+  });
+
+  const base = [
+    { at: 0, profile: { kind: "rect", width: 500, height: 300 } },
+    { at: 400, profile: { kind: "circle", radius: 150 } },
+  ];
+
+  it("resamples a rectangle and a circle to the same ring", () => {
+    const analysis = analyzeSpec(spec(base));
+    expect(analysis.ok).toBe(true);
+    const solid = analysis.model.parts[0].solid;
+    expect(solid.kind).toBe("loft");
+    if (solid.kind === "loft") {
+      expect(solid.sections).toHaveLength(2);
+      expect(solid.sections[0].points).toHaveLength(16);
+      expect(solid.sections[1].points).toHaveLength(16);
+    }
+  });
+
+  it("sizes the bounds from every section", () => {
+    const analysis = analyzeSpec(spec(base));
+    expect(analysis.model.bounds?.size.x).toBeCloseTo(500, 3);
+    expect(analysis.model.bounds?.size.y).toBeCloseTo(300, 3);
+    expect(analysis.model.bounds?.size.z).toBeCloseTo(400, 3);
+  });
+
+  it("supports a loft along x", () => {
+    const analysis = analyzeSpec(
+      spec(
+        [
+          { at: 0, profile: { kind: "circle", radius: 100 } },
+          { at: 300, profile: { kind: "circle", radius: 100 } },
+        ],
+        "x",
+      ),
+    );
+    expect(analysis.ok).toBe(true);
+    expect(analysis.model.bounds?.size.x).toBeCloseTo(300, 3);
+    expect(analysis.model.bounds?.size.y).toBeCloseTo(200, 3);
+    expect(analysis.model.bounds?.size.z).toBeCloseTo(200, 3);
+  });
+
+  it("rejects sections that are not ordered", () => {
+    const analysis = analyzeSpec(
+      spec([
+        { at: 400, profile: { kind: "circle", radius: 100 } },
+        { at: 0, profile: { kind: "circle", radius: 100 } },
+      ]),
+    );
+    expect(analysis.ok).toBe(false);
+    expect(analysis.errors.some((issue) => /increasing at/.test(issue.message))).toBe(true);
+  });
+});
+
+describe("prism holes", () => {
+  it("resolves inner loops", () => {
+    const analysis = analyzeSpec({
+      schemaVersion: "1.0",
+      name: "Grille",
+      category: "Generic Model",
+      units: "mm",
+      parameters: [],
+      parts: [
+        {
+          id: "plate",
+          name: "Plate",
+          solid: {
+            kind: "prism",
+            plane: "xy",
+            points: [
+              [-100, -100],
+              [100, -100],
+              [100, 100],
+              [-100, 100],
+            ],
+            holes: [
+              [
+                [-20, -20],
+                [20, -20],
+                [20, 20],
+                [-20, 20],
+              ],
+            ],
+            from: 0,
+            to: 10,
+          },
+        },
+      ],
+    });
+    expect(analysis.ok).toBe(true);
+    const solid = analysis.model.parts[0].solid;
+    expect(solid.kind).toBe("prism");
+    if (solid.kind === "prism") expect(solid.holes).toHaveLength(1);
+  });
+});
+
+describe("validation of degenerate solids", () => {
+  const build = (solid: Record<string, unknown>) => ({
+    schemaVersion: "1.0",
+    name: "Bad",
+    category: "Generic Model",
+    units: "mm",
+    parameters: [],
+    parts: [{ id: "bad", name: "Bad", solid }],
+  });
+
+  it("rejects a zero-size box", () => {
+    const analysis = analyzeSpec(
+      build({ kind: "box", origin: { x: 0, y: 0, z: 0 }, size: { x: 0, y: 100, z: 100 } }),
+    );
+    expect(analysis.ok).toBe(false);
+    expect(analysis.errors.some((issue) => /size\.x/.test(issue.path))).toBe(true);
+  });
+
+  it("rejects a prism with crossing edges", () => {
+    const analysis = analyzeSpec(
+      build({
+        kind: "prism",
+        plane: "xy",
+        points: [
+          [0, 0],
+          [100, 100],
+          [0, 100],
+          [100, 0],
+        ],
+        from: 0,
+        to: 10,
+      }),
+    );
+    expect(analysis.ok).toBe(false);
+    expect(analysis.errors.some((issue) => /intersect/.test(issue.message))).toBe(true);
+  });
+
+  it("warns when a rotated box cannot be constrained", () => {
+    const analysis = analyzeSpec(
+      build({
+        kind: "box",
+        origin: { x: 0, y: 0, z: 0 },
+        size: { x: 100, y: 100, z: 100 },
+        rotationZ: 30,
+      }),
+    );
+    expect(analysis.ok).toBe(true);
+    expect(analysis.issues.some((issue) => /rotationZ/.test(issue.path))).toBe(true);
   });
 });
 
