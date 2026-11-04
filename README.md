@@ -139,6 +139,27 @@ Sau đó mở Revit 2024:
 
 Tắt bridge tự động: đặt biến môi trường `FAMILY_AGENT_BRIDGE=0` trước khi mở Revit.
 
+### Build mặc định là snapshot
+
+Mặc định builder chỉ tạo **geometry + parameter + material + connector**, không tạo
+reference plane/dimension/lock/self-check. File `.rfa` nhẹ và build nhanh hơn, đúng với
+workflow studio → RFA → QA.
+
+Muốn tạo lại skeleton constraint để có thể chỉnh trong Revit (file nặng hơn), đặt
+`FAMILY_AGENT_PARAMETRIC=1` trước khi mở Revit.
+
+### Quy trình khuyến nghị: localhost → RFA → QA
+
+Studio là nơi **thiết kế và chỉnh tham số**; file `.rfa` là **bản build snapshot** để dùng/kiểm tra trong Revit.
+
+1. Dựng và chỉnh mô hình trên studio đến khi ưng ý.
+2. Bấm tải/build RFA.
+3. Mở `.rfa` trong Revit để QA: số part, kích thước bao, connector, vật liệu, vị trí.
+4. Nếu cần đổi kích thước, quay lại studio sửa rồi build/tải RFA mới.
+5. Trong Revit có thể dùng **Rebuild from spec** để cập nhật nhanh theo giá trị tham số hiện tại, nhưng đây là tiện ích thủ công, không phải parametric native.
+
+Family tải ra **không tự co giãn array/CSG/loft** như studio. Đây là chủ ý: generator không cố tạo native array (Revit API không có `NewArray`). Chỉ nên làm template native thủ công cho một dòng sản phẩm cố định nếu cần gửi người khác chỉnh parameter.
+
 ## 5. Spec là gì
 
 Đơn vị **mm**, trục **Z hướng lên**, gốc family ở tâm mặt bằng trên sàn (`z = 0`).

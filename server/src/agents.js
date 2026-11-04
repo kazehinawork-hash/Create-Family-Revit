@@ -205,6 +205,14 @@ function runCliProcess({
       stderr += chunk.toString();
     });
 
+    const onPipeError = (name) => (error) => {
+      if (["EPIPE", "ECONNRESET", "ERR_STREAM_DESTROYED"].includes(error?.code)) return;
+      console.error(`[agent${tag}] ${name} error:`, error);
+    };
+    child.stdin.on("error", onPipeError("stdin"));
+    child.stdout.on("error", onPipeError("stdout"));
+    child.stderr.on("error", onPipeError("stderr"));
+
     child.on("error", (error) => {
       console.error(`[agent${tag}] spawn error: ${error.message}`);
       finish(() => reject(new LlmError(`Could not run "${executable}": ${error.message}`)));
