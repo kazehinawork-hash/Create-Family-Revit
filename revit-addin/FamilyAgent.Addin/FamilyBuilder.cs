@@ -1083,6 +1083,11 @@ namespace FamilyAgent.Addin
             {
                 if (view == null || from == null || to == null) return;
 
+                // An unlabelled dimension does not drive anything but still participates
+                // in the constraint graph; on parameter-heavy families it overconstrains
+                // the reference planes. Only labelled dimensions are useful here.
+                if (label == null) return;
+
                 var key = $"{from.UniqueId}|{to.UniqueId}|{view.Id}";
                 if (!usedPairs.Add(key)) return;
 
