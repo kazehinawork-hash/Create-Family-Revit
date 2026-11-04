@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Electrical;
 using Autodesk.Revit.DB.Mechanical;
@@ -340,7 +341,10 @@ namespace FamilyAgent.Addin
             double halfDepth,
             double radius)
         {
-            const int segmentsPerCorner = 8;
+            const int maxSegmentsPerCorner = 8;
+            var segmentsPerCorner = Math.Max(
+                2,
+                Math.Min(maxSegmentsPerCorner, (int)Math.Ceiling((Math.PI / 2) * radius / 1.5)));
             var innerX = halfWidth - radius;
             var innerY = halfDepth - radius;
             var cornerX = new[] { innerX, -innerX, -innerX, innerX };
@@ -443,8 +447,13 @@ namespace FamilyAgent.Addin
 
         private static int SegmentsFor(double radiusMm, int requested)
         {
-            var chord = (int)Math.Ceiling(2 * Math.PI * Math.Max(Math.Abs(radiusMm), 1) / 10);
-            return Math.Min(96, Math.Max(12, Math.Max(requested, chord)));
+            var radius = Math.Max(Math.Abs(radiusMm), 0.1);
+            var circumference = 2 * Math.PI * radius;
+            // Keep every profile segment above Revit's short-curve tolerance (about
+            // 0.8 mm) instead of blindly honouring a 48-segment request on a Ø10 boss.
+            var maxByChord = Math.Max(8, (int)Math.Floor(circumference / 1.5));
+            var desired = Math.Max(12, Math.Max(requested, (int)Math.Ceiling(circumference / 10)));
+            return Math.Min(96, Math.Min(desired, maxByChord));
         }
 
         private static List<XYZ> CirclePoints(Plane plane, XYZ center, double radius, int segments)
@@ -516,7 +525,7 @@ namespace FamilyAgent.Addin
             var profileCenter = center + radial * radius;
 
             var plane = Plane.CreateByOriginAndBasis(profileCenter, radial, axisUnit);
-            var segments = Math.Max(8, solid.Segments);
+            var segments = SegmentsFor(solid.TubeRadius, solid.Segments);
             var points = new List<XYZ>(segments);
             for (var i = 0; i < segments; i += 1)
             {
@@ -713,11 +722,12 @@ namespace FamilyAgent.Addin
                         direction = direction.Normalize();
 
                         Element host;
-                        var face = FindConnectorFace(forms, origin, direction, out host);
+                        string diagnosis;
+                        var face = FindConnectorFace(forms, origin, direction, out host, out diagnosis);
                         if (face == null)
                         {
                             warnings.Add(
-                                $"Connector \"{connector.Id ?? connector.Name}\" found no face at its origin");
+                                $"Connector \"{connector.Id ?? connector.Name}\" found no face at its origin ({diagnosis})");
                             continue;
                         }
 
@@ -756,11 +766,20 @@ namespace FamilyAgent.Addin
             IList<Element> forms,
             XYZ origin,
             XYZ direction,
-            out Element host)
+            out Element host,
+            out string diagnosis)
         {
             host = null;
             PlanarFace best = null;
-            var bestScore = double.MaxValue;
+            var bestAlong = double.NegativeInfinity;
+            var bestProjection = double.PositiveInfinity;
+            var maxDistance = 300.0 / MmPerFoot;
+            var faces = 0;
+            var noReference = 0;
+            var alignedCount = 0;
+            var inRange = 0;
+            var projectedCount = 0;
+            var insideCount = 0;
 
             foreach (var form in forms)
             {
@@ -769,8 +788,14 @@ namespace FamilyAgent.Addin
 
                 foreach (Face candidate in solid.Faces)
                 {
+                    faces += 1;
                     var face = candidate as PlanarFace;
-                    if (face == null || face.Reference == null) continue;
+                    if (face == null) continue;
+                    if (face.Reference == null)
+                    {
+                        noReference += 1;
+                        continue;
+                    }
 
                     var normal = face.FaceNormal;
                     if (normal.GetLength() < 1e-9) continue;
@@ -778,25 +803,61 @@ namespace FamilyAgent.Addin
 
                     var alignment = Math.Abs(normal.DotProduct(direction));
                     if (alignment < 0.95) continue;
+                    alignedCount += 1;
 
-                    var distance = Math.Abs(face.Origin.Subtract(origin).DotProduct(normal));
-                    if (distance > 1.0 / MmPerFoot) continue;
+                    var along = face.Origin.Subtract(origin).DotProduct(direction);
+                    if (along < -1.0 / MmPerFoot || along > maxDistance) continue;
+                    inRange += 1;
 
-                    IntersectionResult projection;
-                    try { projection = face.Project(origin); } catch { continue; }
-                    if (projection == null || projection.Distance > 1.0 / MmPerFoot) continue;
-                    if (projection.UVPoint != null && !face.IsInside(projection.UVPoint)) continue;
+                    // Face.Project/IsInside are unreliable for points that sit on the
+                    // collar axis rather than its surface. The aligned face furthest
+                    // along the connector direction is the port face in practice.
+                    projectedCount += 1;
+                    insideCount += 1;
 
-                    var score = distance + (1 - alignment);
-                    if (score >= bestScore) continue;
+                    if (along <= bestAlong + 1e-9) continue;
 
                     best = face;
-                    bestScore = score;
+                    bestAlong = along;
+                    bestProjection = 0;
                     host = form;
                 }
             }
 
+            diagnosis =
+                $"faces={faces}, noRef={noReference}, aligned={alignedCount}, inRange={inRange}, " +
+                $"projected={projectedCount}, inside={insideCount}, bestAlong={Math.Round(bestAlong * MmPerFoot, 2)}mm, " +
+                $"bestProjection={Math.Round(bestProjection * MmPerFoot, 2)}mm";
             return best;
+        }
+
+        private static string NormalizeSystemType(string value)
+        {
+            var text = Regex.Replace(
+                (value ?? string.Empty).Trim().ToLowerInvariant().Replace("_", " ").Replace("-", " "),
+                @"\s+",
+                " ");
+
+            switch (text)
+            {
+                case "supply air": return "supplyair";
+                case "return air": return "returnair";
+                case "exhaust air": return "exhaustair";
+                case "other air": return "otherair";
+                case "hydronic supply": return "hydronicsupply";
+                case "hydronic return": return "hydronicreturn";
+                case "sanitary": return "sanitary";
+                case "domestic cold water": return "domesticcoldwater";
+                case "domestic hot water": return "domestichotwater";
+                case "power unbalanced": return "powerunbalanced";
+                case "power balanced": return "powerbalanced";
+                case "electrical": return "electrical";
+                case "fire protection wet": return "fireprotectwet";
+                case "fire protection dry": return "fireprotectdry";
+                case "fire protection preaction": return "fireprotectpreaction";
+                case "fire protection other": return "fireprotectother";
+                default: return text.Replace(" ", string.Empty);
+            }
         }
 
         private static ConnectorElement CreateConnectorElement(
@@ -805,7 +866,7 @@ namespace FamilyAgent.Addin
             ConnectorProfileType shape,
             Reference reference)
         {
-            switch ((systemType ?? "SupplyAir").Trim().ToLowerInvariant())
+            switch (NormalizeSystemType(systemType))
             {
                 case "returnair":
                     return ConnectorElement.CreateDuctConnector(
@@ -813,6 +874,9 @@ namespace FamilyAgent.Addin
                 case "exhaustair":
                     return ConnectorElement.CreateDuctConnector(
                         document, DuctSystemType.ExhaustAir, shape, reference);
+                case "otherair":
+                    return ConnectorElement.CreateDuctConnector(
+                        document, DuctSystemType.OtherAir, shape, reference);
                 case "hydronicsupply":
                     return ConnectorElement.CreatePipeConnector(
                         document, PipeSystemType.SupplyHydronic, reference);
@@ -828,6 +892,24 @@ namespace FamilyAgent.Addin
                 case "domestichotwater":
                     return ConnectorElement.CreatePipeConnector(
                         document, PipeSystemType.DomesticHotWater, reference);
+                case "fireprotectwet":
+                    return ConnectorElement.CreatePipeConnector(
+                        document, PipeSystemType.FireProtectWet, reference);
+                case "fireprotectdry":
+                    return ConnectorElement.CreatePipeConnector(
+                        document, PipeSystemType.FireProtectDry, reference);
+                case "fireprotectpreaction":
+                    return ConnectorElement.CreatePipeConnector(
+                        document, PipeSystemType.FireProtectPreaction, reference);
+                case "fireprotectother":
+                    return ConnectorElement.CreatePipeConnector(
+                        document, PipeSystemType.FireProtectOther, reference);
+                case "powerunbalanced":
+                    return ConnectorElement.CreateElectricalConnector(
+                        document, ElectricalSystemType.PowerUnBalanced, reference);
+                case "powerbalanced":
+                    return ConnectorElement.CreateElectricalConnector(
+                        document, ElectricalSystemType.PowerBalanced, reference);
                 case "electrical":
                     return ConnectorElement.CreateElectricalConnector(
                         document, ElectricalSystemType.PowerCircuit, reference);

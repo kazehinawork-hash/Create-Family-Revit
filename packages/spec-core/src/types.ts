@@ -185,7 +185,21 @@ export interface MepConnector {
     | "Sanitary"
     | "DomesticColdWater"
     | "DomesticHotWater"
-    | "Electrical";
+    | "Electrical"
+    | "Other Air"
+    | "Supply Air"
+    | "Return Air"
+    | "Exhaust Air"
+    | "Hydronic Supply"
+    | "Hydronic Return"
+    | "Domestic Cold Water"
+    | "Domestic Hot Water"
+    | "Power - Unbalanced"
+    | "Power - Balanced"
+    | "Fire Protection Wet"
+    | "Fire Protection Dry"
+    | "Fire Protection Preaction"
+    | "Fire Protection Other";
   shape: "round" | "rectangular";
   direction: "in" | "out" | "bidirectional";
   origin: Vec3;
