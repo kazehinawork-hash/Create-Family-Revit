@@ -1,0 +1,2624 @@
+{
+  "name": "3-Tier Slotted Angle Steel Plant Rack with Wire Mesh Shelves",
+  "schemaVersion": "1.0",
+  "typeName": "Plant Rack 1000x500x1500 3-Tier",
+  "category": "Furniture",
+  "units": "mm",
+  "lod": 400,
+  "description": "Kệ sắt V lỗ 3 tầng 1000x500x1500 mm, 4 trụ V30x30x1.5 đục lỗ oval 10x15 bước 50 mm trên cả hai cánh, 3 mặt sàn lưới thép hàn và 12 ke góc tam giác liên kết bulông lục giác M8.",
+  "parameters": [
+    {
+      "name": "Rack Length",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 1000
+    },
+    {
+      "name": "Rack Depth",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 500
+    },
+    {
+      "name": "Post Height",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 1500
+    },
+    {
+      "name": "Post Size",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 30
+    },
+    {
+      "name": "Steel Thickness",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 1.5
+    },
+    {
+      "name": "Bottom Tier Height",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 100
+    },
+    {
+      "name": "Middle Tier Height",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 780
+    },
+    {
+      "name": "Top Tier Height",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 1450
+    },
+    {
+      "name": "Foot Cap Height",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 20
+    },
+    {
+      "name": "Foot Cap Thickness",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 3
+    },
+    {
+      "name": "Foot Cap Size",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "formula": "[Post Size] + 2 * [Foot Cap Thickness]"
+    },
+    {
+      "name": "Mesh Width",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "formula": "[Rack Length] - 2 * [Post Size]"
+    },
+    {
+      "name": "Mesh Depth",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "formula": "[Rack Depth] - 2 * [Post Size]"
+    },
+    {
+      "name": "Mesh Wire Diameter",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 3
+    },
+    {
+      "name": "Mesh Pitch",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 50
+    },
+    {
+      "name": "Mesh X Wire Count",
+      "type": "Integer",
+      "group": "Data",
+      "instance": false,
+      "formula": "rounddown([Mesh Width] / [Mesh Pitch]) + 1"
+    },
+    {
+      "name": "Mesh Y Wire Count",
+      "type": "Integer",
+      "group": "Data",
+      "instance": false,
+      "formula": "rounddown([Mesh Depth] / [Mesh Pitch]) + 1"
+    },
+    {
+      "name": "Mesh Edge Margin X",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "formula": "([Mesh Width] - ([Mesh X Wire Count] - 1) * [Mesh Pitch]) / 2"
+    },
+    {
+      "name": "Mesh Edge Margin Y",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "formula": "([Mesh Depth] - ([Mesh Y Wire Count] - 1) * [Mesh Pitch]) / 2"
+    },
+    {
+      "name": "Gusset Leg",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 75
+    },
+    {
+      "name": "Gusset Thickness",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 1.2
+    },
+    {
+      "name": "Bolt Diameter",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 8
+    },
+    {
+      "name": "Bolt Spacing",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 40
+    },
+    {
+      "name": "Bolt Edge Distance",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 7
+    },
+    {
+      "name": "Bolt Head Across Flats",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "formula": "[Bolt Diameter] * 1.625"
+    },
+    {
+      "name": "Bolt Head Height",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "formula": "[Bolt Diameter] * 0.66"
+    },
+    {
+      "name": "Nut Height",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "formula": "[Bolt Diameter] * 0.81"
+    },
+    {
+      "name": "Bolt Head Radius",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "formula": "[Bolt Head Across Flats] * 0.577"
+    },
+    {
+      "name": "Bolt Length",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "formula": "[Bolt Head Height] + 0.5mm + [Steel Thickness] + [Gusset Thickness] + [Nut Height]"
+    },
+    {
+      "name": "Slot Width",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 10
+    },
+    {
+      "name": "Slot Height",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 15
+    },
+    {
+      "name": "Slot Pitch",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 50
+    },
+    {
+      "name": "Slot Start",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 30
+    },
+    {
+      "name": "Slot Count",
+      "type": "Integer",
+      "group": "Data",
+      "instance": false,
+      "formula": "rounddown(([Post Height] - 2 * [Slot Start]) / [Slot Pitch]) + 1"
+    },
+    {
+      "name": "Slot Marker Thickness",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 0.4
+    }
+  ],
+  "parts": [
+    {
+      "id": "post-front-left",
+      "name": "Post Front Left",
+      "material": "Slotted Angle Powder Grey",
+      "solid": {
+        "kind": "prism",
+        "plane": "xy",
+        "points": [
+          [
+            0,
+            0
+          ],
+          [
+            "[Post Size]",
+            0
+          ],
+          [
+            "[Post Size]",
+            "[Steel Thickness]"
+          ],
+          [
+            "[Steel Thickness]",
+            "[Steel Thickness]"
+          ],
+          [
+            "[Steel Thickness]",
+            "[Post Size]"
+          ],
+          [
+            0,
+            "[Post Size]"
+          ]
+        ],
+        "from": "0mm",
+        "to": "[Post Height]"
+      },
+      "cuts": []
+    },
+    {
+      "id": "post-front-right",
+      "name": "Post Front Right",
+      "material": "Slotted Angle Powder Grey",
+      "solid": {
+        "kind": "prism",
+        "plane": "xy",
+        "points": [
+          [
+            "[Rack Length] - [Post Size]",
+            0
+          ],
+          [
+            "[Rack Length]",
+            0
+          ],
+          [
+            "[Rack Length]",
+            "[Post Size]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness]",
+            "[Post Size]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness]",
+            "[Steel Thickness]"
+          ],
+          [
+            "[Rack Length] - [Post Size]",
+            "[Steel Thickness]"
+          ]
+        ],
+        "from": "0mm",
+        "to": "[Post Height]"
+      },
+      "cuts": []
+    },
+    {
+      "id": "post-back-left",
+      "name": "Post Back Left",
+      "material": "Slotted Angle Powder Grey",
+      "solid": {
+        "kind": "prism",
+        "plane": "xy",
+        "points": [
+          [
+            0,
+            "[Rack Depth] - [Post Size]"
+          ],
+          [
+            "[Steel Thickness]",
+            "[Rack Depth] - [Post Size]"
+          ],
+          [
+            "[Steel Thickness]",
+            "[Rack Depth] - [Steel Thickness]"
+          ],
+          [
+            "[Post Size]",
+            "[Rack Depth] - [Steel Thickness]"
+          ],
+          [
+            "[Post Size]",
+            "[Rack Depth]"
+          ],
+          [
+            0,
+            "[Rack Depth]"
+          ]
+        ],
+        "from": "0mm",
+        "to": "[Post Height]"
+      },
+      "cuts": []
+    },
+    {
+      "id": "post-back-right",
+      "name": "Post Back Right",
+      "material": "Slotted Angle Powder Grey",
+      "solid": {
+        "kind": "prism",
+        "plane": "xy",
+        "points": [
+          [
+            "[Rack Length]",
+            "[Rack Depth]"
+          ],
+          [
+            "[Rack Length] - [Post Size]",
+            "[Rack Depth]"
+          ],
+          [
+            "[Rack Length] - [Post Size]",
+            "[Rack Depth] - [Steel Thickness]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness]",
+            "[Rack Depth] - [Steel Thickness]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness]",
+            "[Rack Depth] - [Post Size]"
+          ],
+          [
+            "[Rack Length]",
+            "[Rack Depth] - [Post Size]"
+          ]
+        ],
+        "from": "0mm",
+        "to": "[Post Height]"
+      },
+      "cuts": []
+    },
+    {
+      "id": "foot-cap-front-left",
+      "name": "Foot Cap Front Left",
+      "material": "Foot Caps Black Rubber",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": "[Foot Cap Size] / 2 - [Foot Cap Thickness]",
+          "y": "[Foot Cap Size] / 2 - [Foot Cap Thickness]",
+          "z": "0mm"
+        },
+        "size": {
+          "x": "[Foot Cap Size]",
+          "y": "[Foot Cap Size]",
+          "z": "[Foot Cap Height]"
+        }
+      },
+      "cuts": [
+        {
+          "kind": "prism",
+          "plane": "xy",
+          "points": [
+            [
+              "-0.5mm",
+              "-0.5mm"
+            ],
+            [
+              "[Post Size] + 0.5mm",
+              "-0.5mm"
+            ],
+            [
+              "[Post Size] + 0.5mm",
+              "[Steel Thickness] + 0.5mm"
+            ],
+            [
+              "[Steel Thickness] + 0.5mm",
+              "[Steel Thickness] + 0.5mm"
+            ],
+            [
+              "[Steel Thickness] + 0.5mm",
+              "[Post Size] + 0.5mm"
+            ],
+            [
+              "-0.5mm",
+              "[Post Size] + 0.5mm"
+            ]
+          ],
+          "from": "-1mm",
+          "to": "[Foot Cap Height] + 1mm"
+        }
+      ]
+    },
+    {
+      "id": "foot-cap-front-right",
+      "name": "Foot Cap Front Right",
+      "material": "Foot Caps Black Rubber",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": "[Rack Length] - [Foot Cap Size] / 2 + [Foot Cap Thickness]",
+          "y": "[Foot Cap Size] / 2 - [Foot Cap Thickness]",
+          "z": "0mm"
+        },
+        "size": {
+          "x": "[Foot Cap Size]",
+          "y": "[Foot Cap Size]",
+          "z": "[Foot Cap Height]"
+        }
+      },
+      "cuts": [
+        {
+          "kind": "prism",
+          "plane": "xy",
+          "points": [
+            [
+              "[Rack Length] - [Post Size] - 0.5mm",
+              "-0.5mm"
+            ],
+            [
+              "[Rack Length] + 0.5mm",
+              "-0.5mm"
+            ],
+            [
+              "[Rack Length] + 0.5mm",
+              "[Post Size] + 0.5mm"
+            ],
+            [
+              "[Rack Length] - [Steel Thickness] - 0.5mm",
+              "[Post Size] + 0.5mm"
+            ],
+            [
+              "[Rack Length] - [Steel Thickness] - 0.5mm",
+              "[Steel Thickness] + 0.5mm"
+            ],
+            [
+              "[Rack Length] - [Post Size] - 0.5mm",
+              "[Steel Thickness] + 0.5mm"
+            ]
+          ],
+          "from": "-1mm",
+          "to": "[Foot Cap Height] + 1mm"
+        }
+      ]
+    },
+    {
+      "id": "foot-cap-back-left",
+      "name": "Foot Cap Back Left",
+      "material": "Foot Caps Black Rubber",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": "[Foot Cap Size] / 2 - [Foot Cap Thickness]",
+          "y": "[Rack Depth] - [Foot Cap Size] / 2 + [Foot Cap Thickness]",
+          "z": "0mm"
+        },
+        "size": {
+          "x": "[Foot Cap Size]",
+          "y": "[Foot Cap Size]",
+          "z": "[Foot Cap Height]"
+        }
+      },
+      "cuts": [
+        {
+          "kind": "prism",
+          "plane": "xy",
+          "points": [
+            [
+              "-0.5mm",
+              "[Rack Depth] - [Post Size] - 0.5mm"
+            ],
+            [
+              "[Steel Thickness] + 0.5mm",
+              "[Rack Depth] - [Post Size] - 0.5mm"
+            ],
+            [
+              "[Steel Thickness] + 0.5mm",
+              "[Rack Depth] - [Steel Thickness] - 0.5mm"
+            ],
+            [
+              "[Post Size] + 0.5mm",
+              "[Rack Depth] - [Steel Thickness] - 0.5mm"
+            ],
+            [
+              "[Post Size] + 0.5mm",
+              "[Rack Depth] + 0.5mm"
+            ],
+            [
+              "-0.5mm",
+              "[Rack Depth] + 0.5mm"
+            ]
+          ],
+          "from": "-1mm",
+          "to": "[Foot Cap Height] + 1mm"
+        }
+      ]
+    },
+    {
+      "id": "foot-cap-back-right",
+      "name": "Foot Cap Back Right",
+      "material": "Foot Caps Black Rubber",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": "[Rack Length] - [Foot Cap Size] / 2 + [Foot Cap Thickness]",
+          "y": "[Rack Depth] - [Foot Cap Size] / 2 + [Foot Cap Thickness]",
+          "z": "0mm"
+        },
+        "size": {
+          "x": "[Foot Cap Size]",
+          "y": "[Foot Cap Size]",
+          "z": "[Foot Cap Height]"
+        }
+      },
+      "cuts": [
+        {
+          "kind": "prism",
+          "plane": "xy",
+          "points": [
+            [
+              "[Rack Length] + 0.5mm",
+              "[Rack Depth] + 0.5mm"
+            ],
+            [
+              "[Rack Length] - [Post Size] - 0.5mm",
+              "[Rack Depth] + 0.5mm"
+            ],
+            [
+              "[Rack Length] - [Post Size] - 0.5mm",
+              "[Rack Depth] - [Steel Thickness] - 0.5mm"
+            ],
+            [
+              "[Rack Length] - [Steel Thickness] - 0.5mm",
+              "[Rack Depth] - [Steel Thickness] - 0.5mm"
+            ],
+            [
+              "[Rack Length] - [Steel Thickness] - 0.5mm",
+              "[Rack Depth] - [Post Size] - 0.5mm"
+            ],
+            [
+              "[Rack Length] + 0.5mm",
+              "[Rack Depth] - [Post Size] - 0.5mm"
+            ]
+          ],
+          "from": "-1mm",
+          "to": "[Foot Cap Height] + 1mm"
+        }
+      ]
+    },
+    {
+      "id": "tier1-front-rail",
+      "name": "Tier 1 Front Rail",
+      "material": "Slotted Angle Powder Grey",
+      "solid": {
+        "kind": "prism",
+        "plane": "yz",
+        "points": [
+          [
+            0,
+            "[Bottom Tier Height]"
+          ],
+          [
+            "[Steel Thickness]",
+            "[Bottom Tier Height]"
+          ],
+          [
+            "[Steel Thickness]",
+            "[Bottom Tier Height] + [Post Size] - [Steel Thickness]"
+          ],
+          [
+            "[Post Size]",
+            "[Bottom Tier Height] + [Post Size] - [Steel Thickness]"
+          ],
+          [
+            "[Post Size]",
+            "[Bottom Tier Height] + [Post Size]"
+          ],
+          [
+            0,
+            "[Bottom Tier Height] + [Post Size]"
+          ]
+        ],
+        "from": "[Post Size] + 0.5mm",
+        "to": "[Rack Length] - [Post Size] - 0.5mm"
+      },
+      "cuts": []
+    },
+    {
+      "id": "tier1-back-rail",
+      "name": "Tier 1 Back Rail",
+      "material": "Slotted Angle Powder Grey",
+      "solid": {
+        "kind": "prism",
+        "plane": "yz",
+        "points": [
+          [
+            "[Rack Depth] - [Steel Thickness]",
+            "[Bottom Tier Height]"
+          ],
+          [
+            "[Rack Depth]",
+            "[Bottom Tier Height]"
+          ],
+          [
+            "[Rack Depth]",
+            "[Bottom Tier Height] + [Post Size]"
+          ],
+          [
+            "[Rack Depth] - [Post Size]",
+            "[Bottom Tier Height] + [Post Size]"
+          ],
+          [
+            "[Rack Depth] - [Post Size]",
+            "[Bottom Tier Height] + [Post Size] - [Steel Thickness]"
+          ],
+          [
+            "[Rack Depth] - [Steel Thickness]",
+            "[Bottom Tier Height] + [Post Size] - [Steel Thickness]"
+          ]
+        ],
+        "from": "[Post Size] + 0.5mm",
+        "to": "[Rack Length] - [Post Size] - 0.5mm"
+      },
+      "cuts": []
+    },
+    {
+      "id": "tier1-left-rail",
+      "name": "Tier 1 Left Rail",
+      "material": "Slotted Angle Powder Grey",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            0,
+            "[Bottom Tier Height]"
+          ],
+          [
+            "[Steel Thickness]",
+            "[Bottom Tier Height]"
+          ],
+          [
+            "[Steel Thickness]",
+            "[Bottom Tier Height] + [Post Size] - [Steel Thickness]"
+          ],
+          [
+            "[Post Size]",
+            "[Bottom Tier Height] + [Post Size] - [Steel Thickness]"
+          ],
+          [
+            "[Post Size]",
+            "[Bottom Tier Height] + [Post Size]"
+          ],
+          [
+            0,
+            "[Bottom Tier Height] + [Post Size]"
+          ]
+        ],
+        "from": "[Post Size] + 0.5mm",
+        "to": "[Rack Depth] - [Post Size] - 0.5mm"
+      },
+      "cuts": []
+    },
+    {
+      "id": "tier1-right-rail",
+      "name": "Tier 1 Right Rail",
+      "material": "Slotted Angle Powder Grey",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            "[Rack Length] - [Steel Thickness]",
+            "[Bottom Tier Height]"
+          ],
+          [
+            "[Rack Length]",
+            "[Bottom Tier Height]"
+          ],
+          [
+            "[Rack Length]",
+            "[Bottom Tier Height] + [Post Size]"
+          ],
+          [
+            "[Rack Length] - [Post Size]",
+            "[Bottom Tier Height] + [Post Size]"
+          ],
+          [
+            "[Rack Length] - [Post Size]",
+            "[Bottom Tier Height] + [Post Size] - [Steel Thickness]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness]",
+            "[Bottom Tier Height] + [Post Size] - [Steel Thickness]"
+          ]
+        ],
+        "from": "[Post Size] + 0.5mm",
+        "to": "[Rack Depth] - [Post Size] - 0.5mm"
+      },
+      "cuts": []
+    },
+    {
+      "id": "tier2-front-rail",
+      "name": "Tier 2 Front Rail",
+      "material": "Slotted Angle Powder Grey",
+      "solid": {
+        "kind": "prism",
+        "plane": "yz",
+        "points": [
+          [
+            0,
+            "[Middle Tier Height]"
+          ],
+          [
+            "[Steel Thickness]",
+            "[Middle Tier Height]"
+          ],
+          [
+            "[Steel Thickness]",
+            "[Middle Tier Height] + [Post Size] - [Steel Thickness]"
+          ],
+          [
+            "[Post Size]",
+            "[Middle Tier Height] + [Post Size] - [Steel Thickness]"
+          ],
+          [
+            "[Post Size]",
+            "[Middle Tier Height] + [Post Size]"
+          ],
+          [
+            0,
+            "[Middle Tier Height] + [Post Size]"
+          ]
+        ],
+        "from": "[Post Size] + 0.5mm",
+        "to": "[Rack Length] - [Post Size] - 0.5mm"
+      },
+      "cuts": []
+    },
+    {
+      "id": "tier2-back-rail",
+      "name": "Tier 2 Back Rail",
+      "material": "Slotted Angle Powder Grey",
+      "solid": {
+        "kind": "prism",
+        "plane": "yz",
+        "points": [
+          [
+            "[Rack Depth] - [Steel Thickness]",
+            "[Middle Tier Height]"
+          ],
+          [
+            "[Rack Depth]",
+            "[Middle Tier Height]"
+          ],
+          [
+            "[Rack Depth]",
+            "[Middle Tier Height] + [Post Size]"
+          ],
+          [
+            "[Rack Depth] - [Post Size]",
+            "[Middle Tier Height] + [Post Size]"
+          ],
+          [
+            "[Rack Depth] - [Post Size]",
+            "[Middle Tier Height] + [Post Size] - [Steel Thickness]"
+          ],
+          [
+            "[Rack Depth] - [Steel Thickness]",
+            "[Middle Tier Height] + [Post Size] - [Steel Thickness]"
+          ]
+        ],
+        "from": "[Post Size] + 0.5mm",
+        "to": "[Rack Length] - [Post Size] - 0.5mm"
+      },
+      "cuts": []
+    },
+    {
+      "id": "tier2-left-rail",
+      "name": "Tier 2 Left Rail",
+      "material": "Slotted Angle Powder Grey",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            0,
+            "[Middle Tier Height]"
+          ],
+          [
+            "[Steel Thickness]",
+            "[Middle Tier Height]"
+          ],
+          [
+            "[Steel Thickness]",
+            "[Middle Tier Height] + [Post Size] - [Steel Thickness]"
+          ],
+          [
+            "[Post Size]",
+            "[Middle Tier Height] + [Post Size] - [Steel Thickness]"
+          ],
+          [
+            "[Post Size]",
+            "[Middle Tier Height] + [Post Size]"
+          ],
+          [
+            0,
+            "[Middle Tier Height] + [Post Size]"
+          ]
+        ],
+        "from": "[Post Size] + 0.5mm",
+        "to": "[Rack Depth] - [Post Size] - 0.5mm"
+      },
+      "cuts": []
+    },
+    {
+      "id": "tier2-right-rail",
+      "name": "Tier 2 Right Rail",
+      "material": "Slotted Angle Powder Grey",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            "[Rack Length] - [Steel Thickness]",
+            "[Middle Tier Height]"
+          ],
+          [
+            "[Rack Length]",
+            "[Middle Tier Height]"
+          ],
+          [
+            "[Rack Length]",
+            "[Middle Tier Height] + [Post Size]"
+          ],
+          [
+            "[Rack Length] - [Post Size]",
+            "[Middle Tier Height] + [Post Size]"
+          ],
+          [
+            "[Rack Length] - [Post Size]",
+            "[Middle Tier Height] + [Post Size] - [Steel Thickness]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness]",
+            "[Middle Tier Height] + [Post Size] - [Steel Thickness]"
+          ]
+        ],
+        "from": "[Post Size] + 0.5mm",
+        "to": "[Rack Depth] - [Post Size] - 0.5mm"
+      },
+      "cuts": []
+    },
+    {
+      "id": "tier3-front-rail",
+      "name": "Tier 3 Front Rail",
+      "material": "Slotted Angle Powder Grey",
+      "solid": {
+        "kind": "prism",
+        "plane": "yz",
+        "points": [
+          [
+            0,
+            "[Top Tier Height]"
+          ],
+          [
+            "[Steel Thickness]",
+            "[Top Tier Height]"
+          ],
+          [
+            "[Steel Thickness]",
+            "[Top Tier Height] + [Post Size] - [Steel Thickness]"
+          ],
+          [
+            "[Post Size]",
+            "[Top Tier Height] + [Post Size] - [Steel Thickness]"
+          ],
+          [
+            "[Post Size]",
+            "[Top Tier Height] + [Post Size]"
+          ],
+          [
+            0,
+            "[Top Tier Height] + [Post Size]"
+          ]
+        ],
+        "from": "[Post Size] + 0.5mm",
+        "to": "[Rack Length] - [Post Size] - 0.5mm"
+      },
+      "cuts": []
+    },
+    {
+      "id": "tier3-back-rail",
+      "name": "Tier 3 Back Rail",
+      "material": "Slotted Angle Powder Grey",
+      "solid": {
+        "kind": "prism",
+        "plane": "yz",
+        "points": [
+          [
+            "[Rack Depth] - [Steel Thickness]",
+            "[Top Tier Height]"
+          ],
+          [
+            "[Rack Depth]",
+            "[Top Tier Height]"
+          ],
+          [
+            "[Rack Depth]",
+            "[Top Tier Height] + [Post Size]"
+          ],
+          [
+            "[Rack Depth] - [Post Size]",
+            "[Top Tier Height] + [Post Size]"
+          ],
+          [
+            "[Rack Depth] - [Post Size]",
+            "[Top Tier Height] + [Post Size] - [Steel Thickness]"
+          ],
+          [
+            "[Rack Depth] - [Steel Thickness]",
+            "[Top Tier Height] + [Post Size] - [Steel Thickness]"
+          ]
+        ],
+        "from": "[Post Size] + 0.5mm",
+        "to": "[Rack Length] - [Post Size] - 0.5mm"
+      },
+      "cuts": []
+    },
+    {
+      "id": "tier3-left-rail",
+      "name": "Tier 3 Left Rail",
+      "material": "Slotted Angle Powder Grey",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            0,
+            "[Top Tier Height]"
+          ],
+          [
+            "[Steel Thickness]",
+            "[Top Tier Height]"
+          ],
+          [
+            "[Steel Thickness]",
+            "[Top Tier Height] + [Post Size] - [Steel Thickness]"
+          ],
+          [
+            "[Post Size]",
+            "[Top Tier Height] + [Post Size] - [Steel Thickness]"
+          ],
+          [
+            "[Post Size]",
+            "[Top Tier Height] + [Post Size]"
+          ],
+          [
+            0,
+            "[Top Tier Height] + [Post Size]"
+          ]
+        ],
+        "from": "[Post Size] + 0.5mm",
+        "to": "[Rack Depth] - [Post Size] - 0.5mm"
+      },
+      "cuts": []
+    },
+    {
+      "id": "tier3-right-rail",
+      "name": "Tier 3 Right Rail",
+      "material": "Slotted Angle Powder Grey",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            "[Rack Length] - [Steel Thickness]",
+            "[Top Tier Height]"
+          ],
+          [
+            "[Rack Length]",
+            "[Top Tier Height]"
+          ],
+          [
+            "[Rack Length]",
+            "[Top Tier Height] + [Post Size]"
+          ],
+          [
+            "[Rack Length] - [Post Size]",
+            "[Top Tier Height] + [Post Size]"
+          ],
+          [
+            "[Rack Length] - [Post Size]",
+            "[Top Tier Height] + [Post Size] - [Steel Thickness]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness]",
+            "[Top Tier Height] + [Post Size] - [Steel Thickness]"
+          ]
+        ],
+        "from": "[Post Size] + 0.5mm",
+        "to": "[Rack Depth] - [Post Size] - 0.5mm"
+      },
+      "cuts": []
+    },
+    {
+      "id": "mesh-x-tier1",
+      "name": "Tier 1 Mesh Wires Along X",
+      "material": "Wire Mesh Galvanized",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "x",
+        "base": {
+          "x": "[Post Size] + 0.5mm",
+          "y": "[Post Size] + [Mesh Edge Margin Y]",
+          "z": "[Bottom Tier Height] + [Post Size] + 0.5mm + [Mesh Wire Diameter] / 2"
+        },
+        "radius": "[Mesh Wire Diameter] / 2",
+        "height": "[Mesh Width] - 1mm"
+      },
+      "cuts": [],
+      "array": {
+        "count": "[Mesh Y Wire Count]",
+        "axis": "y",
+        "spacing": "[Mesh Pitch]"
+      }
+    },
+    {
+      "id": "mesh-y-tier1",
+      "name": "Tier 1 Mesh Wires Along Y",
+      "material": "Wire Mesh Galvanized",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "y",
+        "base": {
+          "x": "[Post Size] + [Mesh Edge Margin X]",
+          "y": "[Post Size] + 0.5mm",
+          "z": "[Bottom Tier Height] + [Post Size] + 1mm + [Mesh Wire Diameter] / 2"
+        },
+        "radius": "[Mesh Wire Diameter] / 2",
+        "height": "[Mesh Depth] - 1mm"
+      },
+      "cuts": [],
+      "array": {
+        "count": "[Mesh X Wire Count]",
+        "axis": "x",
+        "spacing": "[Mesh Pitch]"
+      }
+    },
+    {
+      "id": "mesh-x-tier2",
+      "name": "Tier 2 Mesh Wires Along X",
+      "material": "Wire Mesh Galvanized",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "x",
+        "base": {
+          "x": "[Post Size] + 0.5mm",
+          "y": "[Post Size] + [Mesh Edge Margin Y]",
+          "z": "[Middle Tier Height] + [Post Size] + 0.5mm + [Mesh Wire Diameter] / 2"
+        },
+        "radius": "[Mesh Wire Diameter] / 2",
+        "height": "[Mesh Width] - 1mm"
+      },
+      "cuts": [],
+      "array": {
+        "count": "[Mesh Y Wire Count]",
+        "axis": "y",
+        "spacing": "[Mesh Pitch]"
+      }
+    },
+    {
+      "id": "mesh-y-tier2",
+      "name": "Tier 2 Mesh Wires Along Y",
+      "material": "Wire Mesh Galvanized",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "y",
+        "base": {
+          "x": "[Post Size] + [Mesh Edge Margin X]",
+          "y": "[Post Size] + 0.5mm",
+          "z": "[Middle Tier Height] + [Post Size] + 1mm + [Mesh Wire Diameter] / 2"
+        },
+        "radius": "[Mesh Wire Diameter] / 2",
+        "height": "[Mesh Depth] - 1mm"
+      },
+      "cuts": [],
+      "array": {
+        "count": "[Mesh X Wire Count]",
+        "axis": "x",
+        "spacing": "[Mesh Pitch]"
+      }
+    },
+    {
+      "id": "mesh-x-tier3",
+      "name": "Tier 3 Mesh Wires Along X",
+      "material": "Wire Mesh Galvanized",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "x",
+        "base": {
+          "x": "[Post Size] + 0.5mm",
+          "y": "[Post Size] + [Mesh Edge Margin Y]",
+          "z": "[Top Tier Height] + [Post Size] + 0.5mm + [Mesh Wire Diameter] / 2"
+        },
+        "radius": "[Mesh Wire Diameter] / 2",
+        "height": "[Mesh Width] - 1mm"
+      },
+      "cuts": [],
+      "array": {
+        "count": "[Mesh Y Wire Count]",
+        "axis": "y",
+        "spacing": "[Mesh Pitch]"
+      }
+    },
+    {
+      "id": "mesh-y-tier3",
+      "name": "Tier 3 Mesh Wires Along Y",
+      "material": "Wire Mesh Galvanized",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "y",
+        "base": {
+          "x": "[Post Size] + [Mesh Edge Margin X]",
+          "y": "[Post Size] + 0.5mm",
+          "z": "[Top Tier Height] + [Post Size] + 1mm + [Mesh Wire Diameter] / 2"
+        },
+        "radius": "[Mesh Wire Diameter] / 2",
+        "height": "[Mesh Depth] - 1mm"
+      },
+      "cuts": [],
+      "array": {
+        "count": "[Mesh X Wire Count]",
+        "axis": "x",
+        "spacing": "[Mesh Pitch]"
+      }
+    },
+    {
+      "id": "gusset-t1-fl",
+      "name": "Tier 1 Front Left Gusset",
+      "material": "Corner Brackets Zinc",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            "[Steel Thickness] + 0.5mm",
+            "[Bottom Tier Height]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm + [Gusset Leg]",
+            "[Bottom Tier Height]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm",
+            "[Bottom Tier Height] - [Gusset Leg]"
+          ]
+        ],
+        "from": "[Steel Thickness] + 0.5mm",
+        "to": "[Steel Thickness] + 0.5mm + [Gusset Thickness]"
+      },
+      "cuts": []
+    },
+    {
+      "id": "gusset-t1-fr",
+      "name": "Tier 1 Front Right Gusset",
+      "material": "Corner Brackets Zinc",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Gusset Leg]",
+            "[Bottom Tier Height]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm",
+            "[Bottom Tier Height]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm",
+            "[Bottom Tier Height] - [Gusset Leg]"
+          ]
+        ],
+        "from": "[Steel Thickness] + 0.5mm",
+        "to": "[Steel Thickness] + 0.5mm + [Gusset Thickness]"
+      },
+      "cuts": []
+    },
+    {
+      "id": "gusset-t1-bl",
+      "name": "Tier 1 Back Left Gusset",
+      "material": "Corner Brackets Zinc",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            "[Steel Thickness] + 0.5mm",
+            "[Bottom Tier Height]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm + [Gusset Leg]",
+            "[Bottom Tier Height]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm",
+            "[Bottom Tier Height] - [Gusset Leg]"
+          ]
+        ],
+        "from": "[Rack Depth] - [Steel Thickness] - 0.5mm - [Gusset Thickness]",
+        "to": "[Rack Depth] - [Steel Thickness] - 0.5mm"
+      },
+      "cuts": []
+    },
+    {
+      "id": "gusset-t1-br",
+      "name": "Tier 1 Back Right Gusset",
+      "material": "Corner Brackets Zinc",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Gusset Leg]",
+            "[Bottom Tier Height]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm",
+            "[Bottom Tier Height]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm",
+            "[Bottom Tier Height] - [Gusset Leg]"
+          ]
+        ],
+        "from": "[Rack Depth] - [Steel Thickness] - 0.5mm - [Gusset Thickness]",
+        "to": "[Rack Depth] - [Steel Thickness] - 0.5mm"
+      },
+      "cuts": []
+    },
+    {
+      "id": "gusset-t2-fl",
+      "name": "Tier 2 Front Left Gusset",
+      "material": "Corner Brackets Zinc",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            "[Steel Thickness] + 0.5mm",
+            "[Middle Tier Height]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm + [Gusset Leg]",
+            "[Middle Tier Height]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm",
+            "[Middle Tier Height] - [Gusset Leg]"
+          ]
+        ],
+        "from": "[Steel Thickness] + 0.5mm",
+        "to": "[Steel Thickness] + 0.5mm + [Gusset Thickness]"
+      },
+      "cuts": []
+    },
+    {
+      "id": "gusset-t2-fr",
+      "name": "Tier 2 Front Right Gusset",
+      "material": "Corner Brackets Zinc",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Gusset Leg]",
+            "[Middle Tier Height]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm",
+            "[Middle Tier Height]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm",
+            "[Middle Tier Height] - [Gusset Leg]"
+          ]
+        ],
+        "from": "[Steel Thickness] + 0.5mm",
+        "to": "[Steel Thickness] + 0.5mm + [Gusset Thickness]"
+      },
+      "cuts": []
+    },
+    {
+      "id": "gusset-t2-bl",
+      "name": "Tier 2 Back Left Gusset",
+      "material": "Corner Brackets Zinc",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            "[Steel Thickness] + 0.5mm",
+            "[Middle Tier Height]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm + [Gusset Leg]",
+            "[Middle Tier Height]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm",
+            "[Middle Tier Height] - [Gusset Leg]"
+          ]
+        ],
+        "from": "[Rack Depth] - [Steel Thickness] - 0.5mm - [Gusset Thickness]",
+        "to": "[Rack Depth] - [Steel Thickness] - 0.5mm"
+      },
+      "cuts": []
+    },
+    {
+      "id": "gusset-t2-br",
+      "name": "Tier 2 Back Right Gusset",
+      "material": "Corner Brackets Zinc",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Gusset Leg]",
+            "[Middle Tier Height]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm",
+            "[Middle Tier Height]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm",
+            "[Middle Tier Height] - [Gusset Leg]"
+          ]
+        ],
+        "from": "[Rack Depth] - [Steel Thickness] - 0.5mm - [Gusset Thickness]",
+        "to": "[Rack Depth] - [Steel Thickness] - 0.5mm"
+      },
+      "cuts": []
+    },
+    {
+      "id": "gusset-t3-fl",
+      "name": "Tier 3 Front Left Gusset",
+      "material": "Corner Brackets Zinc",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            "[Steel Thickness] + 0.5mm",
+            "[Top Tier Height]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm + [Gusset Leg]",
+            "[Top Tier Height]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm",
+            "[Top Tier Height] - [Gusset Leg]"
+          ]
+        ],
+        "from": "[Steel Thickness] + 0.5mm",
+        "to": "[Steel Thickness] + 0.5mm + [Gusset Thickness]"
+      },
+      "cuts": []
+    },
+    {
+      "id": "gusset-t3-fr",
+      "name": "Tier 3 Front Right Gusset",
+      "material": "Corner Brackets Zinc",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Gusset Leg]",
+            "[Top Tier Height]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm",
+            "[Top Tier Height]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm",
+            "[Top Tier Height] - [Gusset Leg]"
+          ]
+        ],
+        "from": "[Steel Thickness] + 0.5mm",
+        "to": "[Steel Thickness] + 0.5mm + [Gusset Thickness]"
+      },
+      "cuts": []
+    },
+    {
+      "id": "gusset-t3-bl",
+      "name": "Tier 3 Back Left Gusset",
+      "material": "Corner Brackets Zinc",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            "[Steel Thickness] + 0.5mm",
+            "[Top Tier Height]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm + [Gusset Leg]",
+            "[Top Tier Height]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm",
+            "[Top Tier Height] - [Gusset Leg]"
+          ]
+        ],
+        "from": "[Rack Depth] - [Steel Thickness] - 0.5mm - [Gusset Thickness]",
+        "to": "[Rack Depth] - [Steel Thickness] - 0.5mm"
+      },
+      "cuts": []
+    },
+    {
+      "id": "gusset-t3-br",
+      "name": "Tier 3 Back Right Gusset",
+      "material": "Corner Brackets Zinc",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Gusset Leg]",
+            "[Top Tier Height]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm",
+            "[Top Tier Height]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm",
+            "[Top Tier Height] - [Gusset Leg]"
+          ]
+        ],
+        "from": "[Rack Depth] - [Steel Thickness] - 0.5mm - [Gusset Thickness]",
+        "to": "[Rack Depth] - [Steel Thickness] - 0.5mm"
+      },
+      "cuts": []
+    },
+    {
+      "id": "slot-row-fl-x",
+      "name": "Front Left Post Oval Slots On X Face",
+      "material": "Slot Shadow Black",
+      "solid": {
+        "kind": "prism",
+        "plane": "yz",
+        "points": [
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(0)",
+            "[Slot Start] + [Slot Height] / 2 * sin(0)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(30)",
+            "[Slot Start] + [Slot Height] / 2 * sin(30)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(60)",
+            "[Slot Start] + [Slot Height] / 2 * sin(60)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(90)",
+            "[Slot Start] + [Slot Height] / 2 * sin(90)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(120)",
+            "[Slot Start] + [Slot Height] / 2 * sin(120)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(150)",
+            "[Slot Start] + [Slot Height] / 2 * sin(150)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(180)",
+            "[Slot Start] + [Slot Height] / 2 * sin(180)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(210)",
+            "[Slot Start] + [Slot Height] / 2 * sin(210)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(240)",
+            "[Slot Start] + [Slot Height] / 2 * sin(240)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(270)",
+            "[Slot Start] + [Slot Height] / 2 * sin(270)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(300)",
+            "[Slot Start] + [Slot Height] / 2 * sin(300)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(330)",
+            "[Slot Start] + [Slot Height] / 2 * sin(330)"
+          ]
+        ],
+        "from": "0mm - [Slot Marker Thickness] / 2",
+        "to": "[Slot Marker Thickness] / 2"
+      },
+      "cuts": [],
+      "array": {
+        "count": "[Slot Count]",
+        "axis": "z",
+        "spacing": "[Slot Pitch]"
+      }
+    },
+    {
+      "id": "slot-row-fl-y",
+      "name": "Front Left Post Oval Slots On Y Face",
+      "material": "Slot Shadow Black",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(0)",
+            "[Slot Start] + [Slot Height] / 2 * sin(0)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(30)",
+            "[Slot Start] + [Slot Height] / 2 * sin(30)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(60)",
+            "[Slot Start] + [Slot Height] / 2 * sin(60)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(90)",
+            "[Slot Start] + [Slot Height] / 2 * sin(90)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(120)",
+            "[Slot Start] + [Slot Height] / 2 * sin(120)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(150)",
+            "[Slot Start] + [Slot Height] / 2 * sin(150)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(180)",
+            "[Slot Start] + [Slot Height] / 2 * sin(180)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(210)",
+            "[Slot Start] + [Slot Height] / 2 * sin(210)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(240)",
+            "[Slot Start] + [Slot Height] / 2 * sin(240)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(270)",
+            "[Slot Start] + [Slot Height] / 2 * sin(270)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(300)",
+            "[Slot Start] + [Slot Height] / 2 * sin(300)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(330)",
+            "[Slot Start] + [Slot Height] / 2 * sin(330)"
+          ]
+        ],
+        "from": "0mm - [Slot Marker Thickness] / 2",
+        "to": "[Slot Marker Thickness] / 2"
+      },
+      "cuts": [],
+      "array": {
+        "count": "[Slot Count]",
+        "axis": "z",
+        "spacing": "[Slot Pitch]"
+      }
+    },
+    {
+      "id": "slot-row-fr-x",
+      "name": "Front Right Post Oval Slots On X Face",
+      "material": "Slot Shadow Black",
+      "solid": {
+        "kind": "prism",
+        "plane": "yz",
+        "points": [
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(0)",
+            "[Slot Start] + [Slot Height] / 2 * sin(0)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(30)",
+            "[Slot Start] + [Slot Height] / 2 * sin(30)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(60)",
+            "[Slot Start] + [Slot Height] / 2 * sin(60)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(90)",
+            "[Slot Start] + [Slot Height] / 2 * sin(90)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(120)",
+            "[Slot Start] + [Slot Height] / 2 * sin(120)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(150)",
+            "[Slot Start] + [Slot Height] / 2 * sin(150)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(180)",
+            "[Slot Start] + [Slot Height] / 2 * sin(180)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(210)",
+            "[Slot Start] + [Slot Height] / 2 * sin(210)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(240)",
+            "[Slot Start] + [Slot Height] / 2 * sin(240)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(270)",
+            "[Slot Start] + [Slot Height] / 2 * sin(270)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(300)",
+            "[Slot Start] + [Slot Height] / 2 * sin(300)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(330)",
+            "[Slot Start] + [Slot Height] / 2 * sin(330)"
+          ]
+        ],
+        "from": "[Rack Length] - [Slot Marker Thickness] / 2",
+        "to": "[Rack Length] + [Slot Marker Thickness] / 2"
+      },
+      "cuts": [],
+      "array": {
+        "count": "[Slot Count]",
+        "axis": "z",
+        "spacing": "[Slot Pitch]"
+      }
+    },
+    {
+      "id": "slot-row-fr-y",
+      "name": "Front Right Post Oval Slots On Y Face",
+      "material": "Slot Shadow Black",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            "[Rack Length] - [Post Size] / 2 + [Slot Width] / 2 * cos(0)",
+            "[Slot Start] + [Slot Height] / 2 * sin(0)"
+          ],
+          [
+            "[Rack Length] - [Post Size] / 2 + [Slot Width] / 2 * cos(30)",
+            "[Slot Start] + [Slot Height] / 2 * sin(30)"
+          ],
+          [
+            "[Rack Length] - [Post Size] / 2 + [Slot Width] / 2 * cos(60)",
+            "[Slot Start] + [Slot Height] / 2 * sin(60)"
+          ],
+          [
+            "[Rack Length] - [Post Size] / 2 + [Slot Width] / 2 * cos(90)",
+            "[Slot Start] + [Slot Height] / 2 * sin(90)"
+          ],
+          [
+            "[Rack Length] - [Post Size] / 2 + [Slot Width] / 2 * cos(120)",
+            "[Slot Start] + [Slot Height] / 2 * sin(120)"
+          ],
+          [
+            "[Rack Length] - [Post Size] / 2 + [Slot Width] / 2 * cos(150)",
+            "[Slot Start] + [Slot Height] / 2 * sin(150)"
+          ],
+          [
+            "[Rack Length] - [Post Size] / 2 + [Slot Width] / 2 * cos(180)",
+            "[Slot Start] + [Slot Height] / 2 * sin(180)"
+          ],
+          [
+            "[Rack Length] - [Post Size] / 2 + [Slot Width] / 2 * cos(210)",
+            "[Slot Start] + [Slot Height] / 2 * sin(210)"
+          ],
+          [
+            "[Rack Length] - [Post Size] / 2 + [Slot Width] / 2 * cos(240)",
+            "[Slot Start] + [Slot Height] / 2 * sin(240)"
+          ],
+          [
+            "[Rack Length] - [Post Size] / 2 + [Slot Width] / 2 * cos(270)",
+            "[Slot Start] + [Slot Height] / 2 * sin(270)"
+          ],
+          [
+            "[Rack Length] - [Post Size] / 2 + [Slot Width] / 2 * cos(300)",
+            "[Slot Start] + [Slot Height] / 2 * sin(300)"
+          ],
+          [
+            "[Rack Length] - [Post Size] / 2 + [Slot Width] / 2 * cos(330)",
+            "[Slot Start] + [Slot Height] / 2 * sin(330)"
+          ]
+        ],
+        "from": "0mm - [Slot Marker Thickness] / 2",
+        "to": "[Slot Marker Thickness] / 2"
+      },
+      "cuts": [],
+      "array": {
+        "count": "[Slot Count]",
+        "axis": "z",
+        "spacing": "[Slot Pitch]"
+      }
+    },
+    {
+      "id": "slot-row-bl-x",
+      "name": "Back Left Post Oval Slots On X Face",
+      "material": "Slot Shadow Black",
+      "solid": {
+        "kind": "prism",
+        "plane": "yz",
+        "points": [
+          [
+            "[Rack Depth] - [Post Size] / 2 + [Slot Width] / 2 * cos(0)",
+            "[Slot Start] + [Slot Height] / 2 * sin(0)"
+          ],
+          [
+            "[Rack Depth] - [Post Size] / 2 + [Slot Width] / 2 * cos(30)",
+            "[Slot Start] + [Slot Height] / 2 * sin(30)"
+          ],
+          [
+            "[Rack Depth] - [Post Size] / 2 + [Slot Width] / 2 * cos(60)",
+            "[Slot Start] + [Slot Height] / 2 * sin(60)"
+          ],
+          [
+            "[Rack Depth] - [Post Size] / 2 + [Slot Width] / 2 * cos(90)",
+            "[Slot Start] + [Slot Height] / 2 * sin(90)"
+          ],
+          [
+            "[Rack Depth] - [Post Size] / 2 + [Slot Width] / 2 * cos(120)",
+            "[Slot Start] + [Slot Height] / 2 * sin(120)"
+          ],
+          [
+            "[Rack Depth] - [Post Size] / 2 + [Slot Width] / 2 * cos(150)",
+            "[Slot Start] + [Slot Height] / 2 * sin(150)"
+          ],
+          [
+            "[Rack Depth] - [Post Size] / 2 + [Slot Width] / 2 * cos(180)",
+            "[Slot Start] + [Slot Height] / 2 * sin(180)"
+          ],
+          [
+            "[Rack Depth] - [Post Size] / 2 + [Slot Width] / 2 * cos(210)",
+            "[Slot Start] + [Slot Height] / 2 * sin(210)"
+          ],
+          [
+            "[Rack Depth] - [Post Size] / 2 + [Slot Width] / 2 * cos(240)",
+            "[Slot Start] + [Slot Height] / 2 * sin(240)"
+          ],
+          [
+            "[Rack Depth] - [Post Size] / 2 + [Slot Width] / 2 * cos(270)",
+            "[Slot Start] + [Slot Height] / 2 * sin(270)"
+          ],
+          [
+            "[Rack Depth] - [Post Size] / 2 + [Slot Width] / 2 * cos(300)",
+            "[Slot Start] + [Slot Height] / 2 * sin(300)"
+          ],
+          [
+            "[Rack Depth] - [Post Size] / 2 + [Slot Width] / 2 * cos(330)",
+            "[Slot Start] + [Slot Height] / 2 * sin(330)"
+          ]
+        ],
+        "from": "0mm - [Slot Marker Thickness] / 2",
+        "to": "[Slot Marker Thickness] / 2"
+      },
+      "cuts": [],
+      "array": {
+        "count": "[Slot Count]",
+        "axis": "z",
+        "spacing": "[Slot Pitch]"
+      }
+    },
+    {
+      "id": "slot-row-bl-y",
+      "name": "Back Left Post Oval Slots On Y Face",
+      "material": "Slot Shadow Black",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(0)",
+            "[Slot Start] + [Slot Height] / 2 * sin(0)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(30)",
+            "[Slot Start] + [Slot Height] / 2 * sin(30)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(60)",
+            "[Slot Start] + [Slot Height] / 2 * sin(60)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(90)",
+            "[Slot Start] + [Slot Height] / 2 * sin(90)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(120)",
+            "[Slot Start] + [Slot Height] / 2 * sin(120)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(150)",
+            "[Slot Start] + [Slot Height] / 2 * sin(150)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(180)",
+            "[Slot Start] + [Slot Height] / 2 * sin(180)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(210)",
+            "[Slot Start] + [Slot Height] / 2 * sin(210)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(240)",
+            "[Slot Start] + [Slot Height] / 2 * sin(240)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(270)",
+            "[Slot Start] + [Slot Height] / 2 * sin(270)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(300)",
+            "[Slot Start] + [Slot Height] / 2 * sin(300)"
+          ],
+          [
+            "[Post Size] / 2 + [Slot Width] / 2 * cos(330)",
+            "[Slot Start] + [Slot Height] / 2 * sin(330)"
+          ]
+        ],
+        "from": "[Rack Depth] - [Slot Marker Thickness] / 2",
+        "to": "[Rack Depth] + [Slot Marker Thickness] / 2"
+      },
+      "cuts": [],
+      "array": {
+        "count": "[Slot Count]",
+        "axis": "z",
+        "spacing": "[Slot Pitch]"
+      }
+    },
+    {
+      "id": "slot-row-br-x",
+      "name": "Back Right Post Oval Slots On X Face",
+      "material": "Slot Shadow Black",
+      "solid": {
+        "kind": "prism",
+        "plane": "yz",
+        "points": [
+          [
+            "[Rack Depth] - [Post Size] / 2 + [Slot Width] / 2 * cos(0)",
+            "[Slot Start] + [Slot Height] / 2 * sin(0)"
+          ],
+          [
+            "[Rack Depth] - [Post Size] / 2 + [Slot Width] / 2 * cos(30)",
+            "[Slot Start] + [Slot Height] / 2 * sin(30)"
+          ],
+          [
+            "[Rack Depth] - [Post Size] / 2 + [Slot Width] / 2 * cos(60)",
+            "[Slot Start] + [Slot Height] / 2 * sin(60)"
+          ],
+          [
+            "[Rack Depth] - [Post Size] / 2 + [Slot Width] / 2 * cos(90)",
+            "[Slot Start] + [Slot Height] / 2 * sin(90)"
+          ],
+          [
+            "[Rack Depth] - [Post Size] / 2 + [Slot Width] / 2 * cos(120)",
+            "[Slot Start] + [Slot Height] / 2 * sin(120)"
+          ],
+          [
+            "[Rack Depth] - [Post Size] / 2 + [Slot Width] / 2 * cos(150)",
+            "[Slot Start] + [Slot Height] / 2 * sin(150)"
+          ],
+          [
+            "[Rack Depth] - [Post Size] / 2 + [Slot Width] / 2 * cos(180)",
+            "[Slot Start] + [Slot Height] / 2 * sin(180)"
+          ],
+          [
+            "[Rack Depth] - [Post Size] / 2 + [Slot Width] / 2 * cos(210)",
+            "[Slot Start] + [Slot Height] / 2 * sin(210)"
+          ],
+          [
+            "[Rack Depth] - [Post Size] / 2 + [Slot Width] / 2 * cos(240)",
+            "[Slot Start] + [Slot Height] / 2 * sin(240)"
+          ],
+          [
+            "[Rack Depth] - [Post Size] / 2 + [Slot Width] / 2 * cos(270)",
+            "[Slot Start] + [Slot Height] / 2 * sin(270)"
+          ],
+          [
+            "[Rack Depth] - [Post Size] / 2 + [Slot Width] / 2 * cos(300)",
+            "[Slot Start] + [Slot Height] / 2 * sin(300)"
+          ],
+          [
+            "[Rack Depth] - [Post Size] / 2 + [Slot Width] / 2 * cos(330)",
+            "[Slot Start] + [Slot Height] / 2 * sin(330)"
+          ]
+        ],
+        "from": "[Rack Length] - [Slot Marker Thickness] / 2",
+        "to": "[Rack Length] + [Slot Marker Thickness] / 2"
+      },
+      "cuts": [],
+      "array": {
+        "count": "[Slot Count]",
+        "axis": "z",
+        "spacing": "[Slot Pitch]"
+      }
+    },
+    {
+      "id": "slot-row-br-y",
+      "name": "Back Right Post Oval Slots On Y Face",
+      "material": "Slot Shadow Black",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            "[Rack Length] - [Post Size] / 2 + [Slot Width] / 2 * cos(0)",
+            "[Slot Start] + [Slot Height] / 2 * sin(0)"
+          ],
+          [
+            "[Rack Length] - [Post Size] / 2 + [Slot Width] / 2 * cos(30)",
+            "[Slot Start] + [Slot Height] / 2 * sin(30)"
+          ],
+          [
+            "[Rack Length] - [Post Size] / 2 + [Slot Width] / 2 * cos(60)",
+            "[Slot Start] + [Slot Height] / 2 * sin(60)"
+          ],
+          [
+            "[Rack Length] - [Post Size] / 2 + [Slot Width] / 2 * cos(90)",
+            "[Slot Start] + [Slot Height] / 2 * sin(90)"
+          ],
+          [
+            "[Rack Length] - [Post Size] / 2 + [Slot Width] / 2 * cos(120)",
+            "[Slot Start] + [Slot Height] / 2 * sin(120)"
+          ],
+          [
+            "[Rack Length] - [Post Size] / 2 + [Slot Width] / 2 * cos(150)",
+            "[Slot Start] + [Slot Height] / 2 * sin(150)"
+          ],
+          [
+            "[Rack Length] - [Post Size] / 2 + [Slot Width] / 2 * cos(180)",
+            "[Slot Start] + [Slot Height] / 2 * sin(180)"
+          ],
+          [
+            "[Rack Length] - [Post Size] / 2 + [Slot Width] / 2 * cos(210)",
+            "[Slot Start] + [Slot Height] / 2 * sin(210)"
+          ],
+          [
+            "[Rack Length] - [Post Size] / 2 + [Slot Width] / 2 * cos(240)",
+            "[Slot Start] + [Slot Height] / 2 * sin(240)"
+          ],
+          [
+            "[Rack Length] - [Post Size] / 2 + [Slot Width] / 2 * cos(270)",
+            "[Slot Start] + [Slot Height] / 2 * sin(270)"
+          ],
+          [
+            "[Rack Length] - [Post Size] / 2 + [Slot Width] / 2 * cos(300)",
+            "[Slot Start] + [Slot Height] / 2 * sin(300)"
+          ],
+          [
+            "[Rack Length] - [Post Size] / 2 + [Slot Width] / 2 * cos(330)",
+            "[Slot Start] + [Slot Height] / 2 * sin(330)"
+          ]
+        ],
+        "from": "[Rack Depth] - [Slot Marker Thickness] / 2",
+        "to": "[Rack Depth] + [Slot Marker Thickness] / 2"
+      },
+      "cuts": [],
+      "array": {
+        "count": "[Slot Count]",
+        "axis": "z",
+        "spacing": "[Slot Pitch]"
+      }
+    },
+    {
+      "id": "bolt-t1-fl",
+      "name": "Tier 1 Front Left M8 Hex Bolts",
+      "material": "Bolts Zinc",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            "[Steel Thickness] + 0.5mm + [Bolt Edge Distance] + [Bolt Diameter] + [Bolt Head Radius]",
+            "[Bottom Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm + [Bolt Edge Distance] + [Bolt Diameter] + 0.5 * [Bolt Head Radius]",
+            "[Bottom Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] + 0.866 * [Bolt Head Radius]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm + [Bolt Edge Distance] + [Bolt Diameter] - 0.5 * [Bolt Head Radius]",
+            "[Bottom Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] + 0.866 * [Bolt Head Radius]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm + [Bolt Edge Distance] + [Bolt Diameter] - [Bolt Head Radius]",
+            "[Bottom Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm + [Bolt Edge Distance] + [Bolt Diameter] - 0.5 * [Bolt Head Radius]",
+            "[Bottom Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] - 0.866 * [Bolt Head Radius]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm + [Bolt Edge Distance] + [Bolt Diameter] + 0.5 * [Bolt Head Radius]",
+            "[Bottom Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] - 0.866 * [Bolt Head Radius]"
+          ]
+        ],
+        "from": "0mm - [Bolt Head Height]",
+        "to": "[Bolt Length] - [Bolt Head Height]"
+      },
+      "cuts": [],
+      "array": {
+        "count": 2,
+        "axis": "z",
+        "spacing": "[Bolt Spacing]"
+      }
+    },
+    {
+      "id": "bolt-t1-fr",
+      "name": "Tier 1 Front Right M8 Hex Bolts",
+      "material": "Bolts Zinc",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Bolt Edge Distance] - [Bolt Diameter] + [Bolt Head Radius]",
+            "[Bottom Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Bolt Edge Distance] - [Bolt Diameter] + 0.5 * [Bolt Head Radius]",
+            "[Bottom Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] + 0.866 * [Bolt Head Radius]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Bolt Edge Distance] - [Bolt Diameter] - 0.5 * [Bolt Head Radius]",
+            "[Bottom Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] + 0.866 * [Bolt Head Radius]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Head Radius]",
+            "[Bottom Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Bolt Edge Distance] - [Bolt Diameter] - 0.5 * [Bolt Head Radius]",
+            "[Bottom Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] - 0.866 * [Bolt Head Radius]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Bolt Edge Distance] - [Bolt Diameter] + 0.5 * [Bolt Head Radius]",
+            "[Bottom Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] - 0.866 * [Bolt Head Radius]"
+          ]
+        ],
+        "from": "0mm - [Bolt Head Height]",
+        "to": "[Bolt Length] - [Bolt Head Height]"
+      },
+      "cuts": [],
+      "array": {
+        "count": 2,
+        "axis": "z",
+        "spacing": "[Bolt Spacing]"
+      }
+    },
+    {
+      "id": "bolt-t1-bl",
+      "name": "Tier 1 Back Left M8 Hex Bolts",
+      "material": "Bolts Zinc",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            "[Steel Thickness] + 0.5mm + [Bolt Edge Distance] + [Bolt Diameter] + [Bolt Head Radius]",
+            "[Bottom Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm + [Bolt Edge Distance] + [Bolt Diameter] + 0.5 * [Bolt Head Radius]",
+            "[Bottom Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] + 0.866 * [Bolt Head Radius]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm + [Bolt Edge Distance] + [Bolt Diameter] - 0.5 * [Bolt Head Radius]",
+            "[Bottom Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] + 0.866 * [Bolt Head Radius]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm + [Bolt Edge Distance] + [Bolt Diameter] - [Bolt Head Radius]",
+            "[Bottom Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm + [Bolt Edge Distance] + [Bolt Diameter] - 0.5 * [Bolt Head Radius]",
+            "[Bottom Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] - 0.866 * [Bolt Head Radius]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm + [Bolt Edge Distance] + [Bolt Diameter] + 0.5 * [Bolt Head Radius]",
+            "[Bottom Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] - 0.866 * [Bolt Head Radius]"
+          ]
+        ],
+        "from": "[Rack Depth] - [Bolt Length] + [Bolt Head Height]",
+        "to": "[Rack Depth] + [Bolt Head Height]"
+      },
+      "cuts": [],
+      "array": {
+        "count": 2,
+        "axis": "z",
+        "spacing": "[Bolt Spacing]"
+      }
+    },
+    {
+      "id": "bolt-t1-br",
+      "name": "Tier 1 Back Right M8 Hex Bolts",
+      "material": "Bolts Zinc",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Bolt Edge Distance] - [Bolt Diameter] + [Bolt Head Radius]",
+            "[Bottom Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Bolt Edge Distance] - [Bolt Diameter] + 0.5 * [Bolt Head Radius]",
+            "[Bottom Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] + 0.866 * [Bolt Head Radius]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Bolt Edge Distance] - [Bolt Diameter] - 0.5 * [Bolt Head Radius]",
+            "[Bottom Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] + 0.866 * [Bolt Head Radius]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Head Radius]",
+            "[Bottom Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Bolt Edge Distance] - [Bolt Diameter] - 0.5 * [Bolt Head Radius]",
+            "[Bottom Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] - 0.866 * [Bolt Head Radius]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Bolt Edge Distance] - [Bolt Diameter] + 0.5 * [Bolt Head Radius]",
+            "[Bottom Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] - 0.866 * [Bolt Head Radius]"
+          ]
+        ],
+        "from": "[Rack Depth] - [Bolt Length] + [Bolt Head Height]",
+        "to": "[Rack Depth] + [Bolt Head Height]"
+      },
+      "cuts": [],
+      "array": {
+        "count": 2,
+        "axis": "z",
+        "spacing": "[Bolt Spacing]"
+      }
+    },
+    {
+      "id": "bolt-t2-fl",
+      "name": "Tier 2 Front Left M8 Hex Bolts",
+      "material": "Bolts Zinc",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            "[Steel Thickness] + 0.5mm + [Bolt Edge Distance] + [Bolt Diameter] + [Bolt Head Radius]",
+            "[Middle Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm + [Bolt Edge Distance] + [Bolt Diameter] + 0.5 * [Bolt Head Radius]",
+            "[Middle Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] + 0.866 * [Bolt Head Radius]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm + [Bolt Edge Distance] + [Bolt Diameter] - 0.5 * [Bolt Head Radius]",
+            "[Middle Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] + 0.866 * [Bolt Head Radius]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm + [Bolt Edge Distance] + [Bolt Diameter] - [Bolt Head Radius]",
+            "[Middle Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm + [Bolt Edge Distance] + [Bolt Diameter] - 0.5 * [Bolt Head Radius]",
+            "[Middle Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] - 0.866 * [Bolt Head Radius]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm + [Bolt Edge Distance] + [Bolt Diameter] + 0.5 * [Bolt Head Radius]",
+            "[Middle Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] - 0.866 * [Bolt Head Radius]"
+          ]
+        ],
+        "from": "0mm - [Bolt Head Height]",
+        "to": "[Bolt Length] - [Bolt Head Height]"
+      },
+      "cuts": [],
+      "array": {
+        "count": 2,
+        "axis": "z",
+        "spacing": "[Bolt Spacing]"
+      }
+    },
+    {
+      "id": "bolt-t2-fr",
+      "name": "Tier 2 Front Right M8 Hex Bolts",
+      "material": "Bolts Zinc",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Bolt Edge Distance] - [Bolt Diameter] + [Bolt Head Radius]",
+            "[Middle Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Bolt Edge Distance] - [Bolt Diameter] + 0.5 * [Bolt Head Radius]",
+            "[Middle Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] + 0.866 * [Bolt Head Radius]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Bolt Edge Distance] - [Bolt Diameter] - 0.5 * [Bolt Head Radius]",
+            "[Middle Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] + 0.866 * [Bolt Head Radius]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Head Radius]",
+            "[Middle Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Bolt Edge Distance] - [Bolt Diameter] - 0.5 * [Bolt Head Radius]",
+            "[Middle Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] - 0.866 * [Bolt Head Radius]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Bolt Edge Distance] - [Bolt Diameter] + 0.5 * [Bolt Head Radius]",
+            "[Middle Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] - 0.866 * [Bolt Head Radius]"
+          ]
+        ],
+        "from": "0mm - [Bolt Head Height]",
+        "to": "[Bolt Length] - [Bolt Head Height]"
+      },
+      "cuts": [],
+      "array": {
+        "count": 2,
+        "axis": "z",
+        "spacing": "[Bolt Spacing]"
+      }
+    },
+    {
+      "id": "bolt-t2-bl",
+      "name": "Tier 2 Back Left M8 Hex Bolts",
+      "material": "Bolts Zinc",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            "[Steel Thickness] + 0.5mm + [Bolt Edge Distance] + [Bolt Diameter] + [Bolt Head Radius]",
+            "[Middle Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm + [Bolt Edge Distance] + [Bolt Diameter] + 0.5 * [Bolt Head Radius]",
+            "[Middle Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] + 0.866 * [Bolt Head Radius]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm + [Bolt Edge Distance] + [Bolt Diameter] - 0.5 * [Bolt Head Radius]",
+            "[Middle Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] + 0.866 * [Bolt Head Radius]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm + [Bolt Edge Distance] + [Bolt Diameter] - [Bolt Head Radius]",
+            "[Middle Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm + [Bolt Edge Distance] + [Bolt Diameter] - 0.5 * [Bolt Head Radius]",
+            "[Middle Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] - 0.866 * [Bolt Head Radius]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm + [Bolt Edge Distance] + [Bolt Diameter] + 0.5 * [Bolt Head Radius]",
+            "[Middle Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] - 0.866 * [Bolt Head Radius]"
+          ]
+        ],
+        "from": "[Rack Depth] - [Bolt Length] + [Bolt Head Height]",
+        "to": "[Rack Depth] + [Bolt Head Height]"
+      },
+      "cuts": [],
+      "array": {
+        "count": 2,
+        "axis": "z",
+        "spacing": "[Bolt Spacing]"
+      }
+    },
+    {
+      "id": "bolt-t2-br",
+      "name": "Tier 2 Back Right M8 Hex Bolts",
+      "material": "Bolts Zinc",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Bolt Edge Distance] - [Bolt Diameter] + [Bolt Head Radius]",
+            "[Middle Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Bolt Edge Distance] - [Bolt Diameter] + 0.5 * [Bolt Head Radius]",
+            "[Middle Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] + 0.866 * [Bolt Head Radius]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Bolt Edge Distance] - [Bolt Diameter] - 0.5 * [Bolt Head Radius]",
+            "[Middle Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] + 0.866 * [Bolt Head Radius]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Head Radius]",
+            "[Middle Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Bolt Edge Distance] - [Bolt Diameter] - 0.5 * [Bolt Head Radius]",
+            "[Middle Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] - 0.866 * [Bolt Head Radius]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Bolt Edge Distance] - [Bolt Diameter] + 0.5 * [Bolt Head Radius]",
+            "[Middle Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] - 0.866 * [Bolt Head Radius]"
+          ]
+        ],
+        "from": "[Rack Depth] - [Bolt Length] + [Bolt Head Height]",
+        "to": "[Rack Depth] + [Bolt Head Height]"
+      },
+      "cuts": [],
+      "array": {
+        "count": 2,
+        "axis": "z",
+        "spacing": "[Bolt Spacing]"
+      }
+    },
+    {
+      "id": "bolt-t3-fl",
+      "name": "Tier 3 Front Left M8 Hex Bolts",
+      "material": "Bolts Zinc",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            "[Steel Thickness] + 0.5mm + [Bolt Edge Distance] + [Bolt Diameter] + [Bolt Head Radius]",
+            "[Top Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm + [Bolt Edge Distance] + [Bolt Diameter] + 0.5 * [Bolt Head Radius]",
+            "[Top Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] + 0.866 * [Bolt Head Radius]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm + [Bolt Edge Distance] + [Bolt Diameter] - 0.5 * [Bolt Head Radius]",
+            "[Top Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] + 0.866 * [Bolt Head Radius]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm + [Bolt Edge Distance] + [Bolt Diameter] - [Bolt Head Radius]",
+            "[Top Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm + [Bolt Edge Distance] + [Bolt Diameter] - 0.5 * [Bolt Head Radius]",
+            "[Top Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] - 0.866 * [Bolt Head Radius]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm + [Bolt Edge Distance] + [Bolt Diameter] + 0.5 * [Bolt Head Radius]",
+            "[Top Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] - 0.866 * [Bolt Head Radius]"
+          ]
+        ],
+        "from": "0mm - [Bolt Head Height]",
+        "to": "[Bolt Length] - [Bolt Head Height]"
+      },
+      "cuts": [],
+      "array": {
+        "count": 2,
+        "axis": "z",
+        "spacing": "[Bolt Spacing]"
+      }
+    },
+    {
+      "id": "bolt-t3-fr",
+      "name": "Tier 3 Front Right M8 Hex Bolts",
+      "material": "Bolts Zinc",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Bolt Edge Distance] - [Bolt Diameter] + [Bolt Head Radius]",
+            "[Top Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Bolt Edge Distance] - [Bolt Diameter] + 0.5 * [Bolt Head Radius]",
+            "[Top Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] + 0.866 * [Bolt Head Radius]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Bolt Edge Distance] - [Bolt Diameter] - 0.5 * [Bolt Head Radius]",
+            "[Top Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] + 0.866 * [Bolt Head Radius]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Head Radius]",
+            "[Top Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Bolt Edge Distance] - [Bolt Diameter] - 0.5 * [Bolt Head Radius]",
+            "[Top Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] - 0.866 * [Bolt Head Radius]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Bolt Edge Distance] - [Bolt Diameter] + 0.5 * [Bolt Head Radius]",
+            "[Top Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] - 0.866 * [Bolt Head Radius]"
+          ]
+        ],
+        "from": "0mm - [Bolt Head Height]",
+        "to": "[Bolt Length] - [Bolt Head Height]"
+      },
+      "cuts": [],
+      "array": {
+        "count": 2,
+        "axis": "z",
+        "spacing": "[Bolt Spacing]"
+      }
+    },
+    {
+      "id": "bolt-t3-bl",
+      "name": "Tier 3 Back Left M8 Hex Bolts",
+      "material": "Bolts Zinc",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            "[Steel Thickness] + 0.5mm + [Bolt Edge Distance] + [Bolt Diameter] + [Bolt Head Radius]",
+            "[Top Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm + [Bolt Edge Distance] + [Bolt Diameter] + 0.5 * [Bolt Head Radius]",
+            "[Top Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] + 0.866 * [Bolt Head Radius]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm + [Bolt Edge Distance] + [Bolt Diameter] - 0.5 * [Bolt Head Radius]",
+            "[Top Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] + 0.866 * [Bolt Head Radius]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm + [Bolt Edge Distance] + [Bolt Diameter] - [Bolt Head Radius]",
+            "[Top Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm + [Bolt Edge Distance] + [Bolt Diameter] - 0.5 * [Bolt Head Radius]",
+            "[Top Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] - 0.866 * [Bolt Head Radius]"
+          ],
+          [
+            "[Steel Thickness] + 0.5mm + [Bolt Edge Distance] + [Bolt Diameter] + 0.5 * [Bolt Head Radius]",
+            "[Top Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] - 0.866 * [Bolt Head Radius]"
+          ]
+        ],
+        "from": "[Rack Depth] - [Bolt Length] + [Bolt Head Height]",
+        "to": "[Rack Depth] + [Bolt Head Height]"
+      },
+      "cuts": [],
+      "array": {
+        "count": 2,
+        "axis": "z",
+        "spacing": "[Bolt Spacing]"
+      }
+    },
+    {
+      "id": "bolt-t3-br",
+      "name": "Tier 3 Back Right M8 Hex Bolts",
+      "material": "Bolts Zinc",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Bolt Edge Distance] - [Bolt Diameter] + [Bolt Head Radius]",
+            "[Top Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Bolt Edge Distance] - [Bolt Diameter] + 0.5 * [Bolt Head Radius]",
+            "[Top Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] + 0.866 * [Bolt Head Radius]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Bolt Edge Distance] - [Bolt Diameter] - 0.5 * [Bolt Head Radius]",
+            "[Top Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] + 0.866 * [Bolt Head Radius]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Head Radius]",
+            "[Top Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Bolt Edge Distance] - [Bolt Diameter] - 0.5 * [Bolt Head Radius]",
+            "[Top Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] - 0.866 * [Bolt Head Radius]"
+          ],
+          [
+            "[Rack Length] - [Steel Thickness] - 0.5mm - [Bolt Edge Distance] - [Bolt Diameter] + 0.5 * [Bolt Head Radius]",
+            "[Top Tier Height] - [Bolt Edge Distance] - [Bolt Diameter] - [Bolt Spacing] - 0.866 * [Bolt Head Radius]"
+          ]
+        ],
+        "from": "[Rack Depth] - [Bolt Length] + [Bolt Head Height]",
+        "to": "[Rack Depth] + [Bolt Head Height]"
+      },
+      "cuts": [],
+      "array": {
+        "count": 2,
+        "axis": "z",
+        "spacing": "[Bolt Spacing]"
+      }
+    }
+  ],
+  "connectors": [],
+  "materials": [
+    {
+      "name": "Slotted Angle Powder Grey",
+      "color": "#696e73",
+      "metalness": 0.35,
+      "roughness": 0.55
+    },
+    {
+      "name": "Corner Brackets Zinc",
+      "color": "#c8cdd2",
+      "metalness": 0.7,
+      "roughness": 0.35
+    },
+    {
+      "name": "Wire Mesh Galvanized",
+      "color": "#b4b9be",
+      "metalness": 0.6,
+      "roughness": 0.4
+    },
+    {
+      "name": "Foot Caps Black Rubber",
+      "color": "#1e1e20",
+      "metalness": 0,
+      "roughness": 0.9
+    },
+    {
+      "name": "Bolts Zinc",
+      "color": "#c8cdd2",
+      "metalness": 0.8,
+      "roughness": 0.25
+    },
+    {
+      "name": "Slot Shadow Black",
+      "color": "#141618",
+      "metalness": 0.1,
+      "roughness": 0.8
+    }
+  ],
+  "notes": [
+    "Mô hình đã dựng ở mức LOD 400 cho kệ sắt V lỗ 3 tầng 1000×500×1500 mm, không bao gồm chậu cây hoặc cây cảnh.",
+    "ĐÃ SỬA LỖI HÌNH HỌC LỖ: trước đây lỗ được vẽ bằng khối hộp nên hiển thị thành hình chữ nhật. Nay mỗi lỗ oval là một đa giác elip thật 12 cạnh (bán trục ngang = Slot Width/2 = 5 mm, bán trục đứng = Slot Height/2 = 7,5 mm), toạ độ các đỉnh sinh bằng cos/sin theo bước 30° nên khi đổi Slot Width hoặc Slot Height elip tự co giãn đúng hình oval, không còn cạnh vuông.",
+    "Lỗ oval nằm trên cả hai cánh của 4 thanh trụ V30×30×1.5, bước tim 50 mm, lỗ đầu cách chân 30 mm, tổng 29 lỗ mỗi hàng (8 hàng, 232 lỗ). Số lỗ, bước lỗ và cao độ lỗ đều suy ra từ Post Height, Slot Start, Slot Pitch, Slot Count.",
+    "Lỗ được thể hiện bằng tấm elip mỏng dày 0,4 mm màu tối úp đúng vị trí lỗ (nhô 0,2 mm mỗi phía mặt thép) và nhân bản bằng mảng theo phương Z, thay cho việc đục 232 lỗ rỗng để giữ file Revit nhẹ; nếu cần bản sản xuất có lỗ rỗng thật, có thể chuyển các tấm elip này thành lệnh cắt.",
+    "Bổ sung 24 bulông lục giác M8 (2 bulông mỗi ke góc, 12 ke góc): đầu bulông lục giác 13 mm across flats, cao 5,3 mm, thân xuyên qua cánh thép V dày 1,5 mm, tấm ke góc dày 1,2 mm và đai ốc cao 6,5 mm; toàn bộ kích thước bulông là tham số suy ra từ Bolt Diameter.",
+    "Bulông liên kết chạy theo phương Y tại mỗi góc, xuyên qua cánh ngang của trụ V và tấm ke góc, đầu bulông quay ra ngoài mặt trước/sau kệ đúng thực tế lắp ráp; bulông nhô ra khoảng 5 mm ngoài bao kệ.",
+    "Ke góc tam giác 75×75×1,2 mm đặt đúng vị trí công nghệ: đỉnh góc vuông nằm sát mặt trong cánh đứng của trụ (cách 0,5 mm) và hạ xuống dưới cao độ tầng, hai bulông M8 bố trí so le trên diện tích tam giác, không lấn ra ngoài cạnh huyền.",
+    "Mỗi tầng có 9 sợi lưới theo phương dọc và 19 sợi theo phương ngang, bước lưới 50 mm, mép lưới cách mặt trong trụ 20 mm, mặt lưới đặt cao hơn cánh ngang của thép V 0,5 mm để không trùng mặt.",
+    "Thanh giằng mỗi tầng được rút ngắn còn khoảng giữa hai trụ (cách mỗi đầu 0,5 mm) để không lấn vào tiết diện trụ; 4 nút bọc chân cao su đen cao 20 mm, dày 3 mm ôm ngoài góc chân trụ.",
+    "Do giới hạn 60 part cho file nhẹ, thanh giằng giữa (center stiffener) của 3 tầng đã được lược bỏ để nhường chỗ cho 12 cụm bulông M8; nếu cần giữ thanh giằng giữa, vui lòng cho biết để bổ sung lại và giảm bớt chi tiết khác.",
+    "Gốc tọa độ (0,0,0) đặt tại góc ngoài chân trụ trước bên trái; X 0-1000 mm, Y 0-500 mm, Z 0-1500 mm.",
+    "Cần xác nhận thêm: vật liệu và màu sơn thực tế của thép V, cấp bền bulông M8 (4.6 hay 8.8) và có cần dựng lỗ oval rỗng thật (cắt xuyên thép) thay vì tấm elip dán bề mặt hay không.",
+    "Nếu muốn lưới dày hơn (bước 25 hoặc 40 mm), đổi chiều cao trụ, hoặc thay bằng tấm sàn gỗ nhựa cho từng tầng, vui lòng cho biết để cập nhật."
+  ]
+}

@@ -1569,6 +1569,27 @@ body.resizing {
   margin-top: 1px;
 }
 
+.param-impact {
+  display: block;
+  max-width: 100%;
+  margin-top: 2px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent-ink);
+  font-family: var(--mono);
+  font-size: 9.5px;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.param-impact:hover {
+  text-decoration: underline;
+}
+
 .param-value-wrap {
   display: flex;
   align-items: center;

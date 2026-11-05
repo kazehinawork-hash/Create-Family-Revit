@@ -127,6 +127,7 @@ export function App() {
   const [showConnectors, setShowConnectors] = useState(false);
   const [showHandles, setShowHandles] = useState(false);
   const [selectedPartId, setSelectedPartId] = useState<string | null>(null);
+  const [highlightPartIds, setHighlightPartIds] = useState<string[]>([]);
   const [focusPartId, setFocusPartId] = useState<string | null>(null);
   const [hiddenPartIds, setHiddenPartIds] = useState<string[]>([]);
   const [transparentPartIds, setTransparentPartIds] = useState<string[]>([]);
@@ -212,6 +213,10 @@ export function App() {
   };
 
   const analysis = useMemo(() => (spec ? analyzeSpec(spec) : null), [spec]);
+
+  useEffect(() => {
+    setHighlightPartIds([]);
+  }, [spec]);
 
   // Parts that the layout checks flagged (paths look like logic.drain-pan.<partId>).
   const issuePartIds = useMemo(() => {
@@ -476,12 +481,21 @@ export function App() {
           applySpec(event.spec);
           setNative(false);
           const dims = stats.bounds ? `${stats.bounds.x} × ${stats.bounds.y} × ${stats.bounds.z} mm` : "";
+          const fast = stats.fastEdit;
+          const fastUnit = fast?.type === "Length" ? " mm" : fast?.type === "Angle" ? "°" : "";
+          const fastLine = fast
+            ? `\n⚡ Local edit: ${fast.name} → ${fast.value}${fastUnit} · ${1 + (fast.affectedParameters?.length ?? 0)} parameter, ${fast.affectedParts?.length ?? 0} part · 0 token`
+            : "";
 
           pushEntry({
             role: "agent",
-            text: `${hadSpec ? "Đã cập nhật" : "Đã tạo"} ${event.spec.name}.\n${stats.parts} chi tiết · ${stats.parameters} tham số${stats.lod ? ` · LOD ${stats.lod}` : ""}${dims ? ` · ${dims}` : ""}`,
+            text: `${hadSpec ? "Đã cập nhật" : "Đã tạo"} ${event.spec.name}.\n${stats.parts} chi tiết · ${stats.parameters} tham số${stats.lod ? ` · LOD ${stats.lod}` : ""}${dims ? ` · ${dims}` : ""}${fastLine}`,
             notes: event.spec.notes,
-            meta: `${formatDuration(stats.elapsedMs)}${stats.attempts > 1 ? ` · ${stats.attempts} lượt` : ""}${stats.usage?.total_tokens ? ` · ${Math.round(stats.usage.total_tokens / 1000)}k tokens` : ""}`,
+            meta: fast
+              ? `⚡ local · ${formatDuration(stats.elapsedMs)}`
+              : stats.cached
+                ? "⚡ cached · 0 token"
+                : `${formatDuration(stats.elapsedMs)}${stats.attempts > 1 ? ` · ${stats.attempts} lượt` : ""}${stats.usage?.total_tokens ? ` · ${Math.round(stats.usage.total_tokens / 1000)}k tokens` : ""}`,
             issues: [...event.errors, ...event.issues.filter((issue) => issue.severity === "warning")].slice(0, 12),
           });
         },
@@ -1141,6 +1155,7 @@ export function App() {
           onToggleTransparentPart={handleToggleTransparentPart}
           onResetTransparent={handleResetTransparent}
           issuePartIds={issuePartIds}
+          highlightPartIds={highlightPartIds}
           focusPartId={focusPartId}
           onUpdateParameter={handleUpdateParameter}
         />
@@ -1176,6 +1191,7 @@ export function App() {
             issuePartIds={issuePartIds}
             onUpdateParameter={handleUpdateParameter}
             onAddParameter={handleAddParameter}
+            onHighlightParts={setHighlightPartIds}
           />
         ) : (
           <section className="pane right">

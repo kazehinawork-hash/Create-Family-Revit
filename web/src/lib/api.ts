@@ -10,6 +10,15 @@ export interface DesignStats {
   attempts: number;
   elapsedMs: number;
   usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null;
+  cached?: boolean;
+  fastEdit?: {
+    name: string;
+    type: string;
+    value: number;
+    affectedParameters?: string[];
+    affectedParts?: string[];
+    affectedConnectors?: string[];
+  };
 }
 
 export interface StageEvent {

@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  buildParameterGraph,
+  collectPartDependencies,
   paramKey,
   type Analysis,
   type FamilyParameter,
@@ -23,6 +25,7 @@ interface Props {
   issuePartIds?: string[];
   onUpdateParameter: (name: string, value: number | string) => void;
   onAddParameter: (draft: { name: string; type: ParameterType; value: number | string }) => void;
+  onHighlightParts?: (partIds: string[]) => void;
 }
 
 const GROUP_ORDER = [
@@ -50,12 +53,16 @@ function ParameterRow({
   param,
   resolved,
   units,
+  impact,
   onUpdate,
+  onHighlight,
 }: {
   param: FamilyParameter;
   resolved: ResolvedParameter;
   units: Units;
+  impact?: { parameters: string[]; parts: { id: string; name: string }[] };
   onUpdate: (name: string, value: number | string) => void;
+  onHighlight?: (partIds: string[]) => void;
 }) {
   const derived = Boolean(resolved.formula);
   const locked = derived || param.type === "YesNo" || (param.type === "Length" && units === "ft-in");
@@ -103,6 +110,16 @@ function ParameterRow({
             {resolved.error}
           </span>
         )}
+        {impact && (impact.parameters.length > 0 || impact.parts.length > 0) && (
+          <button
+            type="button"
+            className="param-impact"
+            onClick={() => onHighlight?.(impact.parts.map((part) => part.id))}
+            title={`${impact.parameters.length} parameter phụ thuộc · ${impact.parts.length} part bị ảnh hưởng`}
+          >
+            ↳ {impact.parameters.length} param · {impact.parts.length} part
+          </button>
+        )}
       </div>
       <div className="param-value-wrap">
         <input
@@ -142,6 +159,7 @@ export function ParameterPanel({
   issuePartIds = [],
   onUpdateParameter,
   onAddParameter,
+  onHighlightParts,
 }: Props) {
   const [tab, setTab] = useState<"parameters" | "parts">("parameters");
   const [filter, setFilter] = useState("");
@@ -176,6 +194,25 @@ export function ParameterPanel({
       (a, b) => GROUP_ORDER.indexOf(a[0]) - GROUP_ORDER.indexOf(b[0]),
     );
   }, [spec.parameters, analysis.parameters, filter]);
+
+  const impacts = useMemo(() => {
+    const graph = buildParameterGraph(spec.parameters);
+    const partDeps = collectPartDependencies(spec);
+    const map = new Map<string, { parameters: string[]; parts: { id: string; name: string }[] }>();
+
+    for (const node of graph.parameters) {
+      const parameters = graph.impactOf([node.name]);
+      const keys = new Set([node.name, ...parameters].map(paramKey));
+      const parts = partDeps
+        .filter((part) => part.parameters.some((name) => keys.has(paramKey(name))))
+        .map((part) => ({ id: part.id, name: part.name }));
+      if (parameters.length > 0 || parts.length > 0) {
+        map.set(paramKey(node.name), { parameters, parts });
+      }
+    }
+
+    return map;
+  }, [spec]);
 
   const materialColor = (name?: string) =>
     spec.materials?.find((material) => material.name === name)?.color ?? "#a9aeb2";
@@ -247,7 +284,9 @@ export function ParameterPanel({
                         param={param}
                         resolved={resolved}
                         units={units}
+                        impact={impacts.get(paramKey(param.name))}
                         onUpdate={onUpdateParameter}
+                        onHighlight={onHighlightParts}
                       />
                     ))}
                 </div>

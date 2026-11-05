@@ -43,6 +43,7 @@ interface Props {
   onToggleTransparentPart?: (partId: string) => void;
   onResetTransparent?: () => void;
   issuePartIds?: string[];
+  highlightPartIds?: string[];
   focusPartId?: string | null;
   onUpdateParameter?: (name: string, value: number) => void;
 }
@@ -191,6 +192,7 @@ export function Viewer({
   onToggleTransparentPart,
   onResetTransparent,
   issuePartIds = [],
+  highlightPartIds = [],
   focusPartId = null,
   onUpdateParameter,
 }: Props) {
@@ -1808,6 +1810,7 @@ export function Viewer({
         isTransparent: transparentPartIds.includes(part.id) || isClearance,
         isClearance,
         hasIssue: issuePartIds.includes(part.id),
+        isAffected: highlightPartIds.includes(part.id),
         isAnimating: Boolean(animatingPartName) && part.name === animatingPartName,
       };
     };
@@ -1840,6 +1843,10 @@ export function Viewer({
       } else if (style.hasIssue) {
         edgeMaterial.color.setHex(0xcf222e); // cảnh báo bố trí: viền đỏ
         edgeMaterial.opacity = 0.9;
+        edgeMaterial.transparent = true;
+      } else if (style.isAffected) {
+        edgeMaterial.color.setHex(0xd28a00); // parameter impact: viền hổ phách
+        edgeMaterial.opacity = 0.85;
         edgeMaterial.transparent = true;
       } else if (style.isAnimating) {
         edgeMaterial.color.setHex(0x2f7d5b); // green edge on the part that just appeared
@@ -1959,6 +1966,7 @@ export function Viewer({
         style.isTransparent ? "transparent" : "",
         style.isClearance ? "clearance" : "",
         style.hasIssue ? "issue" : "",
+        style.isAffected ? "affected" : "",
         style.isAnimating ? "hot" : "",
       ].join("|");
 
@@ -2040,7 +2048,7 @@ export function Viewer({
     return () => {
       cancelled = true;
     };
-  }, [model, materials, selectedPartId, hiddenPartIds, transparentPartIds, issuePartIds, visiblePartCount, animatingPartName]);
+  }, [model, materials, selectedPartId, hiddenPartIds, transparentPartIds, issuePartIds, highlightPartIds, visiblePartCount, animatingPartName]);
 
   // Zoom the camera to a part when an issue is clicked in the chat.
   useEffect(() => {

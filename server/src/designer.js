@@ -1,6 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
-import { analyzeSpec, formatIssues, parameterDependencySummary } from "@family/spec-core";
+import {
+  analyzeSpec,
+  buildParameterGraph,
+  collectConnectorDependencies,
+  collectPartDependencies,
+  formatIssues,
+  parameterDependencySummary,
+} from "@family/spec-core";
 import { config } from "./config.js";
 import { generateJson } from "./agents.js";
 import { extractDocumentText } from "./documents.js";
@@ -142,13 +149,25 @@ export async function design({ prompt, currentSpec, lod, emit, model, customApiC
       const analysis = analyzeSpec(nextSpec);
       if (analysis.ok) {
         analysis.spec.lod = level;
+        const graph = buildParameterGraph(nextSpec.parameters);
+        const affectedParameters = graph.impactOf([edit.name]);
+        const affectedKeys = new Set(
+          [edit.name, ...affectedParameters].map((name) => name.toLowerCase()),
+        );
+        const affectedParts = collectPartDependencies(nextSpec)
+          .filter((part) => part.parameters.some((name) => affectedKeys.has(name.toLowerCase())))
+          .map((part) => part.name);
+        const affectedConnectors = collectConnectorDependencies(nextSpec)
+          .filter((connector) => connector.parameters.some((name) => affectedKeys.has(name.toLowerCase())))
+          .map((connector) => connector.name);
+
         const stats = {
           ...summarise(analysis.spec, analysis.model),
           lod: level,
           attempts: 0,
           elapsedMs: Date.now() - startedAt,
           usage: null,
-          fastEdit: edit,
+          fastEdit: { ...edit, affectedParameters, affectedParts, affectedConnectors },
         };
         if (resultKey) writeCachedResult(resultKey, { analysis, stats });
         return { analysis, stats };

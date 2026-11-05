@@ -1,0 +1,97 @@
+import { describe, expect, it } from "vitest";
+import { analyzeSpec } from "../src/analyze.js";
+import type { FamilySpec } from "../src/types.js";
+
+function base(overrides: Partial<FamilySpec> = {}): FamilySpec {
+  return {
+    schemaVersion: "1.0",
+    name: "Health",
+    category: "Furniture",
+    units: "mm",
+    parameters: [],
+    materials: [],
+    parts: [],
+    ...overrides,
+  };
+}
+
+describe("geometry health checks", () => {
+  it("flags a resolved zero-size part", () => {
+    const spec = base({
+      parameters: [{ name: "Width", type: "Length", value: 0 }],
+      parts: [
+        {
+          id: "plate",
+          name: "Plate",
+          solid: {
+            kind: "box",
+            origin: { x: 0, y: 0, z: 0 },
+            size: { x: "[Width]", y: 10, z: 10 },
+          },
+        },
+      ],
+    });
+
+    const analysis = analyzeSpec(spec);
+    expect(analysis.ok).toBe(false);
+    expect(analysis.errors.some((issue) => issue.path === "logic.geometry.plate")).toBe(true);
+  });
+
+  it("warns when a cut misses its host", () => {
+    const spec = base({
+      parts: [
+        {
+          id: "body",
+          name: "Body",
+          solid: {
+            kind: "box",
+            origin: { x: 0, y: 0, z: 0 },
+            size: { x: 100, y: 100, z: 10 },
+          },
+          cuts: [
+            {
+              kind: "cylinder",
+              axis: "z",
+              base: { x: 1000, y: 1000, z: 0 },
+              radius: 5,
+              height: 10,
+            },
+          ],
+        },
+      ],
+    });
+
+    const analysis = analyzeSpec(spec);
+    expect(analysis.ok).toBe(true);
+    expect(
+      analysis.issues.some(
+        (issue) => issue.severity === "warning" && issue.path === "logic.geometry.body",
+      ),
+    ).toBe(true);
+  });
+
+  it("warns when array copies overlap", () => {
+    const spec = base({
+      parts: [
+        {
+          id: "fin",
+          name: "Fin",
+          solid: {
+            kind: "box",
+            origin: { x: 0, y: 0, z: 0 },
+            size: { x: 10, y: 100, z: 100 },
+          },
+          array: { count: 3, axis: "x", spacing: 0 },
+        },
+      ],
+    });
+
+    const analysis = analyzeSpec(spec);
+    expect(analysis.ok).toBe(true);
+    expect(
+      analysis.issues.some(
+        (issue) => issue.path === "logic.geometry.fin" && /spacing/.test(issue.message),
+      ),
+    ).toBe(true);
+  });
+});

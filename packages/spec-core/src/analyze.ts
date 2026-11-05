@@ -1,4 +1,5 @@
 import { resolveModel, type ResolvedModel } from "./geometry.js";
+import { checkGeometryHealth } from "./geometry-health.js";
 import { checkModelLogic } from "./logic.js";
 import { resolveParameters, type ParameterResolution } from "./parameters.js";
 import { validateSpec } from "./validate.js";
@@ -32,7 +33,13 @@ export function analyzeSpec(
   const { spec, issues } = validateSpec(raw);
   const parameters = resolveParameters(spec.parameters, overrides);
   const model = resolveModel(spec, parameters);
-  const all = dedupe([...issues, ...parameters.issues, ...model.issues, ...checkModelLogic(model)]);
+  const all = dedupe([
+    ...issues,
+    ...parameters.issues,
+    ...model.issues,
+    ...checkModelLogic(model),
+    ...checkGeometryHealth(model),
+  ]);
   const errors = all.filter((issue) => issue.severity === "error");
 
   return {
