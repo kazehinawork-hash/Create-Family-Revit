@@ -45,23 +45,6 @@ interface Props {
   issuePartIds?: string[];
   focusPartId?: string | null;
   onUpdateParameter?: (name: string, value: number) => void;
-  status: { stage: string; message: string; elapsed: string | null } | null;
-}
-
-const RUN_STEPS = ["Read the brief", "Design the family", "Check the model"];
-
-function stepIndex(stage: string): number {
-  if (stage === "thinking" || stage === "reading") return 0;
-  if (stage === "checking") return 2;
-  if (stage === "generating" || stage === "working" || stage === "repairing") return 1;
-  return 0;
-}
-
-function stepTitle(stage: string): string {
-  if (stage === "thinking" || stage === "reading") return "Reading the brief";
-  if (stage === "checking") return "Checking the model";
-  if (stage === "repairing") return "Repairing the spec";
-  return "Designing the family";
 }
 
 /**
@@ -210,7 +193,6 @@ export function Viewer({
   issuePartIds = [],
   focusPartId = null,
   onUpdateParameter,
-  status,
 }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const cubeHostRef = useRef<HTMLDivElement>(null);
@@ -1658,6 +1640,8 @@ export function Viewer({
 
     stateRef.current = { renderer, scene, camera, controls, content, handlesGroup, grid, gridSize: 6000, refPlanesGroup, connectorsGroup, key, shadowPlane, disposables: [] };
 
+    const partCache = partCacheRef.current;
+
     return () => {
       cancelAnimationFrame(frame);
       observer.disconnect();
@@ -1674,10 +1658,10 @@ export function Viewer({
       environment.dispose();
       shadowPlane.geometry.dispose();
       (shadowPlane.material as THREE.Material).dispose();
-      for (const entry of partCacheRef.current.values()) {
+      for (const entry of partCache.values()) {
         for (const item of entry.disposables) item.dispose();
       }
-      partCacheRef.current.clear();
+      partCache.clear();
       if (renderer.domElement.parentElement === host) host.removeChild(renderer.domElement);
       if (statsEl && statsEl.parentElement === host) host.removeChild(statsEl);
       if (cubeRenderer && cubeHost && cubeRenderer.domElement.parentElement === cubeHost) {
@@ -1816,6 +1800,7 @@ export function Viewer({
         part.id.toLowerCase().includes("clearance") || part.name.toLowerCase().includes("clearance");
       const props = partMaterialProps(part, materials);
       return {
+        name: part.name,
         color: partColor(part, materials),
         metalness: props.metalness,
         roughness: props.roughness,
@@ -1829,6 +1814,8 @@ export function Viewer({
 
     const applyStyle = (entry: PartCacheEntry, style: ReturnType<typeof styleOf>) => {
       const { meshMaterial: material, edgeMaterial } = entry;
+      entry.group.name = style.name;
+      for (const child of entry.group.children) child.name = style.name;
       // Selection keeps the block solid; only "Make transparent" in the context menu
       // turns a part see-through.
       const transparent = style.isTransparent;
@@ -1959,9 +1946,15 @@ export function Viewer({
         shapeKeys.set(part, shapeKey);
       }
 
-      const geometryKey = `${shapeKey}|${part.name}|${part.material ?? ""}|${part.color ?? ""}|${materialsKey}`;
+      // Geometry only depends on the resolved shape. Name/material/colour changes
+      // are style-only and must not cut the solid again.
+      const geometryKey = shapeKey;
       const style = styleOf(part);
       const styleKey = [
+        part.name,
+        part.material ?? "",
+        part.color ?? "",
+        materialsKey,
         style.isSelected ? "selected" : "",
         style.isTransparent ? "transparent" : "",
         style.isClearance ? "clearance" : "",
@@ -1990,44 +1983,55 @@ export function Viewer({
       partCache.delete(id);
     }
 
-    // Build a few parts per frame instead of cutting every solid in one tick: a large
-    // LOD 400 assembly would otherwise freeze the window while it assembles.
+    // Build several parts in flight instead of one per frame. The worker still
+    // serialises the actual geometry work, but waiting for rAF between every part
+    // made a 58-part assembly take almost a second longer than necessary.
     let cancelled = false;
     let cursor = 0;
+    let inFlight = 0;
+    let scheduled = false;
 
-    const step = async () => {
-      if (cancelled || cursor >= pending.length) return;
-      const { part, geometryKey, styleKey } = pending[cursor];
-      cursor += 1;
+    const schedule = () => {
+      if (cancelled || scheduled) return;
+      scheduled = true;
+      requestAnimationFrame(() => {
+        scheduled = false;
+        pump();
+      });
+    };
 
-      let built: BuiltPartGeometry;
-      try {
-        built = await buildPartGeometryAsync(part);
-      } catch (error) {
-        console.warn("Could not build part geometry", part.id, error);
-        if (!cancelled && cursor < pending.length) {
-          requestAnimationFrame(() => { void step(); });
-        }
-        return;
-      }
+    const pump = () => {
+      if (cancelled) return;
 
-      if (cancelled) {
-        built.geometry.dispose();
-        built.edges.dispose();
-        return;
-      }
+      while (inFlight < 3 && cursor < pending.length) {
+        const { part, geometryKey, styleKey } = pending[cursor];
+        cursor += 1;
+        inFlight += 1;
 
-      partCache.set(part.id, buildEntry(part, geometryKey, styleKey, built));
-      state.renderer.shadowMap.needsUpdate = true;
-      renderDirtyRef.current = true;
+        void buildPartGeometryAsync(part)
+          .then((built) => {
+            if (cancelled) {
+              built.geometry.dispose();
+              built.edges.dispose();
+              return;
+            }
 
-      if (cursor < pending.length) {
-        requestAnimationFrame(() => { void step(); });
+            partCache.set(part.id, buildEntry(part, geometryKey, styleKey, built));
+            state.renderer.shadowMap.needsUpdate = true;
+            renderDirtyRef.current = true;
+          })
+          .catch((error) => {
+            console.warn("Could not build part geometry", part.id, error);
+          })
+          .finally(() => {
+            inFlight -= 1;
+            if (!cancelled && (cursor < pending.length || inFlight > 0)) schedule();
+          });
       }
     };
 
     if (pending.length > 0) {
-      requestAnimationFrame(() => { void step(); });
+      schedule();
     } else if (styleChanged) {
       state.renderer.shadowMap.needsUpdate = true;
       renderDirtyRef.current = true;
@@ -3048,39 +3052,6 @@ export function Viewer({
       )}
 
       <div className="viewcube-container" ref={cubeHostRef} title="Click a face to align view" />
-
-      {status && (
-        <div className="run-card">
-          <div className="run-head">
-            <span className="spinner" />
-            <span className="run-title">{stepTitle(status.stage)}</span>
-            {status.elapsed && <span className="run-time">{status.elapsed}</span>}
-          </div>
-
-          <div className="run-steps">
-            {RUN_STEPS.map((label, index) => {
-              const current = stepIndex(status.stage);
-              const state = index < current ? "done" : index === current ? "active" : "todo";
-              return (
-                <div key={label} className={`run-step ${state}`}>
-                  <span className="run-dot">{state === "done" ? "✓" : ""}</span>
-                  <span>{label}</span>
-                </div>
-              );
-            })}
-          </div>
-
-          {status.stage === "working" && status.message && (
-            <div className="run-detail">{status.message}</div>
-          )}
-        </div>
-      )}
-
-      {!status && model && model.issues.some((issue) => issue.severity === "error") && (
-        <div className="viewer-status" style={{ color: "#ae463b" }}>
-          {model.issues.filter((issue) => issue.severity === "error").length} problem(s) in the model
-        </div>
-      )}
 
       {!model && (
         <div className="viewer-empty">

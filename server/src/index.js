@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import express from "express";
 import { analyzeSpec } from "@family/spec-core";
@@ -218,7 +219,11 @@ app.post("/api/verify-api", async (req, res) => {
 });
 
 app.get("/api/health", async (_req, res) => {
-  const [models, backends] = await Promise.all([getCmdcModels(), detectAgentBackends()]);
+  const [models, backends, connected] = await Promise.all([
+    getCmdcModels(),
+    detectAgentBackends(),
+    bridgeAlive(),
+  ]);
   const status = agentStatus();
   const anyCli = backends.commandcode || backends.agy || backends.codex || backends.claude;
   const ready = status.provider === "openai" ? backends.openai : anyCli;
@@ -237,7 +242,7 @@ app.get("/api/health", async (_req, res) => {
     models,
     bridge: config.bridge.url,
     revit: {
-      connected: await bridgeAlive(),
+      connected,
       autoStart: config.revit.autoStart,
       exe: findRevitExe(),
     },
@@ -263,13 +268,20 @@ app.post("/api/design", async (req, res) => {
   const body = parsed.data;
   const prompt = body.prompt;
 
-  res.writeHead(200, {
-    "Content-Type": "text/event-stream; charset=utf-8",
-    "Cache-Control": "no-cache, no-transform",
-    Connection: "keep-alive",
-    "X-Accel-Buffering": "no",
-  });
-  res.flushHeaders?.();
+  try {
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+    res.flushHeaders?.();
+  } catch (error) {
+    // The client can disappear between the body parse and writeHead.
+    console.error("design stream open failed:", error);
+    try { res.destroy(); } catch { /* already gone */ }
+    return;
+  }
 
   let closed = false;
   const controller = new AbortController();
@@ -279,13 +291,33 @@ app.post("/api/design", async (req, res) => {
     if (!res.writableEnded) controller.abort();
   });
 
+  // A browser reload or a Vite proxy restart resets the socket. Without these
+  // listeners Node emits an unhandled 'error' and the whole API process exits.
+  const onStreamError = (error) => {
+    closed = true;
+    controller.abort();
+    if (error?.code !== "ECONNRESET" && error?.code !== "EPIPE") {
+      console.error("design stream error:", error);
+    }
+  };
+  res.on("error", onStreamError);
+  req.on("error", onStreamError);
+
+  const send = (chunk) => {
+    if (closed || res.writableEnded || res.destroyed) return;
+    try {
+      res.write(chunk);
+    } catch (error) {
+      onStreamError(error);
+    }
+  };
+
   const emit = (event) => {
-    if (closed || res.writableEnded) return;
-    res.write(`data: ${JSON.stringify(event)}\n\n`);
+    send(`data: ${JSON.stringify(event)}\n\n`);
   };
 
   const keepAlive = setInterval(() => {
-    if (!closed && !res.writableEnded) res.write(": ping\n\n");
+    send(": ping\n\n");
   }, 5000);
 
   try {
@@ -321,7 +353,11 @@ app.post("/api/design", async (req, res) => {
     emit({ type: "error", message: error?.message || String(error) });
   } finally {
     clearInterval(keepAlive);
-    if (!res.writableEnded) res.end();
+    try {
+      if (!res.writableEnded) res.end();
+    } catch {
+      // Socket already gone.
+    }
   }
 });
 
@@ -604,10 +640,75 @@ app.use((req, res) => {
   res.status(404).json({ error: "Not found" });
 });
 
-app.listen(config.port, config.host, () => {
-  const status = agentStatus();
-  console.log(`Family Agent API on http://${config.host}:${config.port}`);
-  console.log(`  agent     ${status.provider} · ${status.model}`);
-  console.log(`  revit     ${config.bridge.url}`);
-  console.log(`  output    ${config.dirs.out}`);
+app.use((error, req, res, next) => {
+  void next;
+  console.error("request failed:", error);
+  if (res.headersSent) {
+    try { res.destroy(); } catch { /* already closed */ }
+    return;
+  }
+  res.status(500).json({ error: error?.message || String(error) });
 });
+
+const crashLogPath = path.join(os.tmpdir(), "family-agent-api.log");
+
+function logCrash(label, error) {
+  try {
+    fs.appendFileSync(
+      crashLogPath,
+      `${new Date().toISOString()} ${label}\n${error?.stack || error}\n\n`,
+    );
+  } catch {
+    // Never let logging failure take the API down.
+  }
+}
+
+process.on("uncaughtException", (error) => {
+  console.error("uncaught exception:", error);
+  logCrash("uncaughtException", error);
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("unhandled rejection:", reason);
+  logCrash("unhandledRejection", reason);
+});
+
+let listenAttempts = 0;
+
+function startListening() {
+  const server = app.listen(config.port, config.host, () => {
+    listenAttempts = 0;
+    const status = agentStatus();
+    console.log(`Family Agent API on http://${config.host}:${config.port}`);
+    console.log(`  agent     ${status.provider} · ${status.model}`);
+    console.log(`  revit     ${config.bridge.url}`);
+    console.log(`  output    ${config.dirs.out}`);
+
+    // Warm the caches in the background so the first studio health call does not
+    // pay for spawning the CLI model listings.
+    void getCmdcModels().catch(() => {});
+    void detectAgentBackends().catch(() => {});
+  });
+
+  server.on("clientError", (error, socket) => {
+    if (error?.code === "ECONNRESET" || !socket.writable) {
+      try { socket.destroy(); } catch { /* already gone */ }
+      return;
+    }
+    try { socket.end("HTTP/1.1 400 Bad Request\r\n\r\n"); } catch { /* already gone */ }
+  });
+
+  server.on("error", (error) => {
+    console.error("HTTP server error:", error);
+    logCrash("server error", error);
+
+    // node --watch can start the new process before the old listener releases
+    // the port. Retry instead of staying alive with no listener.
+    if (error?.code === "EADDRINUSE" && listenAttempts < 30) {
+      listenAttempts += 1;
+      setTimeout(startListening, 1000);
+    }
+  });
+}
+
+startListening();

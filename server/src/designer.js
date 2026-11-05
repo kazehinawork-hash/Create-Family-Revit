@@ -1,9 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
-import { analyzeSpec, formatIssues } from "@family/spec-core";
+import { analyzeSpec, formatIssues, parameterDependencySummary } from "@family/spec-core";
 import { config } from "./config.js";
 import { generateJson } from "./agents.js";
 import { extractDocumentText } from "./documents.js";
+import { applyFastParameterEdit, parseFastParameterEdit } from "./fast-edit.js";
+import { cacheKey, readCachedResult, writeCachedResult } from "./result-cache.js";
 
 const designerPrompt = fs.readFileSync(path.join(config.dirs.prompts, "designer.md"), "utf8");
 const repairPrompt = fs.readFileSync(path.join(config.dirs.prompts, "repair.md"), "utf8");
@@ -28,6 +30,13 @@ function compactSpec(result) {
   } catch {
     return result.text;
   }
+}
+
+/** Repair instructions plus the same dependency map the design pass sees. */
+function repairInstructions(spec, issues, focus = "") {
+  const dependencyMap = spec ? parameterDependencySummary(spec, 6000, focus) : "";
+  const prefix = dependencyMap ? `${dependencyMap}\n\n` : "";
+  return `${prefix}${repairPrompt.replace("{{issues}}", formatIssues(issues, 25))}`;
 }
 
 /** Datasheet text is untrusted input: keep it inside a tagged block, not instructions. */
@@ -110,12 +119,54 @@ function summarise(spec, model) {
 export async function design({ prompt, currentSpec, lod, emit, model, customApiConfig, attachments, signal }) {
   const startedAt = Date.now();
   const level = LOD_LEVELS.includes(Number(lod)) ? Number(lod) : DEFAULT_LOD;
+  const canCache = !attachments?.length && !customApiConfig;
+  const resultKey = canCache
+    ? cacheKey({ prompt, currentSpec, lod: level, model: model || "" })
+    : null;
+
+  if (resultKey) {
+    const cached = readCachedResult(resultKey);
+    if (cached) {
+      emit({ type: "stage", stage: "checking", message: "Using cached result" });
+      return { analysis: cached.analysis, stats: { ...cached.stats, cached: true, elapsedMs: 0 } };
+    }
+  }
+
+  // A precise "change X to N" edit is deterministic. Apply it locally, validate,
+  // and only fall back to the agent when the request is ambiguous or invalid.
+  if (currentSpec && !attachments?.length) {
+    const edit = parseFastParameterEdit(prompt, currentSpec);
+    const nextSpec = edit ? applyFastParameterEdit(currentSpec, edit) : null;
+    if (nextSpec) {
+      emit({ type: "stage", stage: "checking", message: "Applying parameter change" });
+      const analysis = analyzeSpec(nextSpec);
+      if (analysis.ok) {
+        analysis.spec.lod = level;
+        const stats = {
+          ...summarise(analysis.spec, analysis.model),
+          lod: level,
+          attempts: 0,
+          elapsedMs: Date.now() - startedAt,
+          usage: null,
+          fastEdit: edit,
+        };
+        if (resultKey) writeCachedResult(resultKey, { analysis, stats });
+        return { analysis, stats };
+      }
+    }
+  }
+
   const messages = [{ role: "system", content: systemPrompt(level) }];
 
   if (currentSpec) {
+    const dependencyMap = parameterDependencySummary(currentSpec, 6000, prompt);
+    const dependencyBlock = dependencyMap
+      ? `${dependencyMap}\n\nUse this map before changing anything: update the base parameter and every dependent parameter/part it reaches. Do not hard-code a value that the map says is derived.\n\n`
+      : "";
+
     messages.push({
       role: "user",
-      content: `Here is the current spec. Apply my next request to it.\n${JSON.stringify(currentSpec)}`,
+      content: `Here is the current spec. Apply my next request to it.\n${dependencyBlock}${JSON.stringify(currentSpec)}`,
     });
   }
 
@@ -262,7 +313,7 @@ export async function design({ prompt, currentSpec, lod, emit, model, customApiC
         messages.push({ role: "assistant", content: compactSpec(result) });
         messages.push({
           role: "user",
-          content: repairPrompt.replace("{{issues}}", formatIssues(layoutIssues, 25)),
+          content: repairInstructions(result.json, layoutIssues, prompt),
         });
         continue;
       }
@@ -279,7 +330,7 @@ export async function design({ prompt, currentSpec, lod, emit, model, customApiC
       messages.push({ role: "assistant", content: compactSpec(result) });
       messages.push({
         role: "user",
-        content: repairPrompt.replace("{{issues}}", formatIssues(analysis.errors, 25)),
+        content: repairInstructions(result.json, analysis.errors, prompt),
       });
     }
   }
@@ -293,6 +344,8 @@ export async function design({ prompt, currentSpec, lod, emit, model, customApiC
     elapsedMs: Date.now() - startedAt,
     usage,
   };
+
+  if (resultKey && analysis.ok) writeCachedResult(resultKey, { analysis, stats });
 
   return { analysis, stats };
 }

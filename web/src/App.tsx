@@ -1042,6 +1042,7 @@ export function App() {
         native={native}
         running={running}
         agentStage={stage?.stage ?? null}
+        elapsed={elapsedLabel}
                 units={units}
         onUnits={setUnits}
         revitVersion={revitVersion}
@@ -1142,11 +1143,6 @@ export function App() {
           issuePartIds={issuePartIds}
           focusPartId={focusPartId}
           onUpdateParameter={handleUpdateParameter}
-          status={
-            running && stage
-              ? { stage: stage.stage, message: stage.message, elapsed: elapsedLabel }
-              : null
-          }
         />
 
         <div

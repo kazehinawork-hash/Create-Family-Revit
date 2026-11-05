@@ -23,6 +23,7 @@ namespace FamilyAgent.Addin
             IDictionary<long, ResolvedPart> partByForm)
         {
             var forms = new List<Element>();
+            var materialCache = new Dictionary<string, Material>(StringComparer.OrdinalIgnoreCase);
 
             foreach (var part in model.Parts)
             {
@@ -71,7 +72,8 @@ namespace FamilyAgent.Addin
                             body,
                             MaterialName(part, materials),
                             MaterialColor(part, materials),
-                            warnings);
+                            warnings,
+                            materialCache);
                         forms.Add(body);
                         if (partByForm != null && body.Id != ElementId.InvalidElementId)
                         {

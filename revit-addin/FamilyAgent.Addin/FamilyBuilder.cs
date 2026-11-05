@@ -28,6 +28,17 @@ namespace FamilyAgent.Addin
         private const double DegToRad = Math.PI / 180.0;
 
         /// <summary>
+        /// Snapshot is the default: the RFA only needs geometry and parameters, not the
+        /// reference-plane/dimension/lock skeleton. Set FAMILY_AGENT_PARAMETRIC=1 to
+        /// build the editable (heavier) family instead.
+        /// </summary>
+        public static bool IncludeConstraints =
+            string.Equals(
+                Environment.GetEnvironmentVariable("FAMILY_AGENT_PARAMETRIC"),
+                "1",
+                StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>
         /// Diagnostic: opens a built .rfa, changes one parameter and reports whether the
         /// geometry rebuilt. Proves the constraints really flex in the saved file.
         /// </summary>
@@ -178,7 +189,7 @@ namespace FamilyAgent.Addin
                 var template = TemplateCatalog.Resolve(app, spec);
                 document = app.NewFamilyDocument(template);
 
-                PlaneSkeleton skeleton;
+                PlaneSkeleton skeleton = null;
                 List<Element> forms;
                 var partByForm = new Dictionary<long, ResolvedPart>();
 
@@ -190,7 +201,10 @@ namespace FamilyAgent.Addin
                     var manager = document.FamilyManager;
                     CreateFamilyType(manager, spec);
                     CreateParameters(document, manager, parameters, result.Warnings);
-                    skeleton = CreateReferencePlanes(document, manager, parameters, model, result.Warnings);
+                    if (IncludeConstraints)
+                    {
+                        skeleton = CreateReferencePlanes(document, manager, parameters, model, result.Warnings);
+                    }
                     forms = CreateGeometry(document, model, materials, result.Warnings, partByForm);
 
                     var status = transaction.Commit();
@@ -203,37 +217,47 @@ namespace FamilyAgent.Addin
 
                 foreach (var message in buildFailures.Messages.Take(5)) result.Warnings.Add(message);
 
-                stage = "dimensioning the reference planes";
-                var refDimensions = CreateDimensions(document, skeleton.Dimensions, result.Warnings);
+                var refDimensions = 0;
+                var locks = 0;
+                var faceDimensions = 0;
+                var radialDimensions = 0;
+                var inert = new List<string>();
+                var flex = string.Empty;
 
-                stage = "locking the geometry to the reference planes";
-                var locks = LockGeometry(document, skeleton, forms, partByForm, out var lockedFormAxes, result.Warnings);
+                if (IncludeConstraints)
+                {
+                    stage = "dimensioning the reference planes";
+                    refDimensions = CreateDimensions(document, skeleton.Dimensions, result.Warnings);
 
-                stage = "dimensioning the part faces";
-                var faceDimensions = CreateFaceDimensions(
-                    document, skeleton, forms, parameters, lockedFormAxes, out var solvedFaces, result.Warnings);
-                var radialDimensions = CreateRadialDimensions(
-                    document, skeleton, forms, parameters, solvedFaces, result.Warnings);
-                var inert = skeleton.Inert().Where(name => !solvedFaces.Contains(name)).ToList();
+                    stage = "locking the geometry to the reference planes";
+                    locks = LockGeometry(
+                        document, skeleton, forms, partByForm, out var lockedFormAxes, result.Warnings);
+
+                    stage = "dimensioning the part faces";
+                    faceDimensions = CreateFaceDimensions(
+                        document, skeleton, forms, parameters, lockedFormAxes, out var solvedFaces, result.Warnings);
+                    radialDimensions = CreateRadialDimensions(
+                        document, skeleton, forms, parameters, solvedFaces, result.Warnings);
+                    inert = skeleton.Inert().Where(name => !solvedFaces.Contains(name)).ToList();
+
+                    stage = "self-checking the parameters";
+                    try
+                    {
+                        flex = SelfCheck(document, parameters);
+                    }
+                    catch (Exception ex)
+                    {
+                        flex = "error: " + ex.Message;
+                    }
+
+                    if (flex.Contains("still") || flex.Contains("X "))
+                    {
+                        result.Warnings.Add("Flex check: " + flex);
+                    }
+                }
 
                 stage = "creating MEP connectors";
                 var connectors = CreateConnectors(document, spec, parameters, forms, result.Warnings);
-
-                stage = "self-checking the parameters";
-                var flex = string.Empty;
-                try
-                {
-                    flex = SelfCheck(document, parameters);
-                }
-                catch (Exception ex)
-                {
-                    flex = "error: " + ex.Message;
-                }
-
-                if (flex.Contains("still") || flex.Contains("X "))
-                {
-                    result.Warnings.Add("Flex check: " + flex);
-                }
 
                 result.Stats = new
                 {
@@ -244,12 +268,12 @@ namespace FamilyAgent.Addin
                     sweptBlends = forms.Count(f => f is SweptBlend),
                     freeforms = forms.Count(f => f is FreeFormElement),
                     voids = forms.Count(f => f is Extrusion extrusion && !extrusion.IsSolid),
-                    refPlanes = skeleton.Created,
+                    refPlanes = skeleton?.Created ?? 0,
                     refDimensions,
                     locks,
                     lod = spec.Lod,
-                    driving = skeleton.Driving,
-                    unlabelled = skeleton.Unlabelled,
+                    driving = skeleton?.Driving ?? new List<string>(),
+                    unlabelled = skeleton?.Unlabelled ?? new List<string>(),
                     inert,
                     flex,
                     faceDimensions,
@@ -358,7 +382,7 @@ namespace FamilyAgent.Addin
                 stage = "clearing the previous geometry";
                 ClearGenerated(document, result.Warnings);
 
-                PlaneSkeleton skeleton;
+                PlaneSkeleton skeleton = null;
                 List<Element> forms;
                 var partByForm = new Dictionary<long, ResolvedPart>();
 
@@ -370,7 +394,10 @@ namespace FamilyAgent.Addin
                     var manager = document.FamilyManager;
                     CreateFamilyType(manager, spec);
                     CreateParameters(document, manager, parameters, result.Warnings);
-                    skeleton = CreateReferencePlanes(document, manager, parameters, model, result.Warnings);
+                    if (IncludeConstraints)
+                    {
+                        skeleton = CreateReferencePlanes(document, manager, parameters, model, result.Warnings);
+                    }
                     forms = CreateGeometry(document, model, materials, result.Warnings, partByForm);
 
                     var status = transaction.Commit();
@@ -383,37 +410,47 @@ namespace FamilyAgent.Addin
 
                 foreach (var message in buildFailures.Messages.Take(5)) result.Warnings.Add(message);
 
-                stage = "dimensioning the reference planes";
-                var refDimensions = CreateDimensions(document, skeleton.Dimensions, result.Warnings);
+                var refDimensions = 0;
+                var locks = 0;
+                var faceDimensions = 0;
+                var radialDimensions = 0;
+                var inert = new List<string>();
+                var flex = string.Empty;
 
-                stage = "locking the geometry to the reference planes";
-                var locks = LockGeometry(document, skeleton, forms, partByForm, out var lockedFormAxes, result.Warnings);
+                if (IncludeConstraints)
+                {
+                    stage = "dimensioning the reference planes";
+                    refDimensions = CreateDimensions(document, skeleton.Dimensions, result.Warnings);
 
-                stage = "dimensioning the part faces";
-                var faceDimensions = CreateFaceDimensions(
-                    document, skeleton, forms, parameters, lockedFormAxes, out var solvedFaces, result.Warnings);
-                var radialDimensions = CreateRadialDimensions(
-                    document, skeleton, forms, parameters, solvedFaces, result.Warnings);
-                var inert = skeleton.Inert().Where(name => !solvedFaces.Contains(name)).ToList();
+                    stage = "locking the geometry to the reference planes";
+                    locks = LockGeometry(
+                        document, skeleton, forms, partByForm, out var lockedFormAxes, result.Warnings);
+
+                    stage = "dimensioning the part faces";
+                    faceDimensions = CreateFaceDimensions(
+                        document, skeleton, forms, parameters, lockedFormAxes, out var solvedFaces, result.Warnings);
+                    radialDimensions = CreateRadialDimensions(
+                        document, skeleton, forms, parameters, solvedFaces, result.Warnings);
+                    inert = skeleton.Inert().Where(name => !solvedFaces.Contains(name)).ToList();
+
+                    stage = "self-checking the parameters";
+                    try
+                    {
+                        flex = SelfCheck(document, parameters);
+                    }
+                    catch (Exception ex)
+                    {
+                        flex = "error: " + ex.Message;
+                    }
+
+                    if (flex.Contains("still") || flex.Contains("X "))
+                    {
+                        result.Warnings.Add("Flex check: " + flex);
+                    }
+                }
 
                 stage = "creating MEP connectors";
                 var connectors = CreateConnectors(document, spec, parameters, forms, result.Warnings);
-
-                stage = "self-checking the parameters";
-                var flex = string.Empty;
-                try
-                {
-                    flex = SelfCheck(document, parameters);
-                }
-                catch (Exception ex)
-                {
-                    flex = "error: " + ex.Message;
-                }
-
-                if (flex.Contains("still") || flex.Contains("X "))
-                {
-                    result.Warnings.Add("Flex check: " + flex);
-                }
 
                 result.Stats = new
                 {
@@ -424,12 +461,12 @@ namespace FamilyAgent.Addin
                     sweptBlends = forms.Count(f => f is SweptBlend),
                     freeforms = forms.Count(f => f is FreeFormElement),
                     voids = forms.Count(f => f is Extrusion extrusion && !extrusion.IsSolid),
-                    refPlanes = skeleton.Created,
+                    refPlanes = skeleton?.Created ?? 0,
                     refDimensions,
                     locks,
                     lod = spec.Lod,
-                    driving = skeleton.Driving,
-                    unlabelled = skeleton.Unlabelled,
+                    driving = skeleton?.Driving ?? new List<string>(),
+                    unlabelled = skeleton?.Unlabelled ?? new List<string>(),
                     inert,
                     flex,
                     faceDimensions,
@@ -1298,13 +1335,14 @@ namespace FamilyAgent.Addin
             Element element,
             string name,
             string color,
-            List<string> warnings)
+            List<string> warnings,
+            IDictionary<string, Material> cache = null)
         {
             if (string.IsNullOrWhiteSpace(name)) return;
 
             try
             {
-                var material = FindOrCreateMaterial(document, name, color, warnings);
+                var material = FindOrCreateMaterial(document, name, color, warnings, cache);
                 if (material == null) return;
 
                 var parameter = element.get_Parameter(BuiltInParameter.MATERIAL_ID_PARAM);
@@ -1321,8 +1359,11 @@ namespace FamilyAgent.Addin
             Document document,
             string name,
             string color,
-            List<string> warnings)
+            List<string> warnings,
+            IDictionary<string, Material> cache = null)
         {
+            if (cache != null && cache.TryGetValue(name, out var cached)) return cached;
+
             var existing = new FilteredElementCollector(document)
                 .OfClass(typeof(Material))
                 .Cast<Material>()
@@ -1344,7 +1385,11 @@ namespace FamilyAgent.Addin
                 }
             }
 
-            if (material != null) ApplyColor(material, color, warnings);
+            if (material != null)
+            {
+                ApplyColor(material, color, warnings);
+                if (cache != null) cache[name] = material;
+            }
             return material;
         }
 

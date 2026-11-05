@@ -65,6 +65,21 @@ function describeEvent(event) {
 }
 
 const IS_WINDOWS = process.platform === "win32";
+const MAX_STDOUT_CHARS = 16 * 1024 * 1024;
+const MAX_STDERR_CHARS = 256 * 1024;
+const MAX_LINE_CHARS = 2 * 1024 * 1024;
+const MAX_LISTING_CHARS = 4 * 1024 * 1024;
+
+/**
+ * Keep only the newest text. Agent result frames are emitted at the end of stdout,
+ * so dropping the oldest output preserves the useful part while keeping memory bounded.
+ */
+function keepTail(current, text, limit) {
+  if (!text) return current;
+  if (text.length >= limit) return text.slice(text.length - limit);
+  const overflow = current.length + text.length - limit;
+  return overflow > 0 ? current.slice(overflow) + text : current + text;
+}
 
 /**
  * npm-installed CLIs (`cmdc`, `codex`, `claude`) are `.cmd` shims on Windows, which
@@ -140,6 +155,9 @@ function runCliProcess({
     let stdout = "";
     let stderr = "";
     let buffer = "";
+    let stdoutTruncated = false;
+    let stderrTruncated = false;
+    let lineTruncated = false;
     let settled = false;
     let timer = null;
     let onAbort = null;
@@ -179,10 +197,12 @@ function runCliProcess({
 
     child.stdout.on("data", (chunk) => {
       const text = chunk.toString();
-      stdout += text;
+      if (stdout.length + text.length > MAX_STDOUT_CHARS) stdoutTruncated = true;
+      stdout = keepTail(stdout, text, MAX_STDOUT_CHARS);
 
       if (onStdoutLine) {
-        buffer += text;
+        if (buffer.length + text.length > MAX_LINE_CHARS) lineTruncated = true;
+        buffer = keepTail(buffer, text, MAX_LINE_CHARS);
         const lines = buffer.split(/\r?\n/);
         buffer = lines.pop() ?? "";
 
@@ -202,8 +222,18 @@ function runCliProcess({
     });
 
     child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString();
+      const text = chunk.toString();
+      if (stderr.length + text.length > MAX_STDERR_CHARS) stderrTruncated = true;
+      stderr = keepTail(stderr, text, MAX_STDERR_CHARS);
     });
+
+    const onPipeError = (name) => (error) => {
+      if (["EPIPE", "ECONNRESET", "ERR_STREAM_DESTROYED"].includes(error?.code)) return;
+      console.error(`[agent${tag}] ${name} error:`, error);
+    };
+    child.stdin.on("error", onPipeError("stdin"));
+    child.stdout.on("error", onPipeError("stdout"));
+    child.stderr.on("error", onPipeError("stderr"));
 
     child.on("error", (error) => {
       console.error(`[agent${tag}] spawn error: ${error.message}`);
@@ -215,6 +245,14 @@ function runCliProcess({
         `[agent${tag}] exit ${code} in ${Math.round((Date.now() - started) / 1000)}s ` +
           `stdout=${stdout.length}B stderr=${stderr.length}B`,
       );
+      if (stdoutTruncated || stderrTruncated || lineTruncated) {
+        console.warn(
+          `[agent${tag}] output capped` +
+            `${stdoutTruncated ? " stdout" : ""}` +
+            `${stderrTruncated ? " stderr" : ""}` +
+            `${lineTruncated ? " line" : ""}`,
+        );
+      }
       if (stderr.trim()) console.log(`[agent${tag}] stderr: ${stderr.trim().slice(-600)}`);
       finish(() => resolve({ code: code ?? 0, stdout, stderr }));
     });
@@ -498,7 +536,9 @@ function listCommandModels(command) {
   return new Promise((resolve) => {
     const child = spawnCli(command, ["--list-models"], { windowsHide: true });
     let stdout = "";
-    child.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
+    child.stdout.on("data", (chunk) => {
+      stdout = keepTail(stdout, chunk.toString(), MAX_LISTING_CHARS);
+    });
     child.on("error", () => resolve([]));
     child.on("close", (code) => {
       if (code !== 0 || !stdout) {
@@ -563,7 +603,9 @@ export async function getCmdcModels() {
   const agyModels = !hasAgy ? [] : await new Promise((resolve) => {
     const child = spawnCli("agy", ["models"], { windowsHide: true });
     let stdout = "";
-    child.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
+    child.stdout.on("data", (chunk) => {
+      stdout = keepTail(stdout, chunk.toString(), MAX_LISTING_CHARS);
+    });
     child.on("close", (code) => {
       const agyList = [];
       if (code === 0 && stdout) {

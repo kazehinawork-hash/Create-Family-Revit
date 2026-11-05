@@ -11,4 +11,5 @@ Rules:
 - Pipe stubs and duct collars protrude outward from the casing with non-zero size.
 - Every driving dimension is a parameter in group 'Dimensions', and every parameter is used.
 - Derived sizes are formulas referencing their parent parameter, never copied numbers.
+- Use the PARAMETER DEPENDENCY MAP when present: fix the base parameter and keep every dependent parameter, part and connector coherent; replace hard-coded derived values with formulas.
 - No markdown fences, no prose. Raw JSON only.

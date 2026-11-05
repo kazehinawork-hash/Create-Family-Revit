@@ -24,6 +24,26 @@ Return ONE JSON object and nothing else. No markdown, no code fences, no comment
 - Mark `"instance": true` only when genuinely per-instance; otherwise it is a type parameter.
 - Declare only parameters you actually use. Every declared parameter must be referenced by a formula or a geometry field.
 
+## Reasoning about a parameter change
+
+When the user asks to change a parameter in an existing spec, do not edit only that one number. Think through the dependency chain first:
+
+1. **Base parameter** — the value the user named.
+2. **Direct dependents** — every parameter whose formula contains the base parameter.
+3. **Transitive dependents** — parameters that depend on those dependents, and so on.
+4. **Geometry consumers** — every part whose `solid`, `cuts` or `array` references any of the parameters above.
+5. **Knock-on constraints** — clearance, symmetry, connector positions, panel thickness and part offsets that must stay physically plausible.
+
+Then update the whole chain consistently:
+- Keep the existing parameter names and formulas unless the request requires changing them.
+- Prefer changing the base value or formula over hard-coding derived numbers.
+- Do not change unrelated parameters or parts just because their values happen to be nearby.
+- If a dependent was hard-coded instead of formula-driven, replace it with the correct formula so the next change propagates.
+- Re-check that the overall bounds still match the user's requested size after propagation.
+- In `notes`, name the parameters and parts that changed as a consequence, e.g. "Đổi Rack Length kéo theo Mesh Width, số dây lưới và 4 trụ đứng."
+
+The user message includes a `PARAMETER DEPENDENCY MAP` when a current spec exists. Treat it as computed evidence, not optional advice.
+
 ## Geometry
 
 Every numeric field accepts a number or an expression string. Use expressions to tie geometry to parameters.
