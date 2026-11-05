@@ -16,6 +16,7 @@ interface Props {
   native: boolean;
   running?: boolean;
   agentStage?: string | null;
+  elapsed?: string | null;
     units: Units;
   onUnits: (units: Units) => void;
   revitVersion: string;
@@ -71,6 +72,7 @@ export function TopBar({
   native,
   running,
   agentStage,
+  elapsed,
     units,
   onUnits,
   revitVersion,
@@ -116,19 +118,22 @@ export function TopBar({
 
       <div className="stages">
         {running ? (
-          AGENT_STEPS.map((label, index) => {
-            const isDone = index < currentStep;
-            const isActive = index === currentStep;
-            return (
-              <span
-                key={label}
-                className={`stage ${isDone ? "done" : ""} ${isActive ? "active" : ""}`}
-              >
-                <span className="dot">{isDone ? <Check /> : null}</span>
-                {label}
-              </span>
-            );
-          })
+          <>
+            {AGENT_STEPS.map((label, index) => {
+              const isDone = index < currentStep;
+              const isActive = index === currentStep;
+              return (
+                <span
+                  key={label}
+                  className={`stage ${isDone ? "done" : ""} ${isActive ? "active" : ""}`}
+                >
+                  <span className="dot">{isDone ? <Check /> : null}</span>
+                  {label}
+                </span>
+              );
+            })}
+            {elapsed && <span className="stage-time">{elapsed}</span>}
+          </>
         ) : (
           <>
             <span className={`stage ${hasSpec ? "done" : ""} ${hasSpec && !reviewed ? "active" : ""}`}>

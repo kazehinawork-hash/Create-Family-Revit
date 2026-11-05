@@ -20,7 +20,8 @@ interface WorkerReply {
   error?: string;
 }
 
-let worker: Worker | null | undefined;
+let workers: Worker[] | null | undefined;
+let workerIndex = 0;
 let nextId = 1;
 const waiting = new Map<
   number,
@@ -32,49 +33,56 @@ function rejectAll(error: Error) {
   waiting.clear();
 }
 
-function getWorker(): Worker | null {
-  if (worker !== undefined) return worker;
+function handleReply(event: MessageEvent<WorkerReply>) {
+  const reply = event.data;
+  const entry = waiting.get(reply.id);
+  if (!entry) return;
+  waiting.delete(reply.id);
+
+  if (!reply.ok || !reply.geometry || !reply.edges) {
+    entry.reject(new Error(reply.error || "geometry worker failed"));
+    return;
+  }
+
+  entry.resolve({
+    geometry: deserializeGeometry(reply.geometry),
+    edges: deserializeGeometry(reply.edges),
+    hasCuts: Boolean(reply.hasCuts),
+    cutFailed: Boolean(reply.cutFailed),
+  });
+}
+
+function getWorkers(): Worker[] | null {
+  if (workers !== undefined) return workers;
 
   if (typeof Worker === "undefined") {
-    worker = null;
+    workers = null;
     return null;
   }
 
   try {
-    const instance = new Worker(new URL("./geometry.worker.ts", import.meta.url), {
-      type: "module",
-    });
+    const hardware = typeof navigator !== "undefined" ? navigator.hardwareConcurrency || 2 : 2;
+    const size = Math.min(3, Math.max(1, hardware - 1));
+    const pool: Worker[] = [];
 
-    instance.onmessage = (event: MessageEvent<WorkerReply>) => {
-      const reply = event.data;
-      const entry = waiting.get(reply.id);
-      if (!entry) return;
-      waiting.delete(reply.id);
-
-      if (!reply.ok || !reply.geometry || !reply.edges) {
-        entry.reject(new Error(reply.error || "geometry worker failed"));
-        return;
-      }
-
-      entry.resolve({
-        geometry: deserializeGeometry(reply.geometry),
-        edges: deserializeGeometry(reply.edges),
-        hasCuts: Boolean(reply.hasCuts),
-        cutFailed: Boolean(reply.cutFailed),
+    for (let index = 0; index < size; index += 1) {
+      const instance = new Worker(new URL("./geometry.worker.ts", import.meta.url), {
+        type: "module",
       });
-    };
+      instance.onmessage = handleReply;
+      instance.onerror = () => {
+        workers = null;
+        rejectAll(new Error("geometry worker crashed"));
+      };
+      pool.push(instance);
+    }
 
-    instance.onerror = () => {
-      worker = null;
-      rejectAll(new Error("geometry worker crashed"));
-    };
-
-    worker = instance;
+    workers = pool;
   } catch {
-    worker = null;
+    workers = null;
   }
 
-  return worker;
+  return workers;
 }
 
 function buildSync(part: ResolvedPart): BuiltPartGeometry {
@@ -86,12 +94,14 @@ function buildSync(part: ResolvedPart): BuiltPartGeometry {
 }
 
 /**
- * Builds a part off the main thread. Falls back to a synchronous build when the
- * worker cannot start (SSR, tests, an old browser) so the viewer keeps working.
+ * Builds a part off the main thread. A small worker pool lets large assemblies
+ * use more than one core, while the viewer still adds completed parts in order.
+ * Falls back to a synchronous build when workers are unavailable.
  */
 export async function buildPartGeometryAsync(part: ResolvedPart): Promise<BuiltPartGeometry> {
-  const instance = getWorker();
-  if (!instance) return buildSync(part);
+  const pool = getWorkers();
+  if (!pool || pool.length === 0) return buildSync(part);
+  const instance = pool[workerIndex++ % pool.length];
 
   const id = nextId++;
 
@@ -106,7 +116,7 @@ export async function buildPartGeometryAsync(part: ResolvedPart): Promise<BuiltP
       }
     });
   } catch {
-    worker = null;
+    // A dead worker should not block the viewer: finish this part synchronously.
     return buildSync(part);
   }
 }

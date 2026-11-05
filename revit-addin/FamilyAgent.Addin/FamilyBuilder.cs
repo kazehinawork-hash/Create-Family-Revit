@@ -1335,13 +1335,14 @@ namespace FamilyAgent.Addin
             Element element,
             string name,
             string color,
-            List<string> warnings)
+            List<string> warnings,
+            IDictionary<string, Material> cache = null)
         {
             if (string.IsNullOrWhiteSpace(name)) return;
 
             try
             {
-                var material = FindOrCreateMaterial(document, name, color, warnings);
+                var material = FindOrCreateMaterial(document, name, color, warnings, cache);
                 if (material == null) return;
 
                 var parameter = element.get_Parameter(BuiltInParameter.MATERIAL_ID_PARAM);
@@ -1358,8 +1359,11 @@ namespace FamilyAgent.Addin
             Document document,
             string name,
             string color,
-            List<string> warnings)
+            List<string> warnings,
+            IDictionary<string, Material> cache = null)
         {
+            if (cache != null && cache.TryGetValue(name, out var cached)) return cached;
+
             var existing = new FilteredElementCollector(document)
                 .OfClass(typeof(Material))
                 .Cast<Material>()
@@ -1381,7 +1385,11 @@ namespace FamilyAgent.Addin
                 }
             }
 
-            if (material != null) ApplyColor(material, color, warnings);
+            if (material != null)
+            {
+                ApplyColor(material, color, warnings);
+                if (cache != null) cache[name] = material;
+            }
             return material;
         }
 

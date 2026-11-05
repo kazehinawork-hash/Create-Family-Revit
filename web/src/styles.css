@@ -112,6 +112,15 @@ textarea {
   gap: 4px;
 }
 
+.stage-time {
+  margin-left: 4px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--muted);
+  min-width: 36px;
+  text-align: right;
+}
+
 .stage {
   display: flex;
   align-items: center;
@@ -1295,85 +1304,6 @@ body.resizing {
   box-shadow: 0 2px 8px rgba(30, 30, 30, 0.07);
 }
 
-.run-card {
-  position: absolute;
-  top: 54px;
-  left: 50%;
-  transform: translateX(-50%);
-  min-width: 238px;
-  background: rgba(255, 255, 255, 0.97);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 10px 12px 11px;
-  box-shadow: 0 8px 24px rgba(30, 30, 30, 0.1);
-  backdrop-filter: blur(6px);
-  font-size: 11.5px;
-  color: var(--ink-2);
-  z-index: 5;
-}
-
-.run-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--ink);
-  font-weight: 550;
-}
-
-.run-time {
-  margin-left: auto;
-  font-family: var(--mono);
-  font-size: 10.5px;
-  color: var(--muted);
-  font-weight: 400;
-}
-
-.run-steps {
-  margin-top: 9px;
-  display: grid;
-  gap: 4px;
-}
-
-.run-step {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.run-step.done {
-  color: var(--accent-ink);
-}
-
-.run-step.active {
-  color: var(--ink);
-  font-weight: 550;
-}
-
-.run-dot {
-  width: 13px;
-  height: 13px;
-  border-radius: 50%;
-  border: 1.5px solid var(--line-strong);
-  display: grid;
-  place-items: center;
-  font-size: 8px;
-  color: #fff;
-  flex: 0 0 auto;
-}
-
-.run-step.done .run-dot {
-  background: var(--accent);
-  border-color: var(--accent);
-}
-
-.run-step.active .run-dot {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-  animation: pulse 1.4s ease-in-out infinite;
-}
-
 @keyframes pulse {
   0%,
   100% {
@@ -1382,19 +1312,6 @@ body.resizing {
   50% {
     box-shadow: 0 0 0 4px rgba(60, 122, 99, 0.08);
   }
-}
-
-.run-detail {
-  margin-top: 8px;
-  padding-top: 7px;
-  border-top: 1px dashed var(--line);
-  font-size: 10.5px;
-  color: var(--muted);
-  font-family: var(--mono);
-  max-width: 220px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .viewer-empty {
@@ -2607,7 +2524,7 @@ a.modal-close {
 
 /* Viewer hẹp: thu gọn thanh công cụ về icon (tooltip vẫn còn) để nhường chỗ cho
    ViewCube, và dời pill kích thước xuống góc dưới phải. Đặt ở cuối file để thắng
-   thứ tự cascade của .run-card / .viewer-dims. */
+   thứ tự cascade của .viewer-dims. */
 @container (max-width: 490px) {
   .tool-label {
     display: none;
@@ -2622,11 +2539,5 @@ a.modal-close {
     top: 132px;
     right: 12px;
     bottom: auto;
-  }
-
-  /* Thẻ tiến trình về góc trái để không chạm ViewCube. */
-  .run-card {
-    left: 12px;
-    transform: none;
   }
 }

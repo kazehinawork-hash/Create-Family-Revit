@@ -219,7 +219,11 @@ app.post("/api/verify-api", async (req, res) => {
 });
 
 app.get("/api/health", async (_req, res) => {
-  const [models, backends] = await Promise.all([getCmdcModels(), detectAgentBackends()]);
+  const [models, backends, connected] = await Promise.all([
+    getCmdcModels(),
+    detectAgentBackends(),
+    bridgeAlive(),
+  ]);
   const status = agentStatus();
   const anyCli = backends.commandcode || backends.agy || backends.codex || backends.claude;
   const ready = status.provider === "openai" ? backends.openai : anyCli;
@@ -238,7 +242,7 @@ app.get("/api/health", async (_req, res) => {
     models,
     bridge: config.bridge.url,
     revit: {
-      connected: await bridgeAlive(),
+      connected,
       autoStart: config.revit.autoStart,
       exe: findRevitExe(),
     },
@@ -679,6 +683,11 @@ function startListening() {
     console.log(`  agent     ${status.provider} · ${status.model}`);
     console.log(`  revit     ${config.bridge.url}`);
     console.log(`  output    ${config.dirs.out}`);
+
+    // Warm the caches in the background so the first studio health call does not
+    // pay for spawning the CLI model listings.
+    void getCmdcModels().catch(() => {});
+    void detectAgentBackends().catch(() => {});
   });
 
   server.on("clientError", (error, socket) => {
