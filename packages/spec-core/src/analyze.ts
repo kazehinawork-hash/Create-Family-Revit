@@ -37,7 +37,7 @@ export function analyzeSpec(
     ...issues,
     ...parameters.issues,
     ...model.issues,
-    ...checkModelLogic(model),
+    ...checkModelLogic(model, spec.lod),
     ...checkGeometryHealth(model),
   ]);
   const errors = all.filter((issue) => issue.severity === "error");

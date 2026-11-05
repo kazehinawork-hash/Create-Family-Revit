@@ -1,5 +1,5 @@
 import { partBounds, unionBounds, type Bounds, type ResolvedModel, type ResolvedPart } from "./geometry.js";
-import type { Issue } from "./types.js";
+import { LOD_PART_BUDGETS, type Issue } from "./types.js";
 
 /**
  * Physical-layout sanity checks. These are warnings, not errors: a model with a
@@ -63,9 +63,20 @@ function envelope(items: PlacedPart[]): Bounds | null {
 
 const mm = (value: number): string => `${Math.round(value)} mm`;
 
-export function checkModelLogic(model: ResolvedModel): Issue[] {
+export function checkModelLogic(model: ResolvedModel, lod?: number): Issue[] {
   const issues: Issue[] = [];
   const parts = placed(model);
+
+  const budget = lod ? LOD_PART_BUDGETS[lod] : undefined;
+  if (budget && model.parts.length > budget.max) {
+    issues.push({
+      severity: "warning",
+      path: "lod.parts",
+      message:
+        `LOD ${lod} has ${model.parts.length} parts; the practical budget is ${budget.max}. ` +
+        "Reduce detail, split the family, or confirm a heavier model is intended.",
+    });
+  }
 
   const coils = parts.filter(({ part }) => isPart(part, COIL) && !isPart(part, COIL_EXCLUDE));
   const pans = parts.filter(({ part }) => isPart(part, PAN));

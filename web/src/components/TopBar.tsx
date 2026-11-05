@@ -40,10 +40,10 @@ interface Props {
 }
 
 const LOD_OPTIONS: { value: Lod; label: string; hint: string }[] = [
-  { value: 200, label: "200", hint: "LOD 200 · khối bao, 3-8 parts" },
-  { value: 300, label: "300", hint: "LOD 300 · thiết kế thực tế, 4-16 parts" },
-  { value: 350, label: "350", hint: "LOD 350 · phối hợp MEP, tai treo, 10-30 parts" },
-  { value: 400, label: "400", hint: "LOD 400 · chi tiết chế tạo, 18-45 parts" },
+  { value: 200, label: "200", hint: "LOD 200 · khối bao, 3-10 parts" },
+  { value: 300, label: "300", hint: "LOD 300 · thiết kế thực tế, 5-20 parts" },
+  { value: 350, label: "350", hint: "LOD 350 · phối hợp MEP, 10-40 parts" },
+  { value: 400, label: "400", hint: "LOD 400 · chế tạo, 20-80 parts (phức tạp đến 150)" },
 ];
 
 const AGENT_STEPS = ["Read brief", "Design family", "Check model"];

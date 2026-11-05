@@ -82,10 +82,10 @@ Trên thanh trên cùng có nút **LOD 200 / 300 / 350 / 400** (mặc định 30
 
 | LOD | Dùng cho | Quy mô |
 | --- | --- | --- |
-| 200 | khối bao, phối cảnh, định tuyến sơ bộ | 3–8 parts, 4–10 tham số |
-| 300 | thiết kế thực tế + cổng kết nối MEP, bóc khối lượng | 4–16 parts, 6–24 tham số |
-| 350 | phối hợp MEP / kiểm tra va chạm: bích, tai treo, giá đỡ, clearance | 10–30 parts, 10–26 tham số |
-| 400 | chi tiết chế tạo/lắp ráp: bích, gioăng, bulông, lỗ khoan | 18–45 parts, 16–40 tham số |
+| 200 | khối bao, phối cảnh, định tuyến sơ bộ | 3–10 parts, 4–10 tham số |
+| 300 | thiết kế thực tế + cổng kết nối MEP, bóc khối lượng | 5–20 parts, 6–24 tham số |
+| 350 | phối hợp MEP / kiểm tra va chạm: bích, tai treo, giá đỡ, clearance | 10–40 parts, 10–26 tham số |
+| 400 | chi tiết chế tạo/lắp ráp: bích, gioăng, bulông, lỗ khoan | 20–80 parts (phức tạp đến 150), 16–40 tham số |
 
 Mức LOD được gửi kèm mỗi yêu cầu, ghi vào spec (`lod`) và vào `notes`, đồng thời đặt
 `Detail Level` của view 3D trong Revit tương ứng Coarse / Medium / Fine. Đổi LOD rồi gửi

@@ -300,5 +300,16 @@ export const LIMITS = {
   maxNameLength: 80,
 };
 
+/**
+ * Practical part budgets by LOD. LOD describes the required information, not a
+ * hard part count; these are performance guardrails, not BIM definitions.
+ */
+export const LOD_PART_BUDGETS: Record<number, { min: number; max: number }> = {
+  200: { min: 3, max: 10 },
+  300: { min: 5, max: 20 },
+  350: { min: 10, max: 40 },
+  400: { min: 20, max: 150 },
+};
+
 export const UNITS_PER_METER = 1000;
 export const MM_PER_FOOT = 304.8;
