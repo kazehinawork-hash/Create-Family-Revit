@@ -1,0 +1,739 @@
+{
+  "name": "Portable Evaporative Air Cooler 45L",
+  "schemaVersion": "1.0",
+  "typeName": "Cooler 45L",
+  "category": "Mechanical Equipment",
+  "units": "mm",
+  "lod": 300,
+  "description": "Quạt làm mát hơi nước di động 45L dạng đứng, vỏ nhựa ABS trắng kem, 3 tấm cooling pad tổ ong, bảng điều khiển cảm ứng trên nóc và 4 bánh xe xoay 360 độ.",
+  "parameters": [
+    {
+      "name": "Body Width",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 500
+    },
+    {
+      "name": "Body Depth",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 400
+    },
+    {
+      "name": "Overall Height",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 1050
+    },
+    {
+      "name": "Caster Height",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 60
+    },
+    {
+      "name": "Base Tray Height",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 20
+    },
+    {
+      "name": "Tank Height",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 340
+    },
+    {
+      "name": "Lid Thickness",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 20
+    },
+    {
+      "name": "Body Height",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "formula": "[Overall Height] - [Caster Height]"
+    },
+    {
+      "name": "Cooling Height",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "formula": "[Body Height] - [Tank Height] - [Lid Thickness]"
+    },
+    {
+      "name": "Cooling Top Height",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "formula": "[Caster Height] + [Tank Height] + [Cooling Height]"
+    },
+    {
+      "name": "Corner Radius",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 30
+    },
+    {
+      "name": "Joint Gap",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 1
+    },
+    {
+      "name": "Outlet Width",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 380
+    },
+    {
+      "name": "Outlet Height",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 420
+    },
+    {
+      "name": "Pad Thickness",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 40
+    },
+    {
+      "name": "Side Pad Thickness",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 35
+    },
+    {
+      "name": "Pad Height",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 460
+    },
+    {
+      "name": "Louver Depth",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 35
+    },
+    {
+      "name": "Louver Thickness",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 3
+    },
+    {
+      "name": "Louver Spacing",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 50
+    },
+    {
+      "name": "Louver Count",
+      "type": "Integer",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 8
+    },
+    {
+      "name": "Vane Spacing",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 30
+    },
+    {
+      "name": "Vane Count",
+      "type": "Integer",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 12
+    },
+    {
+      "name": "Sight Glass Width",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 30
+    },
+    {
+      "name": "Sight Glass Height",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 240
+    },
+    {
+      "name": "Ice Box Length",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 180
+    },
+    {
+      "name": "Ice Box Depth",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 100
+    },
+    {
+      "name": "Ice Box Height",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 35
+    },
+    {
+      "name": "Ice Box Spacing",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 190
+    },
+    {
+      "name": "Voltage",
+      "type": "Number",
+      "group": "Electrical",
+      "instance": false,
+      "value": 220
+    },
+    {
+      "name": "Number of Poles",
+      "type": "Integer",
+      "group": "Electrical",
+      "instance": false,
+      "value": 1
+    },
+    {
+      "name": "Power Load",
+      "type": "Number",
+      "group": "Electrical",
+      "instance": false,
+      "value": 150
+    }
+  ],
+  "parts": [
+    {
+      "id": "base-tray",
+      "name": "Base Tray",
+      "material": "Trim_Accent_Grey",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": 0,
+          "y": 0,
+          "z": "[Caster Height] - [Base Tray Height]"
+        },
+        "size": {
+          "x": "[Body Width]",
+          "y": "[Body Depth]",
+          "z": "[Base Tray Height] - [Joint Gap]"
+        },
+        "cornerRadius": "[Corner Radius]"
+      },
+      "cuts": []
+    },
+    {
+      "id": "caster-pair-front",
+      "name": "Front Caster Pair",
+      "material": "Trim_Accent_Grey",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "x",
+        "base": {
+          "x": "-[Body Width] / 2 + 30mm",
+          "y": "-[Body Depth] / 2 + 50mm",
+          "z": 25
+        },
+        "radius": 25,
+        "height": 40
+      },
+      "cuts": [],
+      "array": {
+        "count": 2,
+        "axis": "x",
+        "spacing": "[Body Width] - 100mm"
+      }
+    },
+    {
+      "id": "caster-pair-rear",
+      "name": "Rear Caster Pair",
+      "material": "Trim_Accent_Grey",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "x",
+        "base": {
+          "x": "-[Body Width] / 2 + 30mm",
+          "y": "[Body Depth] / 2 - 50mm",
+          "z": 25
+        },
+        "radius": 25,
+        "height": 40
+      },
+      "cuts": [],
+      "array": {
+        "count": 2,
+        "axis": "x",
+        "spacing": "[Body Width] - 100mm"
+      }
+    },
+    {
+      "id": "water-tank-shell",
+      "name": "Water Tank Shell 45L",
+      "material": "Cooler_Body_White_ABS",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": 0,
+          "y": 0,
+          "z": "[Caster Height]"
+        },
+        "size": {
+          "x": "[Body Width]",
+          "y": "[Body Depth]",
+          "z": "[Tank Height]"
+        },
+        "cornerRadius": "[Corner Radius]"
+      },
+      "cuts": []
+    },
+    {
+      "id": "sight-glass",
+      "name": "Water Level Sight Glass",
+      "material": "Water_Level_Clear_Glass",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": 0,
+          "y": "-[Body Depth] / 2 - 1mm",
+          "z": 100
+        },
+        "size": {
+          "x": "[Sight Glass Width]",
+          "y": 4,
+          "z": "[Sight Glass Height]"
+        }
+      },
+      "cuts": []
+    },
+    {
+      "id": "filler-door",
+      "name": "Side Filler Door",
+      "material": "Trim_Accent_Grey",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": "-[Body Width] / 2 - 1mm",
+          "y": 0,
+          "z": 295
+        },
+        "size": {
+          "x": 4,
+          "y": 80,
+          "z": 50
+        }
+      },
+      "cuts": []
+    },
+    {
+      "id": "cooling-shell",
+      "name": "Cooling Section Shell",
+      "material": "Cooler_Body_White_ABS",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": 0,
+          "y": 0,
+          "z": "[Caster Height] + [Tank Height] + [Joint Gap]"
+        },
+        "size": {
+          "x": "[Body Width]",
+          "y": "[Body Depth]",
+          "z": "[Cooling Height] - [Joint Gap]"
+        },
+        "cornerRadius": "[Corner Radius]"
+      },
+      "cuts": [
+        {
+          "kind": "box",
+          "origin": {
+            "x": 0,
+            "y": "-[Body Depth] / 2 + 40mm",
+            "z": "[Caster Height] + [Tank Height] + 40mm"
+          },
+          "size": {
+            "x": "[Outlet Width]",
+            "y": 80,
+            "z": "[Outlet Height]"
+          }
+        },
+        {
+          "kind": "box",
+          "origin": {
+            "x": 0,
+            "y": "[Body Depth] / 2 - [Pad Thickness] / 2 - 1mm",
+            "z": "[Caster Height] + [Tank Height] + 30mm"
+          },
+          "size": {
+            "x": 424,
+            "y": "[Pad Thickness] + 2mm",
+            "z": "[Pad Height]"
+          }
+        },
+        {
+          "kind": "box",
+          "origin": {
+            "x": "-[Body Width] / 2 + 18.5mm",
+            "y": 0,
+            "z": "[Caster Height] + [Tank Height] + 30mm"
+          },
+          "size": {
+            "x": "[Side Pad Thickness] + 2mm",
+            "y": 322,
+            "z": "[Pad Height]"
+          }
+        },
+        {
+          "kind": "box",
+          "origin": {
+            "x": "[Body Width] / 2 - 18.5mm",
+            "y": 0,
+            "z": "[Caster Height] + [Tank Height] + 30mm"
+          },
+          "size": {
+            "x": "[Side Pad Thickness] + 2mm",
+            "y": 322,
+            "z": "[Pad Height]"
+          }
+        },
+        {
+          "kind": "box",
+          "origin": {
+            "x": 0,
+            "y": 0,
+            "z": "[Cooling Top Height] - 80mm"
+          },
+          "size": {
+            "x": 420,
+            "y": 320,
+            "z": 90
+          }
+        }
+      ]
+    },
+    {
+      "id": "horizontal-louvers",
+      "name": "Horizontal Louver Blades",
+      "material": "Cooler_Body_White_ABS",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": 0,
+          "y": "-[Body Depth] / 2 + 22.5mm",
+          "z": 465
+        },
+        "size": {
+          "x": "[Outlet Width] - 10mm",
+          "y": "[Louver Depth]",
+          "z": "[Louver Thickness]"
+        }
+      },
+      "cuts": [],
+      "array": {
+        "count": "[Louver Count]",
+        "axis": "z",
+        "spacing": "[Louver Spacing]"
+      }
+    },
+    {
+      "id": "vertical-vanes",
+      "name": "Vertical Swing Vanes",
+      "material": "Cooler_Body_White_ABS",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": -165,
+          "y": "-[Body Depth] / 2 + 55mm",
+          "z": 445
+        },
+        "size": {
+          "x": "[Louver Thickness]",
+          "y": 30,
+          "z": "[Outlet Height] - 20mm"
+        }
+      },
+      "cuts": [],
+      "array": {
+        "count": "[Vane Count]",
+        "axis": "x",
+        "spacing": "[Vane Spacing]"
+      }
+    },
+    {
+      "id": "pad-rear",
+      "name": "Rear Cooling Pad",
+      "material": "Cooling_Pad_Brown",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": 0,
+          "y": "[Body Depth] / 2 - [Pad Thickness] / 2",
+          "z": "[Caster Height] + [Tank Height] + 30mm"
+        },
+        "size": {
+          "x": 420,
+          "y": "[Pad Thickness]",
+          "z": "[Pad Height]"
+        }
+      },
+      "cuts": []
+    },
+    {
+      "id": "pad-left",
+      "name": "Left Cooling Pad",
+      "material": "Cooling_Pad_Brown",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": "-[Body Width] / 2 + [Side Pad Thickness] / 2",
+          "y": 0,
+          "z": "[Caster Height] + [Tank Height] + 30mm"
+        },
+        "size": {
+          "x": "[Side Pad Thickness]",
+          "y": 320,
+          "z": "[Pad Height]"
+        }
+      },
+      "cuts": []
+    },
+    {
+      "id": "pad-right",
+      "name": "Right Cooling Pad",
+      "material": "Cooling_Pad_Brown",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": "[Body Width] / 2 - [Side Pad Thickness] / 2",
+          "y": 0,
+          "z": "[Caster Height] + [Tank Height] + 30mm"
+        },
+        "size": {
+          "x": "[Side Pad Thickness]",
+          "y": 320,
+          "z": "[Pad Height]"
+        }
+      },
+      "cuts": []
+    },
+    {
+      "id": "control-panel",
+      "name": "Touch Control Panel",
+      "material": "Touch_Display_Black_Glass",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": 0,
+          "y": "-[Body Depth] / 2 - 1mm",
+          "z": "[Cooling Top Height] - 130mm"
+        },
+        "size": {
+          "x": 420,
+          "y": 12,
+          "z": 55
+        }
+      },
+      "cuts": []
+    },
+    {
+      "id": "top-lid",
+      "name": "Transparent Top Lid",
+      "material": "Water_Level_Clear_Glass",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": 0,
+          "y": 0,
+          "z": "[Cooling Top Height] + [Joint Gap]"
+        },
+        "size": {
+          "x": "[Body Width]",
+          "y": "[Body Depth]",
+          "z": "[Lid Thickness] - [Joint Gap]"
+        },
+        "cornerRadius": "[Corner Radius]"
+      },
+      "cuts": []
+    },
+    {
+      "id": "ice-gel-boxes",
+      "name": "Ice Gel Boxes",
+      "material": "Ice_Pack_Blue",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": "-[Ice Box Spacing] / 2",
+          "y": 0,
+          "z": "[Cooling Top Height] - 79mm"
+        },
+        "size": {
+          "x": "[Ice Box Length]",
+          "y": "[Ice Box Depth]",
+          "z": "[Ice Box Height]"
+        }
+      },
+      "cuts": [],
+      "array": {
+        "count": 2,
+        "axis": "x",
+        "spacing": "[Ice Box Spacing]"
+      }
+    },
+    {
+      "id": "power-inlet-box",
+      "name": "Power Inlet Box",
+      "material": "Trim_Accent_Grey",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": -180,
+          "y": "[Body Depth] / 2 + 8mm",
+          "z": 100
+        },
+        "size": {
+          "x": 60,
+          "y": 16,
+          "z": 80
+        }
+      },
+      "cuts": []
+    }
+  ],
+  "connectors": [
+    {
+      "id": "supply-air",
+      "name": "Supply Air Outlet",
+      "systemType": "Supply Air",
+      "shape": "rectangular",
+      "direction": "out",
+      "origin": {
+        "x": 0,
+        "y": -200,
+        "z": 650
+      },
+      "directionVector": {
+        "x": 0,
+        "y": -1,
+        "z": 0
+      },
+      "width": 380,
+      "height": 420
+    },
+    {
+      "id": "air-intake",
+      "name": "Air Intake",
+      "systemType": "Return Air",
+      "shape": "rectangular",
+      "direction": "in",
+      "origin": {
+        "x": 0,
+        "y": 200,
+        "z": 660
+      },
+      "directionVector": {
+        "x": 0,
+        "y": 1,
+        "z": 0
+      },
+      "width": 420,
+      "height": 460
+    },
+    {
+      "id": "power-inlet",
+      "name": "Power Inlet 220V",
+      "systemType": "Power - Unbalanced",
+      "shape": "round",
+      "direction": "out",
+      "origin": {
+        "x": -180,
+        "y": 216,
+        "z": 140
+      },
+      "directionVector": {
+        "x": 0,
+        "y": 1,
+        "z": 0
+      },
+      "diameter": 25
+    }
+  ],
+  "materials": [
+    {
+      "name": "Cooler_Body_White_ABS",
+      "color": "#f5f6f8",
+      "metalness": 0.05,
+      "roughness": 0.45
+    },
+    {
+      "name": "Trim_Accent_Grey",
+      "color": "#3c4046",
+      "metalness": 0.1,
+      "roughness": 0.5
+    },
+    {
+      "name": "Cooling_Pad_Brown",
+      "color": "#af7d50",
+      "metalness": 0,
+      "roughness": 0.9
+    },
+    {
+      "name": "Touch_Display_Black_Glass",
+      "color": "#141416",
+      "metalness": 0.55,
+      "roughness": 0.08
+    },
+    {
+      "name": "Water_Level_Clear_Glass",
+      "color": "#f0f8ff",
+      "metalness": 0,
+      "roughness": 0.05
+    },
+    {
+      "name": "Ice_Pack_Blue",
+      "color": "#1e6ed2",
+      "metalness": 0.05,
+      "roughness": 0.6
+    }
+  ],
+  "notes": [
+    "Mô hình dựng ở mức LOD 300 (No Over-modeling): khối bao chính xác 500 x 400 x 1050 mm, cổng kết nối MEP đúng vị trí, hệ tham số nhóm Dimensions co giãn theo Type.",
+    "Khung đáy + 4 bánh xe: bánh xe mô phỏng bằng khối trụ Ø50 dày 40mm đặt tại 4 góc (X = ±200, Y = ±150); càng thép xoay 360° và lẫy phanh chân được lược bỏ ở mức LOD 300, chỉ giữ khối bao bánh.",
+    "Bình nước 45L dựng dạng vỏ hộp bo góc R30 (Z 60-400), có cửa sổ soi mực nước mica phẳng 30 x 240 mm mặt trước và nắp châm nước phụ 80 x 50 mm trên hông trái. Nút xả cặn Ø25 phía sau đáy chưa dựng hình riêng.",
+    "Khoang thổi gió trước: khoét lỗ 380 x 420 mm (Z 440-860), 8 nan ngang dày 3 mm bản 35 mm bước 50 mm và 12 nan đứng mỏng thụt 20 mm phía trong. Các núm gạt và motor đảo gió không dựng chi tiết.",
+    "3 tấm cooling pad (lưng 420 x 460 x 40, hai hông 320 x 460 x 35) đặt trong hốc khoét của vỏ; bề mặt tổ ong thể hiện bằng khối đặc + vật liệu nâu, không dựng từng ô lưới. Khung lưới chắn bụi ngoài được lược bỏ.",
+    "Bảng điều khiển cảm ứng: do giới hạn primitive chỉ cho phép khối hộp, mặt kính đen được dựng phẳng áp sát mặt trước nóc (Z 900-955) thay cho góc nghiêng 15°; màn hình LED và 6 nút cảm ứng thể hiện bằng vật liệu, không dựng phím rời.",
+    "Nắp nóc nhựa trong mờ dày 20 mm phủ kín 500 x 400 mm; bên dưới là hốc chứa 2 hộp đá gel 180 x 100 x 35 mm màu xanh lam đặt song song. Khay phân phối nước Ø3 chưa dựng hình.",
+    "Điện: connector 'Power Inlet 220V' tại (X = -180, Y = +200, Z = 120), 220V - 1 pha - 150W, kèm hộp điện 60 x 16 x 80 mm trên mặt lưng. Dây nguồn 1,5 m và phích 2 chấu chỉ khai báo connector, không dựng hình dây và móc treo.",
+    "Cần xác nhận thêm: (1) kích thước tấm hông 320 x 460 mm có đúng catalog không; (2) vị trí nút xả cặn Ø25 có cần dựng hình nổi phía sau đáy không; (3) có cần nâng lên LOD 400 để dựng càng xoay bánh xe, nan chớp motor và khay phân phối nước không."
+  ]
+}

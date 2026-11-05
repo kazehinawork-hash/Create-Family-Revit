@@ -1,0 +1,1248 @@
+{
+  "name": "Reliable Model E/E3 Wet Alarm Check Valve Assembly 4 in with Trim",
+  "schemaVersion": "1.0",
+  "typeName": "E/E3 Wet Alarm Valve 4in LOD400",
+  "category": "Pipe Fitting",
+  "units": "mm",
+  "lod": 350,
+  "description": "Cụm van báo động ngập nước 4 inch Reliable E/E3: thân gang bầu Ø220 có nắp bích tròn Ø160 dày 20 mm bắt 6 bulông M16 xoay đều trên vòng tròn R65 (60° mỗi con) và nhãn nhôm đen Ø70 viền bạc ở tâm, cổ thoát trên hở Ø114,3 có rãnh khuyết, đĩa van bướm Ø130 kẹp giữa 2 cùm rãnh đỏ Ø155, hộp số 60x60 tại X=-50 với trục vươn tới X=-120 mang vô lăng Ø130 bốn chấu và cờ chỉ thị vàng, cùng hệ trim đồng thau đầy đủ 2 đồng hồ Ø100, van bi tay gạt, van xả núm, van thử xả đồng thau tay gạt đỏ và hộp công tắc áp lực.",
+  "parameters": [
+    {
+      "name": "Overall Height",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 520
+    },
+    {
+      "name": "Pipe Outside Diameter",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 114.3
+    },
+    {
+      "name": "Connection Length",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 60
+    },
+    {
+      "name": "Groove Depth",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 2.1
+    },
+    {
+      "name": "Groove Width",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 8
+    },
+    {
+      "name": "Groove Offset",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 16
+    },
+    {
+      "name": "Coupling Diameter",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 155
+    },
+    {
+      "name": "Coupling Height",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 35
+    },
+    {
+      "name": "Coupling Spacing",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 130
+    },
+    {
+      "name": "Butterfly Diameter",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 130
+    },
+    {
+      "name": "Gearbox Size",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 60
+    },
+    {
+      "name": "Gearbox Offset",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": -50
+    },
+    {
+      "name": "Handwheel Diameter",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 130
+    },
+    {
+      "name": "Handwheel Offset",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": -120
+    },
+    {
+      "name": "Handwheel Thickness",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 12
+    },
+    {
+      "name": "Body Diameter",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 220
+    },
+    {
+      "name": "Body Shoulder Height",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 56
+    },
+    {
+      "name": "Body Bulb Top",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 460
+    },
+    {
+      "name": "Bonnet Elevation",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 360
+    },
+    {
+      "name": "Bonnet Thickness",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 20
+    },
+    {
+      "name": "Bonnet Cover Diameter",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 160
+    },
+    {
+      "name": "Bolt Circle Radius",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 65
+    },
+    {
+      "name": "Nameplate Diameter",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 70
+    },
+    {
+      "name": "Trim Pipe Diameter",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 27
+    },
+    {
+      "name": "Trim Riser X",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 150
+    },
+    {
+      "name": "Trim Y",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": -30
+    },
+    {
+      "name": "Trim Riser Bottom",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 40
+    },
+    {
+      "name": "Gauge Diameter",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 100
+    },
+    {
+      "name": "Gauge Spacing",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 240
+    },
+    {
+      "name": "Gauge Elevation Lower",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 200
+    },
+    {
+      "name": "Switch Elevation",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 560
+    },
+    {
+      "name": "Drain Lever Length",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 80
+    }
+  ],
+  "parts": [
+    {
+      "id": "bottom-grooved-nipple",
+      "name": "Bottom Grooved Nipple 4 in",
+      "material": "Fire_Red_Gloss",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "z",
+        "base": {
+          "x": 0,
+          "y": 0,
+          "z": 0
+        },
+        "radius": "[Pipe Outside Diameter] / 2",
+        "height": "[Connection Length]"
+      },
+      "cuts": [
+        {
+          "kind": "cylinder",
+          "axis": "z",
+          "base": {
+            "x": 0,
+            "y": 0,
+            "z": "[Groove Offset]"
+          },
+          "radius": "[Pipe Outside Diameter] / 2 + 1mm",
+          "innerRadius": "[Pipe Outside Diameter] / 2 - [Groove Depth]",
+          "height": "[Groove Width]"
+        }
+      ]
+    },
+    {
+      "id": "coupling-rings",
+      "name": "Grooved Rigid Coupling Housing Red",
+      "material": "Fire_Red_Gloss",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "z",
+        "base": {
+          "x": 0,
+          "y": 0,
+          "z": "[Connection Length]"
+        },
+        "radius": "[Coupling Diameter] / 2",
+        "height": "[Coupling Height]"
+      },
+      "cuts": [],
+      "array": {
+        "count": 2,
+        "axis": "z",
+        "spacing": "[Coupling Spacing]"
+      }
+    },
+    {
+      "id": "coupling-clamp-lugs",
+      "name": "Coupling Clamp Bolt Lugs Red",
+      "material": "Fire_Red_Gloss",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": 0,
+          "y": 0,
+          "z": "[Connection Length] + ([Coupling Height] - 30mm) / 2"
+        },
+        "size": {
+          "x": "[Coupling Diameter] + 30mm",
+          "y": 24,
+          "z": 30
+        },
+        "cornerRadius": 4
+      },
+      "cuts": [],
+      "array": {
+        "count": 2,
+        "axis": "z",
+        "spacing": "[Coupling Spacing]"
+      }
+    },
+    {
+      "id": "butterfly-valve-disc",
+      "name": "Signal Butterfly Valve Disc",
+      "material": "Fire_Red_Gloss",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "z",
+        "base": {
+          "x": 0,
+          "y": 0,
+          "z": "[Connection Length] + [Coupling Height] + 0.5mm"
+        },
+        "radius": "[Butterfly Diameter] / 2",
+        "height": "[Coupling Spacing] - [Coupling Height] - 1mm"
+      },
+      "cuts": []
+    },
+    {
+      "id": "butterfly-gearbox",
+      "name": "Butterfly Valve Gear Operator 60 mm",
+      "material": "Fire_Red_Gloss",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": "[Gearbox Offset]",
+          "y": 0,
+          "z": "[Connection Length] + [Coupling Height] + 0.5mm + ([Coupling Spacing] - [Coupling Height] - 1mm) / 2 - [Gearbox Size] / 2"
+        },
+        "size": {
+          "x": "[Gearbox Size]",
+          "y": "[Gearbox Size]",
+          "z": "[Gearbox Size]"
+        },
+        "cornerRadius": 5
+      },
+      "cuts": []
+    },
+    {
+      "id": "butterfly-gearbox-stem",
+      "name": "Gearbox Output Stem to Handwheel",
+      "material": "Fire_Red_Gloss",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "x",
+        "base": {
+          "x": "[Handwheel Offset] + 2mm",
+          "y": 0,
+          "z": "[Connection Length] + [Coupling Height] + 0.5mm + ([Coupling Spacing] - [Coupling Height] - 1mm) / 2"
+        },
+        "radius": 14,
+        "height": "[Gearbox Offset] - [Handwheel Offset] - 2mm"
+      },
+      "cuts": []
+    },
+    {
+      "id": "handwheel",
+      "name": "Red Spoked Handwheel 130 mm Four Spokes",
+      "material": "Fire_Red_Gloss",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "x",
+        "base": {
+          "x": "[Handwheel Offset]",
+          "y": 0,
+          "z": "[Connection Length] + [Coupling Height] + 0.5mm + ([Coupling Spacing] - [Coupling Height] - 1mm) / 2"
+        },
+        "radius": "[Handwheel Diameter] / 2",
+        "height": "0mm - [Handwheel Thickness]"
+      },
+      "cuts": [
+        {
+          "kind": "cylinder",
+          "axis": "x",
+          "base": {
+            "x": "[Handwheel Offset] - 16mm",
+            "y": 38,
+            "z": "[Connection Length] + [Coupling Height] + 0.5mm + ([Coupling Spacing] - [Coupling Height] - 1mm) / 2"
+          },
+          "radius": 17,
+          "height": 20
+        },
+        {
+          "kind": "cylinder",
+          "axis": "x",
+          "base": {
+            "x": "[Handwheel Offset] - 16mm",
+            "y": -38,
+            "z": "[Connection Length] + [Coupling Height] + 0.5mm + ([Coupling Spacing] - [Coupling Height] - 1mm) / 2"
+          },
+          "radius": 17,
+          "height": 20
+        },
+        {
+          "kind": "cylinder",
+          "axis": "x",
+          "base": {
+            "x": "[Handwheel Offset] - 16mm",
+            "y": 0,
+            "z": "[Connection Length] + [Coupling Height] + 0.5mm + ([Coupling Spacing] - [Coupling Height] - 1mm) / 2 + 38mm"
+          },
+          "radius": 17,
+          "height": 20
+        },
+        {
+          "kind": "cylinder",
+          "axis": "x",
+          "base": {
+            "x": "[Handwheel Offset] - 16mm",
+            "y": 0,
+            "z": "[Connection Length] + [Coupling Height] + 0.5mm + ([Coupling Spacing] - [Coupling Height] - 1mm) / 2 - 38mm"
+          },
+          "radius": 17,
+          "height": 20
+        }
+      ]
+    },
+    {
+      "id": "handwheel-hub",
+      "name": "Handwheel Central Hub",
+      "material": "Fire_Red_Gloss",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "x",
+        "base": {
+          "x": "[Handwheel Offset] + 1mm",
+          "y": 0,
+          "z": "[Connection Length] + [Coupling Height] + 0.5mm + ([Coupling Spacing] - [Coupling Height] - 1mm) / 2"
+        },
+        "radius": 20,
+        "height": "0mm - [Handwheel Thickness] - 4mm"
+      },
+      "cuts": []
+    },
+    {
+      "id": "indicator-flag",
+      "name": "Open Indicator Flag Yellow",
+      "material": "Indicator_Yellow",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": "[Gearbox Offset]",
+          "y": 0,
+          "z": "[Connection Length] + [Coupling Height] + 0.5mm + ([Coupling Spacing] - [Coupling Height] - 1mm) / 2 + [Gearbox Size] / 2"
+        },
+        "size": {
+          "x": 25,
+          "y": 60,
+          "z": 40
+        },
+        "cornerRadius": 3
+      },
+      "cuts": []
+    },
+    {
+      "id": "body-shoulder",
+      "name": "Alarm Valve Lower Conical Shoulder",
+      "material": "Fire_Red_Gloss",
+      "solid": {
+        "kind": "frustum",
+        "axis": "z",
+        "base": {
+          "x": 0,
+          "y": 0,
+          "z": "[Connection Length] + [Coupling Spacing] + [Coupling Height] - 1mm"
+        },
+        "radiusBottom": "[Coupling Diameter] / 2",
+        "radiusTop": "[Body Diameter] / 2",
+        "height": "[Body Shoulder Height]"
+      },
+      "cuts": []
+    },
+    {
+      "id": "body-bulb",
+      "name": "Alarm Valve Cast Body Bell",
+      "material": "Fire_Red_Gloss",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "z",
+        "base": {
+          "x": 0,
+          "y": 0,
+          "z": "[Connection Length] + [Coupling Spacing] + [Coupling Height] + [Body Shoulder Height] - 2mm"
+        },
+        "radius": "[Body Diameter] / 2",
+        "height": "[Body Bulb Top] - [Connection Length] - [Coupling Spacing] - [Coupling Height] - [Body Shoulder Height] + 2mm"
+      },
+      "cuts": []
+    },
+    {
+      "id": "top-neck",
+      "name": "Open Top Outlet Neck 4 in Grooved",
+      "material": "Fire_Red_Gloss",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "z",
+        "base": {
+          "x": 0,
+          "y": 0,
+          "z": "[Body Bulb Top] - 1mm"
+        },
+        "radius": "[Pipe Outside Diameter] / 2",
+        "height": "[Overall Height] - [Body Bulb Top] + 1mm"
+      },
+      "cuts": [
+        {
+          "kind": "cylinder",
+          "axis": "z",
+          "base": {
+            "x": 0,
+            "y": 0,
+            "z": "[Body Bulb Top] - 2mm"
+          },
+          "radius": "[Pipe Outside Diameter] / 2 - 5.15mm",
+          "height": "[Overall Height] - [Body Bulb Top] + 5mm"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "z",
+          "base": {
+            "x": 0,
+            "y": 0,
+            "z": "[Overall Height] - [Groove Offset]"
+          },
+          "radius": "[Pipe Outside Diameter] / 2 + 1mm",
+          "innerRadius": "[Pipe Outside Diameter] / 2 - [Groove Depth]",
+          "height": "[Groove Width]"
+        }
+      ]
+    },
+    {
+      "id": "bonnet-cover",
+      "name": "Cast Bonnet Cover Plate 160 mm",
+      "material": "Fire_Red_Gloss",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "y",
+        "base": {
+          "x": 0,
+          "y": "0mm - [Body Diameter] / 2 - 0.5mm",
+          "z": "[Bonnet Elevation]"
+        },
+        "radius": "[Bonnet Cover Diameter] / 2",
+        "height": "0mm - [Bonnet Thickness]"
+      },
+      "cuts": []
+    },
+    {
+      "id": "bonnet-bolt-1",
+      "name": "Bonnet Hex Bolt M16 at 0 Degree",
+      "material": "Galvanized_Bolts",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            "[Bolt Circle Radius] + 12",
+            "[Bonnet Elevation] + 6.93"
+          ],
+          [
+            "[Bolt Circle Radius]",
+            "[Bonnet Elevation] + 13.86"
+          ],
+          [
+            "[Bolt Circle Radius] - 12",
+            "[Bonnet Elevation] + 6.93"
+          ],
+          [
+            "[Bolt Circle Radius] - 12",
+            "[Bonnet Elevation] - 6.93"
+          ],
+          [
+            "[Bolt Circle Radius]",
+            "[Bonnet Elevation] - 13.86"
+          ],
+          [
+            "[Bolt Circle Radius] + 12",
+            "[Bonnet Elevation] - 6.93"
+          ]
+        ],
+        "from": "0mm - [Body Diameter] / 2 - [Bonnet Thickness] - 14mm",
+        "to": "0mm - [Body Diameter] / 2 - [Bonnet Thickness] - 0.4mm"
+      },
+      "cuts": []
+    },
+    {
+      "id": "bonnet-bolt-2",
+      "name": "Bonnet Hex Bolt M16 at 60 Degrees",
+      "material": "Galvanized_Bolts",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            "[Bolt Circle Radius] * 0.5",
+            "[Bonnet Elevation] + [Bolt Circle Radius] * 0.866 + 13.86"
+          ],
+          [
+            "[Bolt Circle Radius] * 0.5 - 12",
+            "[Bonnet Elevation] + [Bolt Circle Radius] * 0.866 + 6.93"
+          ],
+          [
+            "[Bolt Circle Radius] * 0.5 - 12",
+            "[Bonnet Elevation] + [Bolt Circle Radius] * 0.866 - 6.93"
+          ],
+          [
+            "[Bolt Circle Radius] * 0.5",
+            "[Bonnet Elevation] + [Bolt Circle Radius] * 0.866 - 13.86"
+          ],
+          [
+            "[Bolt Circle Radius] * 0.5 + 12",
+            "[Bonnet Elevation] + [Bolt Circle Radius] * 0.866 - 6.93"
+          ],
+          [
+            "[Bolt Circle Radius] * 0.5 + 12",
+            "[Bonnet Elevation] + [Bolt Circle Radius] * 0.866 + 6.93"
+          ]
+        ],
+        "from": "0mm - [Body Diameter] / 2 - [Bonnet Thickness] - 14mm",
+        "to": "0mm - [Body Diameter] / 2 - [Bonnet Thickness] - 0.4mm"
+      },
+      "cuts": []
+    },
+    {
+      "id": "bonnet-bolt-3",
+      "name": "Bonnet Hex Bolt M16 at 120 Degrees",
+      "material": "Galvanized_Bolts",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            "[Bolt Circle Radius] * -0.5 - 12",
+            "[Bonnet Elevation] + [Bolt Circle Radius] * 0.866 + 6.93"
+          ],
+          [
+            "[Bolt Circle Radius] * -0.5 - 12",
+            "[Bonnet Elevation] + [Bolt Circle Radius] * 0.866 - 6.93"
+          ],
+          [
+            "[Bolt Circle Radius] * -0.5",
+            "[Bonnet Elevation] + [Bolt Circle Radius] * 0.866 - 13.86"
+          ],
+          [
+            "[Bolt Circle Radius] * -0.5 + 12",
+            "[Bonnet Elevation] + [Bolt Circle Radius] * 0.866 - 6.93"
+          ],
+          [
+            "[Bolt Circle Radius] * -0.5 + 12",
+            "[Bonnet Elevation] + [Bolt Circle Radius] * 0.866 + 6.93"
+          ],
+          [
+            "[Bolt Circle Radius] * -0.5",
+            "[Bonnet Elevation] + [Bolt Circle Radius] * 0.866 + 13.86"
+          ]
+        ],
+        "from": "0mm - [Body Diameter] / 2 - [Bonnet Thickness] - 14mm",
+        "to": "0mm - [Body Diameter] / 2 - [Bonnet Thickness] - 0.4mm"
+      },
+      "cuts": []
+    },
+    {
+      "id": "bonnet-bolt-4",
+      "name": "Bonnet Hex Bolt M16 at 180 Degrees",
+      "material": "Galvanized_Bolts",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            "0mm - [Bolt Circle Radius] - 12",
+            "[Bonnet Elevation] - 6.93"
+          ],
+          [
+            "0mm - [Bolt Circle Radius]",
+            "[Bonnet Elevation] - 13.86"
+          ],
+          [
+            "0mm - [Bolt Circle Radius] + 12",
+            "[Bonnet Elevation] - 6.93"
+          ],
+          [
+            "0mm - [Bolt Circle Radius] + 12",
+            "[Bonnet Elevation] + 6.93"
+          ],
+          [
+            "0mm - [Bolt Circle Radius]",
+            "[Bonnet Elevation] + 13.86"
+          ],
+          [
+            "0mm - [Bolt Circle Radius] - 12",
+            "[Bonnet Elevation] + 6.93"
+          ]
+        ],
+        "from": "0mm - [Body Diameter] / 2 - [Bonnet Thickness] - 14mm",
+        "to": "0mm - [Body Diameter] / 2 - [Bonnet Thickness] - 0.4mm"
+      },
+      "cuts": []
+    },
+    {
+      "id": "bonnet-bolt-5",
+      "name": "Bonnet Hex Bolt M16 at 240 Degrees",
+      "material": "Galvanized_Bolts",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            "[Bolt Circle Radius] * -0.5",
+            "[Bonnet Elevation] - [Bolt Circle Radius] * 0.866 - 13.86"
+          ],
+          [
+            "[Bolt Circle Radius] * -0.5 + 12",
+            "[Bonnet Elevation] - [Bolt Circle Radius] * 0.866 - 6.93"
+          ],
+          [
+            "[Bolt Circle Radius] * -0.5 + 12",
+            "[Bonnet Elevation] - [Bolt Circle Radius] * 0.866 + 6.93"
+          ],
+          [
+            "[Bolt Circle Radius] * -0.5",
+            "[Bonnet Elevation] - [Bolt Circle Radius] * 0.866 + 13.86"
+          ],
+          [
+            "[Bolt Circle Radius] * -0.5 - 12",
+            "[Bonnet Elevation] - [Bolt Circle Radius] * 0.866 + 6.93"
+          ],
+          [
+            "[Bolt Circle Radius] * -0.5 - 12",
+            "[Bonnet Elevation] - [Bolt Circle Radius] * 0.866 - 6.93"
+          ]
+        ],
+        "from": "0mm - [Body Diameter] / 2 - [Bonnet Thickness] - 14mm",
+        "to": "0mm - [Body Diameter] / 2 - [Bonnet Thickness] - 0.4mm"
+      },
+      "cuts": []
+    },
+    {
+      "id": "bonnet-bolt-6",
+      "name": "Bonnet Hex Bolt M16 at 300 Degrees",
+      "material": "Galvanized_Bolts",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            "[Bolt Circle Radius] * 0.5 + 12",
+            "[Bonnet Elevation] - [Bolt Circle Radius] * 0.866 - 6.93"
+          ],
+          [
+            "[Bolt Circle Radius] * 0.5 + 12",
+            "[Bonnet Elevation] - [Bolt Circle Radius] * 0.866 + 6.93"
+          ],
+          [
+            "[Bolt Circle Radius] * 0.5",
+            "[Bonnet Elevation] - [Bolt Circle Radius] * 0.866 + 13.86"
+          ],
+          [
+            "[Bolt Circle Radius] * 0.5 - 12",
+            "[Bonnet Elevation] - [Bolt Circle Radius] * 0.866 + 6.93"
+          ],
+          [
+            "[Bolt Circle Radius] * 0.5 - 12",
+            "[Bonnet Elevation] - [Bolt Circle Radius] * 0.866 - 6.93"
+          ],
+          [
+            "[Bolt Circle Radius] * 0.5",
+            "[Bonnet Elevation] - [Bolt Circle Radius] * 0.866 - 13.86"
+          ]
+        ],
+        "from": "0mm - [Body Diameter] / 2 - [Bonnet Thickness] - 14mm",
+        "to": "0mm - [Body Diameter] / 2 - [Bonnet Thickness] - 0.4mm"
+      },
+      "cuts": []
+    },
+    {
+      "id": "nameplate-disc",
+      "name": "Reliable Black Aluminium Nameplate 70 mm",
+      "material": "Nameplate_Black",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "y",
+        "base": {
+          "x": 0,
+          "y": "0mm - [Body Diameter] / 2 - [Bonnet Thickness] - 0.9mm",
+          "z": "[Bonnet Elevation]"
+        },
+        "radius": "[Nameplate Diameter] / 2",
+        "height": -4
+      },
+      "cuts": []
+    },
+    {
+      "id": "nameplate-rim",
+      "name": "Nameplate Polished Silver Rim",
+      "material": "Nameplate_Silver",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "y",
+        "base": {
+          "x": 0,
+          "y": "0mm - [Body Diameter] / 2 - [Bonnet Thickness] + 0.1mm",
+          "z": "[Bonnet Elevation]"
+        },
+        "radius": "[Nameplate Diameter] / 2 + 3mm",
+        "innerRadius": "[Nameplate Diameter] / 2 + 0.5mm",
+        "height": -5
+      },
+      "cuts": []
+    },
+    {
+      "id": "trim-riser",
+      "name": "Vertical Trim Riser Chrome",
+      "material": "Chrome_Pipes",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "z",
+        "base": {
+          "x": "[Trim Riser X]",
+          "y": "[Trim Y]",
+          "z": "[Trim Riser Bottom]"
+        },
+        "radius": "[Trim Pipe Diameter] / 2",
+        "height": "[Switch Elevation] - 15mm - [Trim Riser Bottom]"
+      },
+      "cuts": []
+    },
+    {
+      "id": "trim-feed-nipple",
+      "name": "Alarm Line Feed Nipple from Inlet",
+      "material": "Chrome_Pipes",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "x",
+        "base": {
+          "x": 40,
+          "y": "[Trim Y]",
+          "z": "[Trim Riser Bottom]"
+        },
+        "radius": "[Trim Pipe Diameter] / 2",
+        "height": "[Trim Riser X] - 40mm"
+      },
+      "cuts": []
+    },
+    {
+      "id": "gauge-cases",
+      "name": "Pressure Gauge Stainless Case and Bezel",
+      "material": "Chrome_Pipes",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "y",
+        "base": {
+          "x": "[Trim Riser X]",
+          "y": "[Trim Y] - 13mm",
+          "z": "[Gauge Elevation Lower]"
+        },
+        "radius": "[Gauge Diameter] / 2",
+        "innerRadius": "[Gauge Diameter] / 2 - 8mm",
+        "height": -35
+      },
+      "cuts": [],
+      "array": {
+        "count": 2,
+        "axis": "z",
+        "spacing": "[Gauge Spacing]"
+      }
+    },
+    {
+      "id": "gauge-dials",
+      "name": "Pressure Gauge White Porcelain Dial 0-25 bar",
+      "material": "Gauge_Dial_Face",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "y",
+        "base": {
+          "x": "[Trim Riser X]",
+          "y": "[Trim Y] - 44mm",
+          "z": "[Gauge Elevation Lower]"
+        },
+        "radius": "[Gauge Diameter] / 2 - 9mm",
+        "height": -2
+      },
+      "cuts": [],
+      "array": {
+        "count": 2,
+        "axis": "z",
+        "spacing": "[Gauge Spacing]"
+      }
+    },
+    {
+      "id": "gauge-needles",
+      "name": "Pressure Gauge Black Needle at 45 Degrees",
+      "material": "Nameplate_Black",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            "[Trim Riser X] - 3",
+            "[Gauge Elevation Lower] - 3"
+          ],
+          [
+            "[Trim Riser X] + 3",
+            "[Gauge Elevation Lower] - 3"
+          ],
+          [
+            "[Trim Riser X] + 27",
+            "[Gauge Elevation Lower] + 27"
+          ]
+        ],
+        "from": "[Trim Y] - 46.3mm",
+        "to": "[Trim Y] - 47.3mm"
+      },
+      "cuts": [],
+      "array": {
+        "count": 2,
+        "axis": "z",
+        "spacing": "[Gauge Spacing]"
+      }
+    },
+    {
+      "id": "brass-valve-bodies",
+      "name": "Brass Inline Ball and Drain Valve Bodies",
+      "material": "Brass_Gold",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "z",
+        "base": {
+          "x": "[Trim Riser X]",
+          "y": "[Trim Y]",
+          "z": "[Gauge Elevation Lower] + 50mm"
+        },
+        "radius": 22,
+        "height": 40
+      },
+      "cuts": [],
+      "array": {
+        "count": 2,
+        "axis": "z",
+        "spacing": "[Gauge Spacing] - 130mm"
+      }
+    },
+    {
+      "id": "valve-lever",
+      "name": "Red Ball Valve Long Lever",
+      "material": "Fire_Red_Gloss",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": "[Trim Riser X]",
+          "y": "[Trim Y]",
+          "z": "[Gauge Elevation Lower] + [Gauge Spacing] - 40.5mm"
+        },
+        "size": {
+          "x": 100,
+          "y": 14,
+          "z": 8
+        },
+        "cornerRadius": 3
+      },
+      "cuts": []
+    },
+    {
+      "id": "drain-knob",
+      "name": "Red Drain Valve Knurled Knob",
+      "material": "Fire_Red_Gloss",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "z",
+        "base": {
+          "x": "[Trim Riser X]",
+          "y": "[Trim Y]",
+          "z": "[Gauge Elevation Lower] + 89.5mm"
+        },
+        "radius": 20,
+        "height": 18
+      },
+      "cuts": []
+    },
+    {
+      "id": "drain-test-valve-body",
+      "name": "Brass Drain and Test Ball Valve Body DN25",
+      "material": "Brass_Gold",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "x",
+        "base": {
+          "x": "[Trim Riser X] - 75mm",
+          "y": "[Trim Y]",
+          "z": "[Trim Riser Bottom]"
+        },
+        "radius": 22,
+        "height": 40
+      },
+      "cuts": []
+    },
+    {
+      "id": "drain-test-valve-stem",
+      "name": "Drain Test Valve Stem Above Body",
+      "material": "Brass_Gold",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "z",
+        "base": {
+          "x": "[Trim Riser X] - 55mm",
+          "y": "[Trim Y]",
+          "z": "[Trim Riser Bottom]"
+        },
+        "radius": 8,
+        "height": 22
+      },
+      "cuts": []
+    },
+    {
+      "id": "drain-test-valve-lever",
+      "name": "Red Plastic Coated Drain Test Lever",
+      "material": "Fire_Red_Gloss",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": "[Trim Riser X] - 55mm",
+          "y": "[Trim Y] - 40mm",
+          "z": "[Trim Riser Bottom] + 22mm"
+        },
+        "size": {
+          "x": 14,
+          "y": "[Drain Lever Length]",
+          "z": 10
+        },
+        "cornerRadius": 4
+      },
+      "cuts": []
+    },
+    {
+      "id": "bypass-u-tube",
+      "name": "Chrome U Shaped Bypass Guard Tube 14 mm",
+      "material": "Chrome_Pipes",
+      "solid": {
+        "kind": "bend",
+        "center": {
+          "x": "[Trim Riser X]",
+          "y": 25,
+          "z": 330
+        },
+        "radius": 55,
+        "tubeRadius": 7,
+        "angle": 180,
+        "startAngle": 0,
+        "plane": "yz"
+      },
+      "cuts": []
+    },
+    {
+      "id": "pressure-switch",
+      "name": "Waterflow Pressure Switch Housing",
+      "material": "Fire_Red_Gloss",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": "[Trim Riser X]",
+          "y": "[Trim Y]",
+          "z": "[Switch Elevation]"
+        },
+        "size": {
+          "x": 100,
+          "y": 90,
+          "z": 120
+        },
+        "cornerRadius": 8
+      },
+      "cuts": []
+    },
+    {
+      "id": "switch-cover-screws",
+      "name": "Pressure Switch Cover Screws",
+      "material": "Galvanized_Bolts",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "z",
+        "base": {
+          "x": "[Trim Riser X] - 30mm",
+          "y": "[Trim Y]",
+          "z": "[Switch Elevation] + 119mm"
+        },
+        "radius": 5,
+        "height": 5
+      },
+      "cuts": [],
+      "array": {
+        "count": 2,
+        "axis": "x",
+        "spacing": 60
+      }
+    },
+    {
+      "id": "hex-fitting",
+      "name": "Brass Hex Nipple SW27 Under Switch",
+      "material": "Brass_Gold",
+      "solid": {
+        "kind": "prism",
+        "plane": "xy",
+        "points": [
+          [
+            "[Trim Riser X] + 15.59",
+            "[Trim Y]"
+          ],
+          [
+            "[Trim Riser X] + 7.79",
+            "[Trim Y] + 13.5"
+          ],
+          [
+            "[Trim Riser X] - 7.79",
+            "[Trim Y] + 13.5"
+          ],
+          [
+            "[Trim Riser X] - 15.59",
+            "[Trim Y]"
+          ],
+          [
+            "[Trim Riser X] - 7.79",
+            "[Trim Y] - 13.5"
+          ],
+          [
+            "[Trim Riser X] + 7.79",
+            "[Trim Y] - 13.5"
+          ]
+        ],
+        "from": "[Switch Elevation] - 15.5mm",
+        "to": "[Switch Elevation] + 0.5mm"
+      },
+      "cuts": []
+    }
+  ],
+  "connectors": [
+    {
+      "id": "water-in",
+      "name": "Water Inlet Bottom 4 in Grooved",
+      "systemType": "Fire Protection Wet",
+      "shape": "round",
+      "direction": "in",
+      "origin": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "directionVector": {
+        "x": 0,
+        "y": 0,
+        "z": -1
+      },
+      "diameter": 100,
+      "flow": 0,
+      "pressureDrop": 0
+    },
+    {
+      "id": "system-out",
+      "name": "Sprinkler System Outlet Top 4 in Grooved",
+      "systemType": "Fire Protection Wet",
+      "shape": "round",
+      "direction": "out",
+      "origin": {
+        "x": 0,
+        "y": 0,
+        "z": "[Overall Height]"
+      },
+      "directionVector": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "diameter": 100,
+      "flow": 0,
+      "pressureDrop": 0
+    }
+  ],
+  "materials": [
+    {
+      "name": "Fire_Red_Gloss",
+      "color": "#d71e19",
+      "metalness": 0.35,
+      "roughness": 0.25
+    },
+    {
+      "name": "Brass_Gold",
+      "color": "#d7af37",
+      "metalness": 0.8,
+      "roughness": 0.25
+    },
+    {
+      "name": "Chrome_Pipes",
+      "color": "#e6ebf0",
+      "metalness": 0.9,
+      "roughness": 0.12
+    },
+    {
+      "name": "Galvanized_Bolts",
+      "color": "#b4b9be",
+      "metalness": 0.75,
+      "roughness": 0.35
+    },
+    {
+      "name": "Gauge_Dial_Face",
+      "color": "#fafafa",
+      "metalness": 0,
+      "roughness": 0.45
+    },
+    {
+      "name": "Nameplate_Black",
+      "color": "#141414",
+      "metalness": 0.3,
+      "roughness": 0.45
+    },
+    {
+      "name": "Nameplate_Silver",
+      "color": "#c8ccd0",
+      "metalness": 0.9,
+      "roughness": 0.2
+    },
+    {
+      "name": "Indicator_Yellow",
+      "color": "#f2c400",
+      "metalness": 0.3,
+      "roughness": 0.5
+    }
+  ],
+  "notes": [
+    "Mức chi tiết đã dựng: LOD 400 (chi tiết chế tạo) — bổ sung ren giả lập bằng khối lục giác, nắp bích định hình, vô lăng 4 chấu và van thử xả; toàn bộ kích thước bao, kích thước cụm lắp và điểm kết nối đều gắn tham số nhóm Dimensions.",
+    "Mục 1 đã sửa: bỏ hoàn toàn mảng đen khoét thủng và hàng bulông xếp cánh cung ở mặt trước. Nắp van giờ là khối bích đúc gang đỏ Ø160 dày 20 mm (Bonnet Cover Diameter 160, Bonnet Thickness 20) phủ kín mặt trước thân bầu Ø220, tâm tại Z=360 và mặt ngoài ở Y=-130,5. Sáu bulông lục giác M16 mạ kẽm (24 mm qua cạnh, 27,7 mm qua đỉnh) xoay đều 60° trên vòng tròn R65 quanh tâm nắp tại các góc 0/60/120/180/240/300°, tọa độ đỉnh lục giác đều viết bằng biểu thức theo [Bolt Circle Radius] và [Bonnet Elevation] nên đổi bán kính là cả vòng bulông chạy theo. Đầu bulông nhô 13,6 mm ra khỏi mặt nắp.",
+    "Nhãn Reliable: đĩa nhôm đen Ø70 dày 4 mm đặt phẳng đúng tâm 6 bulông, lùi 0,5 mm so với vành; viền bạc inox Ø76/Ø71 dày 5 mm nhô 0,5 mm tạo gờ sáng quanh đĩa. Khoảng hở từ mép vành nhãn (R38) tới chân bulông gần nhất (R51,1) là 13,1 mm nên không chạm.",
+    "Mục 2 đã sửa: bỏ mặt bích tròn đục lỗ bên hông trái. Hộp số vuông 60x60x60 bo góc 5 mm màu đỏ đặt tại X=-50 (Gearbox Offset) đúng như yêu cầu, trục ra Ø28 vươn sang trái tới X=-120; vô lăng Ø130 dày 12 mm (Handwheel Offset -120) nằm trong mặt phẳng YZ, khoét 4 lỗ Ø34 tại bán kính 38 tạo 4 chấu, vành ngoài còn 10 mm, moay-ơ Ø40 dài 16 mm; cờ chỉ thị OPEN bằng hộp vàng 25x60x40 đặt trên nóc hộp số, nhô khỏi đĩa van.",
+    "Điều chỉnh kèm theo: để hộp số 60 mm tại X=-50 thực sự nhô ra khỏi thân van bướm thay vì bị chôn trong đĩa Ø170 cũ, đã hạ Butterfly Diameter từ 170 xuống 130 mm — đĩa van khi đó nhỏ hơn 2 cùm rãnh Ø155, đúng kiểu van bướm wafer kẹp giữa hai khớp nối và hộp số nhô ra 15 mm ở mặt bên. Nếu cần giữ đĩa Ø170 vui lòng cho biết để đẩy hộp số ra X=-115.",
+    "Mục 3 đã sửa: hai cùm kẹp rãnh tại Z=60-95 và Z=190-225 nay dùng Fire_Red_Gloss cho cả thân cùm lẫn gờ tai bắt bulông, đồng bộ với thân van. Bổ sung van thử/xả đồng thau DN25 trên đoạn ống ngang Z=40, Y=-30 tại X=95 (= Trim Riser X - 55): thân van trụ Ø44 dài 40 mm, trục van Ø16 cao 22 mm, tay gạt dài 80 mm bọc nhựa đỏ vươn thẳng ra phía trước (-Y) từ Y=-30 tới Y=-110 ở cao độ Z=62-72.",
+    "Kiểm tra va chạm: tay gạt van thử ở Z=62-72 không chạm 2 đồng hồ (đồng hồ dưới cao độ Z=165-200) và không chạm 2 van bi trim (Z=250-290, 360-400); vô lăng X=-120..-135 không chạm thân bầu Ø220 (mép X=-110) và không chạm cụm trim (X=150); 6 bulông nắp nằm gọn trong đường kính nắp Ø160 (R78,9 < R80) và không bị cụm trim hay tay quay che.",
+    "Giả định cần xác nhận: (1) đĩa van bướm hạ về Ø130 mm như nêu trên; (2) chiều cao tổng thể vẫn 520 mm cho thân van còn cụm trim và hộp công tắc vươn tới 680 mm — nếu cần khống chế trong 520 mm vui lòng cho biết; (3) rãnh khuyết theo tiêu chuẩn 4 inch (sâu 2,1 / rộng 8 / cách đầu 16 mm).",
+    "Category 'Pipe Accessories' không có trong danh mục cho phép nên family khai báo 'Pipe Fitting' với 2 Pipe Connector đồng trục hệ Fire Protection Wet đường kính danh định 100 mm."
+  ]
+}
