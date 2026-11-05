@@ -61,7 +61,7 @@ export const DEFAULT_LOD = 300;
 const LOD_STANDARDS = {
   200: `Mức chi tiết đang dựng: **LOD 200 — Khối bao (massing)**.
 
-- **Số lượng parts**: 3 đến 8 parts, chỉ khối bao chính và các cổng kết nối lớn.
+- **Số lượng parts**: 3 đến 10 parts, chỉ khối bao chính và các cổng kết nối lớn.
 - Được dựng: thân máy dạng khối hộp/trụ, miệng gió hoặc cổ bích chính, các đầu ống chính nhô ra, chân đế/tai treo đơn giản.
 - KHÔNG dựng: nội bộ (quạt, mô tơ, coil, filter), cửa thăm, tấm ốp nhỏ, bulông, gioăng, ren, lỗ khoan, gân gia cường.
 - **Tham số**: 4 đến 10 tham số, chỉ kích thước bao (dài, rộng, cao) và thông số MEP chính.
@@ -70,7 +70,7 @@ const LOD_STANDARDS = {
   300: `Mức chi tiết đang dựng: **LOD 300 — Thiết kế thực tế, gọn nhẹ**.
 
 Mục tiêu: family đáp ứng thiết kế, định tuyến MEP và xuất khối lượng, **tuyệt đối không làm nặng file Revit (No Over-modeling / No Micro-details)**:
-- **Số lượng parts**: 4 đến 16 parts gọn gàng, rõ ràng.
+- **Số lượng parts**: 5 đến 20 parts gọn gàng, rõ ràng.
 - **Không dựng chi tiết siêu vi mô**: KHÔNG dựng từng vòng ren răng ốc, từng bulông đai ốc li ti, hàng chục cánh tản nhiệt rời. Ren hay rãnh chỉ thể hiện bằng khối bao chính và vật liệu.
 - **Tập trung vào 3 yếu tố quyết định của LOD 300**:
   1. **Hình khối bao chính xác**: kích thước dài x rộng x cao, tỷ lệ chuẩn catalog.
@@ -80,7 +80,7 @@ Mục tiêu: family đáp ứng thiết kế, định tuyến MEP và xuất kh�
   350: `Mức chi tiết đang dựng: **LOD 350 — Chi tiết phối hợp / lắp đặt (coordination)**.
 
 Dùng cho phối hợp MEP và kiểm tra va chạm: chi tiết hơn LOD 300 nhưng chưa tới mức chế tạo.
-- **Số lượng parts**: 10 đến 30 parts.
+- **Số lượng parts**: 10 đến 40 parts.
 - Dựng thêm so với LOD 300: cổ bích và mặt bích kết nối, tai treo / giá đỡ / thanh treo ren, gối đỡ ống, cửa thăm có bản lề, tấm chắn, vùng bảo dưỡng (clearance) và các chi tiết định vị cụm thiết bị.
 - Thể hiện rõ **điểm kết nối** (miệng gió, đầu ống, hộp điện) đúng vị trí và đường kính danh định để phối hợp với ống gió/ống nước trong mô hình.
 - **Không** dựng bulông li ti, gioăng, ren, lỗ khoan ren, đường hàn — đó là LOD 400.
@@ -88,7 +88,7 @@ Dùng cho phối hợp MEP và kiểm tra va chạm: chi tiết hơn LOD 300 nh�
 
   400: `Mức chi tiết đang dựng: **LOD 400 — Chi tiết chế tạo / lắp ráp**.
 
-- **Số lượng parts**: 18 đến 45 parts (tối đa 60 để file vẫn nhẹ).
+- **Số lượng parts**: 20 đến 80 parts cho family thông thường; sản phẩm phức tạp có thể lên 120–150 parts. Hard limit của hệ thống là 250 parts, nhưng vượt 150 sẽ làm file nặng và chậm.
 - Dựng thêm so với LOD 300: bích, gioăng, bulông/đai ốc (dùng \`array\`), gân gia cường, tấm ốp, cửa thăm, lỗ khoan bulông, chi tiết hàn, đế máy, mặt bích kết nối.
 - Nội bộ (quạt, mô tơ, coil, filter) dựng rõ ràng nhưng vẫn bằng khối đơn giản, không ren/rãnh siêu vi mô.
 - **Tham số**: 16 đến 40 tham số, gồm cả kích thước chi tiết: dày bích, đường kính bulông, khoảng cách bulông, dày tấm, khe gioăng.

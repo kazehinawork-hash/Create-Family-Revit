@@ -94,4 +94,20 @@ describe("geometry health checks", () => {
       ),
     ).toBe(true);
   });
+
+  it("warns when a model exceeds the LOD 400 part budget", () => {
+    const parts = Array.from({ length: 151 }, (_, index) => ({
+      id: `fin-${index}`,
+      name: `Fin ${index}`,
+      solid: {
+        kind: "box" as const,
+        origin: { x: index * 20, y: 0, z: 0 },
+        size: { x: 10, y: 100, z: 100 },
+      },
+    }));
+
+    const analysis = analyzeSpec(base({ lod: 400, parts }));
+    expect(analysis.ok).toBe(true);
+    expect(analysis.issues.some((issue) => issue.path === "lod.parts")).toBe(true);
+  });
 });
