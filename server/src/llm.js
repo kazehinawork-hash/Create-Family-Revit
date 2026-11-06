@@ -91,7 +91,7 @@ export function parseModelJson(text) {
   // 1. Try direct parse
   try {
     return JSON.parse(clean);
-  } catch (err1) {
+  } catch {
     // 2. Try jsonrepair on the full cleaned string
     try {
       const repaired = jsonrepair(clean);
@@ -152,7 +152,7 @@ export function specResponseSchema() {
 function responseFormat() {
   const schema = specResponseSchema();
   if (schemaSupported && schema) {
-    return { type: "json_schema", json_schema: { name: "family_spec", strict: false, schema } };
+    return { type: "json_schema", json_schema: { name: "family_spec", strict: true, schema } };
   }
 
   return { type: "json_object" };

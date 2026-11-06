@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  buildParameterGraph,
+  collectPartDependencies,
   paramKey,
   type Analysis,
   type FamilyParameter,
@@ -19,8 +21,11 @@ interface Props {
   onToggleHidePart?: (partId: string) => void;
   transparentPartIds?: string[];
   onToggleTransparentPart?: (partId: string) => void;
+  onIsolatePart?: (partId: string) => void;
+  issuePartIds?: string[];
   onUpdateParameter: (name: string, value: number | string) => void;
   onAddParameter: (draft: { name: string; type: ParameterType; value: number | string }) => void;
+  onHighlightParts?: (partIds: string[]) => void;
 }
 
 const GROUP_ORDER = [
@@ -48,12 +53,16 @@ function ParameterRow({
   param,
   resolved,
   units,
+  impact,
   onUpdate,
+  onHighlight,
 }: {
   param: FamilyParameter;
   resolved: ResolvedParameter;
   units: Units;
+  impact?: { parameters: string[]; parts: { id: string; name: string }[] };
   onUpdate: (name: string, value: number | string) => void;
+  onHighlight?: (partIds: string[]) => void;
 }) {
   const derived = Boolean(resolved.formula);
   const locked = derived || param.type === "YesNo" || (param.type === "Length" && units === "ft-in");
@@ -101,6 +110,16 @@ function ParameterRow({
             {resolved.error}
           </span>
         )}
+        {impact && (impact.parameters.length > 0 || impact.parts.length > 0) && (
+          <button
+            type="button"
+            className="param-impact"
+            onClick={() => onHighlight?.(impact.parts.map((part) => part.id))}
+            title={`${impact.parameters.length} parameter phụ thuộc · ${impact.parts.length} part bị ảnh hưởng`}
+          >
+            ↳ {impact.parameters.length} param · {impact.parts.length} part
+          </button>
+        )}
       </div>
       <div className="param-value-wrap">
         <input
@@ -136,11 +155,15 @@ export function ParameterPanel({
   onToggleHidePart,
   transparentPartIds = [],
   onToggleTransparentPart,
+  onIsolatePart,
+  issuePartIds = [],
   onUpdateParameter,
   onAddParameter,
+  onHighlightParts,
 }: Props) {
   const [tab, setTab] = useState<"parameters" | "parts">("parameters");
   const [filter, setFilter] = useState("");
+  const [partFilter, setPartFilter] = useState("");
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const [adding, setAdding] = useState(false);
   const [draftName, setDraftName] = useState("");
@@ -171,6 +194,25 @@ export function ParameterPanel({
       (a, b) => GROUP_ORDER.indexOf(a[0]) - GROUP_ORDER.indexOf(b[0]),
     );
   }, [spec.parameters, analysis.parameters, filter]);
+
+  const impacts = useMemo(() => {
+    const graph = buildParameterGraph(spec.parameters);
+    const partDeps = collectPartDependencies(spec);
+    const map = new Map<string, { parameters: string[]; parts: { id: string; name: string }[] }>();
+
+    for (const node of graph.parameters) {
+      const parameters = graph.impactOf([node.name]);
+      const keys = new Set([node.name, ...parameters].map(paramKey));
+      const parts = partDeps
+        .filter((part) => part.parameters.some((name) => keys.has(paramKey(name))))
+        .map((part) => ({ id: part.id, name: part.name }));
+      if (parameters.length > 0 || parts.length > 0) {
+        map.set(paramKey(node.name), { parameters, parts });
+      }
+    }
+
+    return map;
+  }, [spec]);
 
   const materialColor = (name?: string) =>
     spec.materials?.find((material) => material.name === name)?.color ?? "#a9aeb2";
@@ -242,7 +284,9 @@ export function ParameterPanel({
                         param={param}
                         resolved={resolved}
                         units={units}
+                        impact={impacts.get(paramKey(param.name))}
                         onUpdate={onUpdateParameter}
+                        onHighlight={onHighlightParts}
                       />
                     ))}
                 </div>
@@ -294,24 +338,57 @@ export function ParameterPanel({
       )}
 
       {tab === "parts" && (
-        <div className="param-scroll">
-          <div className="parts-list">
-            {spec.parts.map((part) => {
-              const isSelected = part.id === selectedPartId;
-              const isHidden = hiddenPartIds.includes(part.id);
-              const isTransparent = transparentPartIds.includes(part.id);
-              return (
-                <div
-                  key={part.id}
-                  className={`part-row ${isSelected ? "selected" : ""} ${isHidden ? "hidden-part" : ""} ${isTransparent ? "transparent-part" : ""}`}
-                  onClick={() => onSelectPart?.(isSelected ? null : part.id)}
-                  title="Click to highlight in 3D viewer"
-                >
-                  <span className="swatch" style={{ background: part.color || materialColor(part.material) }} />
-                  <span className="name">{part.name}</span>
-                  <span className="id">{part.id}</span>
-                  <div className="part-actions" onClick={(e) => e.stopPropagation()}>
-                    <button
+        <>
+          <div className="filter">
+            <input
+              value={partFilter}
+              onChange={(event) => setPartFilter(event.target.value)}
+              placeholder="Filter parts"
+              aria-label="Filter parts"
+            />
+          </div>
+
+          <div className="param-scroll">
+            <div className="parts-list">
+            {spec.parts
+              .filter((part) => {
+                const query = partFilter.trim().toLowerCase();
+                if (!query) return true;
+                return (
+                  part.name.toLowerCase().includes(query) || part.id.toLowerCase().includes(query)
+                );
+              })
+              .map((part) => {
+                const isSelected = part.id === selectedPartId;
+                const isHidden = hiddenPartIds.includes(part.id);
+                const isTransparent = transparentPartIds.includes(part.id);
+                const hasIssue = issuePartIds.includes(part.id);
+                return (
+                  <div
+                    key={part.id}
+                    className={`part-row ${isSelected ? "selected" : ""} ${isHidden ? "hidden-part" : ""} ${isTransparent ? "transparent-part" : ""}`}
+                    onClick={() => onSelectPart?.(isSelected ? null : part.id)}
+                    title="Click to highlight in 3D viewer"
+                  >
+                    <span className="swatch" style={{ background: part.color || materialColor(part.material) }} />
+                    <span className="name">{part.name}</span>
+                    {hasIssue && <span className="part-issue-dot" title="Cảnh báo bố trí" />}
+                    <span className="id">{part.id}</span>
+                    <div className="part-actions" onClick={(e) => e.stopPropagation()}>
+                      {onIsolatePart && (
+                        <button
+                          type="button"
+                          className="btn-part-action"
+                          title="Chỉ hiện part này (Isolate)"
+                          onClick={() => onIsolatePart(part.id)}
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <circle cx="12" cy="12" r="7" />
+                            <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
+                          </svg>
+                        </button>
+                      )}
+                      <button
                       type="button"
                       className={`btn-part-action ${isTransparent ? "active" : ""}`}
                       title={isTransparent ? "Làm đặc lại (Opaque)" : "Làm mờ (Ghost / Translucent)"}
@@ -349,6 +426,7 @@ export function ParameterPanel({
             {analysis.model.instances} solids in the model · {spec.materials?.length ?? 0} materials
           </div>
         </div>
+        </>
       )}
     </section>
   );

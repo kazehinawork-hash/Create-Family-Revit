@@ -16,6 +16,7 @@ interface Props {
   native: boolean;
   running?: boolean;
   agentStage?: string | null;
+  elapsed?: string | null;
     units: Units;
   onUnits: (units: Units) => void;
   revitVersion: string;
@@ -29,16 +30,20 @@ interface Props {
   building?: boolean;
   onSaveModel?: () => void;
   onSaveModelAs?: () => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
+  canUndo?: boolean;
+  canRedo?: boolean;
   onOpenLibrary?: () => void;
   onNewModel?: () => void;
   onLoadDemo?: (key: "fcu" | "pump" | "elbow") => void;
 }
 
 const LOD_OPTIONS: { value: Lod; label: string; hint: string }[] = [
-  { value: 200, label: "200", hint: "LOD 200 · khối bao, 3-8 parts" },
-  { value: 300, label: "300", hint: "LOD 300 · thiết kế thực tế, 4-16 parts" },
-  { value: 350, label: "350", hint: "LOD 350 · phối hợp MEP, tai treo, 10-30 parts" },
-  { value: 400, label: "400", hint: "LOD 400 · chi tiết chế tạo, 18-45 parts" },
+  { value: 200, label: "200", hint: "LOD 200 · khối bao, 3-10 parts" },
+  { value: 300, label: "300", hint: "LOD 300 · thiết kế thực tế, 5-20 parts" },
+  { value: 350, label: "350", hint: "LOD 350 · phối hợp MEP, 10-40 parts" },
+  { value: 400, label: "400", hint: "LOD 400 · chế tạo, 20-80 parts (phức tạp đến 150)" },
 ];
 
 const AGENT_STEPS = ["Read brief", "Design family", "Check model"];
@@ -67,6 +72,7 @@ export function TopBar({
   native,
   running,
   agentStage,
+  elapsed,
     units,
   onUnits,
   revitVersion,
@@ -78,6 +84,10 @@ export function TopBar({
   canBuild,
   onSaveModel,
   onSaveModelAs,
+  onUndo,
+  onRedo,
+  canUndo,
+  canRedo,
   onOpenLibrary,
   onNewModel,
   onLoadDemo,
@@ -108,19 +118,22 @@ export function TopBar({
 
       <div className="stages">
         {running ? (
-          AGENT_STEPS.map((label, index) => {
-            const isDone = index < currentStep;
-            const isActive = index === currentStep;
-            return (
-              <span
-                key={label}
-                className={`stage ${isDone ? "done" : ""} ${isActive ? "active" : ""}`}
-              >
-                <span className="dot">{isDone ? <Check /> : null}</span>
-                {label}
-              </span>
-            );
-          })
+          <>
+            {AGENT_STEPS.map((label, index) => {
+              const isDone = index < currentStep;
+              const isActive = index === currentStep;
+              return (
+                <span
+                  key={label}
+                  className={`stage ${isDone ? "done" : ""} ${isActive ? "active" : ""}`}
+                >
+                  <span className="dot">{isDone ? <Check /> : null}</span>
+                  {label}
+                </span>
+              );
+            })}
+            {elapsed && <span className="stage-time">{elapsed}</span>}
+          </>
         ) : (
           <>
             <span className={`stage ${hasSpec ? "done" : ""} ${hasSpec && !reviewed ? "active" : ""}`}>
@@ -211,6 +224,37 @@ export function TopBar({
           </button>
         )}
 
+        {onUndo && onRedo && (
+          <div className="undo-group">
+            <button
+              type="button"
+              className="btn-secondary icon-button"
+              onClick={onUndo}
+              disabled={!canUndo}
+              title="Hoàn tác (Ctrl+Z)"
+              aria-label="Undo"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M9 14 4 9l5-5" />
+                <path d="M4 9h9a6 6 0 0 1 0 12h-3" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              className="btn-secondary icon-button"
+              onClick={onRedo}
+              disabled={!canRedo}
+              title="Làm lại (Ctrl+Shift+Z / Ctrl+Y)"
+              aria-label="Redo"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="m15 14 5-5-5-5" />
+                <path d="M20 9h-9a6 6 0 0 0 0 12h3" />
+              </svg>
+            </button>
+          </div>
+        )}
+
         {hasSpec && onSaveModel && (
           <button type="button" className="btn-secondary" onClick={onSaveModel} title="Lưu mô hình này lại">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -295,7 +339,7 @@ export function TopBar({
                   <polyline points="7 10 12 15 17 10" />
                   <line x1="12" y1="15" x2="12" y2="3" />
                 </svg>
-                <span>Tải RFA</span>
+                <span>Xuất gói RFA</span>
               </>
             )}
           </button>

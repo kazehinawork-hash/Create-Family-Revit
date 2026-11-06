@@ -1,0 +1,1182 @@
+{
+  "schemaVersion": "1.0",
+  "name": "Horizontal Air Handling Unit - Chilled Water",
+  "typeName": "AHU-H-2568",
+  "category": "Mechanical Equipment",
+  "units": "mm",
+  "lod": 350,
+  "description": "AHU nằm ngang xử lý khí chilled water với vỏ panel PU 50 mm, quạt plug fan, dàn lạnh ống đồng cánh nhôm, cửa gió cấp 306x306 mm và hai cửa lấy gió 1240x310 mm.",
+  "parameters": [
+    {
+      "name": "Casing Length",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 2568
+    },
+    {
+      "name": "Casing Depth",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 1359
+    },
+    {
+      "name": "Casing Height",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 839
+    },
+    {
+      "name": "Base Height",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 100
+    },
+    {
+      "name": "Panel Thickness",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 50
+    },
+    {
+      "name": "Frame Size",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 50
+    },
+    {
+      "name": "Door Thickness",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 40
+    },
+    {
+      "name": "Fan Section Length",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 744
+    },
+    {
+      "name": "Silencer Length",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 341
+    },
+    {
+      "name": "Heater Length",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 341
+    },
+    {
+      "name": "Coil Length",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 558
+    },
+    {
+      "name": "Filter Length",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 155
+    },
+    {
+      "name": "Intake Length",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 429
+    },
+    {
+      "name": "SA Duct Width",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 306
+    },
+    {
+      "name": "SA Duct Height",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 306
+    },
+    {
+      "name": "SA Center Y",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 307
+    },
+    {
+      "name": "SA Center Z",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 485
+    },
+    {
+      "name": "SA Collar Projection",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 60
+    },
+    {
+      "name": "Top Duct Width",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 1240
+    },
+    {
+      "name": "Top Duct Length",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 310
+    },
+    {
+      "name": "Collar Projection",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 150
+    },
+    {
+      "name": "Side Duct Height",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 310
+    },
+    {
+      "name": "Pipe Diameter",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 50
+    },
+    {
+      "name": "Pipe Protrusion",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 80
+    },
+    {
+      "name": "Coil Height",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 600
+    },
+    {
+      "name": "Drain Pan Height",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 80
+    }
+  ],
+  "parts": [
+    {
+      "id": "base-frame",
+      "name": "Base Channel Frame",
+      "material": "Base_Channel_Dark_Grey",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": "[Casing Length] / 2",
+          "y": "[Casing Depth] / 2",
+          "z": 0
+        },
+        "size": {
+          "x": "[Casing Length]",
+          "y": "[Casing Depth]",
+          "z": "[Base Height]"
+        }
+      },
+      "cuts": [
+        {
+          "kind": "cylinder",
+          "axis": "y",
+          "base": {
+            "x": 150,
+            "y": -10,
+            "z": "[Base Height] / 2"
+          },
+          "radius": 30,
+          "height": 120
+        },
+        {
+          "kind": "cylinder",
+          "axis": "y",
+          "base": {
+            "x": 2350,
+            "y": -10,
+            "z": "[Base Height] / 2"
+          },
+          "radius": 30,
+          "height": 120
+        }
+      ]
+    },
+    {
+      "id": "casing-body",
+      "name": "Insulated Double Skin Casing",
+      "material": "AHU_Panel_Light_Grey",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": "[Casing Length] / 2",
+          "y": "[Casing Depth] / 2",
+          "z": "[Base Height] - 1mm"
+        },
+        "size": {
+          "x": "[Casing Length]",
+          "y": "[Casing Depth]",
+          "z": "[Casing Height] + 1mm"
+        }
+      },
+      "cuts": [
+        {
+          "kind": "box",
+          "origin": {
+            "x": "[Casing Length] / 2",
+            "y": "[Casing Depth] / 2",
+            "z": "[Base Height] + [Panel Thickness]"
+          },
+          "size": {
+            "x": "[Casing Length] - 2 * [Panel Thickness]",
+            "y": "[Casing Depth] - 2 * [Panel Thickness]",
+            "z": "[Casing Height] - 2 * [Panel Thickness]"
+          }
+        },
+        {
+          "kind": "box",
+          "origin": {
+            "x": "[Panel Thickness] + ([Fan Section Length] - [Panel Thickness]) / 2",
+            "y": 20,
+            "z": "[Base Height] + [Panel Thickness]"
+          },
+          "size": {
+            "x": "[Fan Section Length] - [Panel Thickness]",
+            "y": 80,
+            "z": "[Casing Height] - 2 * [Panel Thickness]"
+          }
+        },
+        {
+          "kind": "box",
+          "origin": {
+            "x": "[Fan Section Length] + [Silencer Length] + [Heater Length] + 0.5 * ([Coil Length] + [Filter Length] + [Intake Length] - [Panel Thickness])",
+            "y": 20,
+            "z": "[Base Height] + [Panel Thickness]"
+          },
+          "size": {
+            "x": "[Coil Length] + [Filter Length] + [Intake Length] - [Panel Thickness]",
+            "y": 80,
+            "z": "[Casing Height] - 2 * [Panel Thickness]"
+          }
+        },
+        {
+          "kind": "box",
+          "origin": {
+            "x": 25,
+            "y": "[SA Center Y]",
+            "z": "[SA Center Z] - [SA Duct Height] / 2"
+          },
+          "size": {
+            "x": 70,
+            "y": "[SA Duct Width]",
+            "z": "[SA Duct Height]"
+          }
+        },
+        {
+          "kind": "box",
+          "origin": {
+            "x": "[Casing Length] - [Filter Length] - [Top Duct Length] / 2",
+            "y": "[Casing Depth] / 2",
+            "z": "[Base Height] + [Casing Height] - [Panel Thickness] - 20mm"
+          },
+          "size": {
+            "x": "[Top Duct Length]",
+            "y": "[Top Duct Width]",
+            "z": 90
+          }
+        },
+        {
+          "kind": "box",
+          "origin": {
+            "x": "[Casing Length] - [Panel Thickness] / 2",
+            "y": "[Casing Depth] / 2",
+            "z": "[Base Height] + [Casing Height] / 2 - [Side Duct Height] / 2"
+          },
+          "size": {
+            "x": "[Panel Thickness] + 20mm",
+            "y": "[Top Duct Width]",
+            "z": "[Side Duct Height]"
+          }
+        },
+        {
+          "kind": "cylinder",
+          "axis": "y",
+          "base": {
+            "x": 1650,
+            "y": 1300,
+            "z": "[Base Height] + 200mm"
+          },
+          "radius": 27,
+          "height": 70
+        },
+        {
+          "kind": "cylinder",
+          "axis": "y",
+          "base": {
+            "x": 1850,
+            "y": 1300,
+            "z": "[Base Height] + [Coil Height]"
+          },
+          "radius": 27,
+          "height": 70
+        }
+      ]
+    },
+    {
+      "id": "door-fan",
+      "name": "Fan Section Access Door",
+      "material": "AHU_Panel_Light_Grey",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": "[Fan Section Length] / 2",
+          "y": "[Door Thickness] / 2",
+          "z": "[Base Height] + [Panel Thickness] + 0.5mm"
+        },
+        "size": {
+          "x": "[Fan Section Length] - 2mm",
+          "y": "[Door Thickness]",
+          "z": "[Casing Height] - 2 * [Panel Thickness] - 1mm"
+        }
+      },
+      "cuts": []
+    },
+    {
+      "id": "door-coil-a",
+      "name": "Coil Filter Access Door Left",
+      "material": "AHU_Panel_Light_Grey",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": "[Fan Section Length] + [Silencer Length] + [Heater Length] + 0.25 * ([Coil Length] + [Filter Length] + [Intake Length])",
+          "y": "[Door Thickness] / 2",
+          "z": "[Base Height] + [Panel Thickness] + 0.5mm"
+        },
+        "size": {
+          "x": "0.5 * ([Coil Length] + [Filter Length] + [Intake Length]) - 1mm",
+          "y": "[Door Thickness]",
+          "z": "[Casing Height] - 2 * [Panel Thickness] - 1mm"
+        }
+      },
+      "cuts": []
+    },
+    {
+      "id": "door-coil-b",
+      "name": "Coil Filter Access Door Right",
+      "material": "AHU_Panel_Light_Grey",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": "[Fan Section Length] + [Silencer Length] + [Heater Length] + 0.75 * ([Coil Length] + [Filter Length] + [Intake Length])",
+          "y": "[Door Thickness] / 2",
+          "z": "[Base Height] + [Panel Thickness] + 0.5mm"
+        },
+        "size": {
+          "x": "0.5 * ([Coil Length] + [Filter Length] + [Intake Length]) - 1mm",
+          "y": "[Door Thickness]",
+          "z": "[Casing Height] - 2 * [Panel Thickness] - 1mm"
+        }
+      },
+      "cuts": []
+    },
+    {
+      "id": "alu-post-front",
+      "name": "Aluminium Corner Post Front",
+      "material": "Alu_Profile_Silver",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": "[Frame Size] / 2",
+          "y": "[Frame Size] / 2",
+          "z": "[Base Height] - 1mm"
+        },
+        "size": {
+          "x": "[Frame Size] + 2mm",
+          "y": "[Frame Size] + 2mm",
+          "z": "[Casing Height] + 2mm"
+        }
+      },
+      "cuts": [],
+      "array": {
+        "count": 2,
+        "axis": "x",
+        "spacing": "[Casing Length] - [Frame Size]"
+      }
+    },
+    {
+      "id": "alu-post-rear",
+      "name": "Aluminium Corner Post Rear",
+      "material": "Alu_Profile_Silver",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": "[Frame Size] / 2",
+          "y": "[Casing Depth] - [Frame Size] / 2",
+          "z": "[Base Height] - 1mm"
+        },
+        "size": {
+          "x": "[Frame Size] + 2mm",
+          "y": "[Frame Size] + 2mm",
+          "z": "[Casing Height] + 2mm"
+        }
+      },
+      "cuts": [],
+      "array": {
+        "count": 2,
+        "axis": "x",
+        "spacing": "[Casing Length] - [Frame Size]"
+      }
+    },
+    {
+      "id": "sa-collar",
+      "name": "Supply Air Duct Collar",
+      "material": "Duct_Flange_Galvanized",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": "-0.5 * [SA Collar Projection] + 0.5mm",
+          "y": "[SA Center Y]",
+          "z": "[SA Center Z] - [SA Duct Height] / 2"
+        },
+        "size": {
+          "x": "[SA Collar Projection] + 1mm",
+          "y": "[SA Duct Width]",
+          "z": "[SA Duct Height]"
+        }
+      },
+      "cuts": [
+        {
+          "kind": "box",
+          "origin": {
+            "x": "-0.5 * [SA Collar Projection] + 0.5mm",
+            "y": "[SA Center Y]",
+            "z": "[SA Center Z] - ([SA Duct Height] - 3mm) / 2"
+          },
+          "size": {
+            "x": "[SA Collar Projection] + 20mm",
+            "y": "[SA Duct Width] - 3mm",
+            "z": "[SA Duct Height] - 3mm"
+          }
+        }
+      ]
+    },
+    {
+      "id": "sa-flange",
+      "name": "Supply Air Connection Flange",
+      "material": "Duct_Flange_Galvanized",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": "-[SA Collar Projection] + 2.5mm",
+          "y": "[SA Center Y]",
+          "z": "[SA Center Z] - ([SA Duct Height] + 60mm) / 2"
+        },
+        "size": {
+          "x": 5,
+          "y": "[SA Duct Width] + 60mm",
+          "z": "[SA Duct Height] + 60mm"
+        }
+      },
+      "cuts": [
+        {
+          "kind": "box",
+          "origin": {
+            "x": "-[SA Collar Projection] + 2.5mm",
+            "y": "[SA Center Y]",
+            "z": "[SA Center Z] - ([SA Duct Height] + 2mm) / 2"
+          },
+          "size": {
+            "x": 15,
+            "y": "[SA Duct Width] + 2mm",
+            "z": "[SA Duct Height] + 2mm"
+          }
+        }
+      ]
+    },
+    {
+      "id": "top-collar",
+      "name": "Top Intake Duct Collar",
+      "material": "Duct_Flange_Galvanized",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": "[Casing Length] - [Filter Length] - [Top Duct Length] / 2",
+          "y": "[Casing Depth] / 2",
+          "z": "[Base Height] + [Casing Height] - 1mm"
+        },
+        "size": {
+          "x": "[Top Duct Length]",
+          "y": "[Top Duct Width]",
+          "z": "[Collar Projection] + 1mm"
+        }
+      },
+      "cuts": [
+        {
+          "kind": "box",
+          "origin": {
+            "x": "[Casing Length] - [Filter Length] - [Top Duct Length] / 2",
+            "y": "[Casing Depth] / 2",
+            "z": "[Base Height] + [Casing Height] - 1mm"
+          },
+          "size": {
+            "x": "[Top Duct Length] - 3mm",
+            "y": "[Top Duct Width] - 3mm",
+            "z": "[Collar Projection] + 20mm"
+          }
+        }
+      ]
+    },
+    {
+      "id": "top-flange",
+      "name": "Top Intake Connection Flange",
+      "material": "Duct_Flange_Galvanized",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": "[Casing Length] - [Filter Length] - [Top Duct Length] / 2",
+          "y": "[Casing Depth] / 2",
+          "z": "[Base Height] + [Casing Height] - 5mm"
+        },
+        "size": {
+          "x": "[Top Duct Length] + 60mm",
+          "y": "[Top Duct Width] + 60mm",
+          "z": 5
+        }
+      },
+      "cuts": [
+        {
+          "kind": "box",
+          "origin": {
+            "x": "[Casing Length] - [Filter Length] - [Top Duct Length] / 2",
+            "y": "[Casing Depth] / 2",
+            "z": "[Base Height] + [Casing Height] - 5mm"
+          },
+          "size": {
+            "x": "[Top Duct Length] + 2mm",
+            "y": "[Top Duct Width] + 2mm",
+            "z": 15
+          }
+        }
+      ]
+    },
+    {
+      "id": "side-collar",
+      "name": "Side Intake Duct Collar",
+      "material": "Duct_Flange_Galvanized",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": "[Casing Length] + [Collar Projection] / 2 - 0.5mm",
+          "y": "[Casing Depth] / 2",
+          "z": "[Base Height] + [Casing Height] / 2 - [Side Duct Height] / 2"
+        },
+        "size": {
+          "x": "[Collar Projection] + 1mm",
+          "y": "[Top Duct Width]",
+          "z": "[Side Duct Height]"
+        }
+      },
+      "cuts": [
+        {
+          "kind": "box",
+          "origin": {
+            "x": "[Casing Length] + [Collar Projection] / 2 - 0.5mm",
+            "y": "[Casing Depth] / 2",
+            "z": "[Base Height] + [Casing Height] / 2 - ([Side Duct Height] - 3mm) / 2"
+          },
+          "size": {
+            "x": "[Collar Projection] + 20mm",
+            "y": "[Top Duct Width] - 3mm",
+            "z": "[Side Duct Height] - 3mm"
+          }
+        }
+      ]
+    },
+    {
+      "id": "side-flange",
+      "name": "Side Intake Connection Flange",
+      "material": "Duct_Flange_Galvanized",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": "[Casing Length] + [Collar Projection] - 2.5mm",
+          "y": "[Casing Depth] / 2",
+          "z": "[Base Height] + [Casing Height] / 2 - ([Side Duct Height] + 60mm) / 2"
+        },
+        "size": {
+          "x": 5,
+          "y": "[Top Duct Width] + 60mm",
+          "z": "[Side Duct Height] + 60mm"
+        }
+      },
+      "cuts": [
+        {
+          "kind": "box",
+          "origin": {
+            "x": "[Casing Length] + [Collar Projection] - 2.5mm",
+            "y": "[Casing Depth] / 2",
+            "z": "[Base Height] + [Casing Height] / 2 - ([Side Duct Height] + 2mm) / 2"
+          },
+          "size": {
+            "x": 15,
+            "y": "[Top Duct Width] + 2mm",
+            "z": "[Side Duct Height] + 2mm"
+          }
+        }
+      ]
+    },
+    {
+      "id": "fan-discharge-spigot",
+      "name": "Fan Discharge Spigot",
+      "material": "Duct_Flange_Galvanized",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": 90,
+          "y": "[SA Center Y]",
+          "z": "[SA Center Z] - [SA Duct Height] / 2"
+        },
+        "size": {
+          "x": 100,
+          "y": "[SA Duct Width]",
+          "z": "[SA Duct Height]"
+        }
+      },
+      "cuts": [
+        {
+          "kind": "box",
+          "origin": {
+            "x": 90,
+            "y": "[SA Center Y]",
+            "z": "[SA Center Z] - ([SA Duct Height] - 3mm) / 2"
+          },
+          "size": {
+            "x": 120,
+            "y": "[SA Duct Width] - 3mm",
+            "z": "[SA Duct Height] - 3mm"
+          }
+        }
+      ]
+    },
+    {
+      "id": "fan-scroll",
+      "name": "Plug Fan Scroll",
+      "material": "Dark_Machinery",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "z",
+        "base": {
+          "x": 420,
+          "y": 560,
+          "z": 202
+        },
+        "radius": 300,
+        "height": 438
+      },
+      "cuts": []
+    },
+    {
+      "id": "fan-inlet-cone",
+      "name": "Plug Fan Inlet Cone",
+      "material": "Dark_Machinery",
+      "solid": {
+        "kind": "frustum",
+        "axis": "z",
+        "base": {
+          "x": 420,
+          "y": 560,
+          "z": 641
+        },
+        "radiusBottom": 300,
+        "radiusTop": 160,
+        "height": 109
+      },
+      "cuts": []
+    },
+    {
+      "id": "fan-motor",
+      "name": "Plug Fan Motor",
+      "material": "Dark_Machinery",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "z",
+        "base": {
+          "x": 420,
+          "y": 560,
+          "z": 751
+        },
+        "radius": 140,
+        "height": 129
+      },
+      "cuts": []
+    },
+    {
+      "id": "fan-support",
+      "name": "Fan Support Frame",
+      "material": "Dark_Machinery",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": 420,
+          "y": 560,
+          "z": "[Base Height] + [Panel Thickness] + 1mm"
+        },
+        "size": {
+          "x": 600,
+          "y": 520,
+          "z": 50
+        }
+      },
+      "cuts": []
+    },
+    {
+      "id": "heater-frame",
+      "name": "Reheat Coil Frame",
+      "material": "Duct_Flange_Galvanized",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": "[Fan Section Length] + [Silencer Length] + [Heater Length] / 2",
+          "y": "[Casing Depth] / 2",
+          "z": "[Base Height] + [Panel Thickness] + 95mm"
+        },
+        "size": {
+          "x": 60,
+          "y": "[Casing Depth] - 2 * [Panel Thickness] - 20mm",
+          "z": "[Coil Height]"
+        }
+      },
+      "cuts": [
+        {
+          "kind": "box",
+          "origin": {
+            "x": "[Fan Section Length] + [Silencer Length] + [Heater Length] / 2",
+            "y": "[Casing Depth] / 2",
+            "z": "[Base Height] + [Panel Thickness] + 155mm"
+          },
+          "size": {
+            "x": 80,
+            "y": "[Casing Depth] - 2 * [Panel Thickness] - 140mm",
+            "z": "[Coil Height] - 120mm"
+          }
+        }
+      ]
+    },
+    {
+      "id": "cooling-coil",
+      "name": "Chilled Water Cooling Coil",
+      "material": "Copper_Coil",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": "[Fan Section Length] + [Silencer Length] + [Heater Length] + [Coil Length] / 2",
+          "y": "[Casing Depth] / 2",
+          "z": "[Base Height] + [Panel Thickness] + 95mm"
+        },
+        "size": {
+          "x": 120,
+          "y": 1200,
+          "z": "[Coil Height]"
+        }
+      },
+      "cuts": []
+    },
+    {
+      "id": "drain-pan",
+      "name": "Condensate Drain Pan",
+      "material": "Stainless_Steel_Drain",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": "[Fan Section Length] + [Silencer Length] + [Heater Length] + [Coil Length] / 2",
+          "y": "[Casing Depth] / 2",
+          "z": "[Base Height] + [Panel Thickness] + 1mm"
+        },
+        "size": {
+          "x": 200,
+          "y": "[Casing Depth] - 2 * [Panel Thickness] - 20mm",
+          "z": "[Drain Pan Height]"
+        }
+      },
+      "cuts": []
+    },
+    {
+      "id": "drain-pipe",
+      "name": "Condensate Drain Pipe",
+      "material": "Stainless_Steel_Drain",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "y",
+        "base": {
+          "x": "[Fan Section Length] + [Silencer Length] + [Heater Length] + [Coil Length] / 2",
+          "y": 1230,
+          "z": "[Base Height] + [Panel Thickness] + 20mm"
+        },
+        "radius": 12.5,
+        "height": 180
+      },
+      "cuts": []
+    },
+    {
+      "id": "filter-g4",
+      "name": "Primary Filter G4",
+      "material": "Filter_Media",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": "[Fan Section Length] + [Silencer Length] + [Heater Length] + [Coil Length] + 25mm",
+          "y": "[Casing Depth] / 2",
+          "z": "[Base Height] + [Panel Thickness] + 95mm"
+        },
+        "size": {
+          "x": 50,
+          "y": 1180,
+          "z": 580
+        }
+      },
+      "cuts": []
+    },
+    {
+      "id": "filter-f8",
+      "name": "Bag Filter F8",
+      "material": "Filter_Media",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": "[Fan Section Length] + [Silencer Length] + [Heater Length] + [Coil Length] + 85mm",
+          "y": "[Casing Depth] / 2",
+          "z": "[Base Height] + [Panel Thickness] + 95mm"
+        },
+        "size": {
+          "x": 60,
+          "y": 1180,
+          "z": 580
+        }
+      },
+      "cuts": []
+    },
+    {
+      "id": "electrical-box",
+      "name": "Electrical Control Box",
+      "material": "Electrical_Box",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": 750,
+          "y": "[Casing Depth] + 41mm",
+          "z": 450
+        },
+        "size": {
+          "x": 300,
+          "y": 80,
+          "z": 300
+        }
+      },
+      "cuts": []
+    },
+    {
+      "id": "sight-glass",
+      "name": "Fan Sight Glass AKR1",
+      "material": "Sight_Glass_Clear",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "y",
+        "base": {
+          "x": 380,
+          "y": -2,
+          "z": 650
+        },
+        "radius": 100,
+        "height": 14
+      },
+      "cuts": []
+    },
+    {
+      "id": "door-latches",
+      "name": "Standard Door Latches",
+      "material": "Door_Latches_Black",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": 105,
+          "y": -9,
+          "z": 350
+        },
+        "size": {
+          "x": 40,
+          "y": 20,
+          "z": 80
+        }
+      },
+      "cuts": [],
+      "array": {
+        "count": 4,
+        "axis": "x",
+        "spacing": 190
+      }
+    },
+    {
+      "id": "door-hinges",
+      "name": "Door Hinges",
+      "material": "Door_Latches_Black",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": 1440,
+          "y": 0,
+          "z": 790
+        },
+        "size": {
+          "x": 30,
+          "y": 30,
+          "z": 120
+        }
+      },
+      "cuts": [],
+      "array": {
+        "count": 2,
+        "axis": "x",
+        "spacing": 1110
+      }
+    },
+    {
+      "id": "cw-supply-pipe",
+      "name": "Chilled Water Supply Pipe",
+      "material": "Copper_Coil",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "y",
+        "base": {
+          "x": 1650,
+          "y": "[Casing Depth] - [Pipe Protrusion] - 40mm",
+          "z": "[Base Height] + 200mm"
+        },
+        "radius": "[Pipe Diameter] / 2",
+        "height": "[Pipe Protrusion] + 120mm"
+      },
+      "cuts": []
+    },
+    {
+      "id": "cw-return-pipe",
+      "name": "Chilled Water Return Pipe",
+      "material": "Copper_Coil",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "y",
+        "base": {
+          "x": 1850,
+          "y": "[Casing Depth] - [Pipe Protrusion] - 40mm",
+          "z": "[Base Height] + [Coil Height]"
+        },
+        "radius": "[Pipe Diameter] / 2",
+        "height": "[Pipe Protrusion] + 120mm"
+      },
+      "cuts": []
+    }
+  ],
+  "connectors": [
+    {
+      "id": "sa-connector",
+      "name": "Supply Air Duct",
+      "systemType": "Supply Air",
+      "shape": "rectangular",
+      "direction": "out",
+      "origin": {
+        "x": -60,
+        "y": 307,
+        "z": 485
+      },
+      "directionVector": {
+        "x": -1,
+        "y": 0,
+        "z": 0
+      },
+      "width": 306,
+      "height": 306
+    },
+    {
+      "id": "top-intake",
+      "name": "Top Return Air Duct",
+      "systemType": "Return Air",
+      "shape": "rectangular",
+      "direction": "in",
+      "origin": {
+        "x": 2258,
+        "y": 679.5,
+        "z": 1089
+      },
+      "directionVector": {
+        "x": 0,
+        "y": 0,
+        "z": 1
+      },
+      "width": 1240,
+      "height": 310
+    },
+    {
+      "id": "side-intake",
+      "name": "Side Fresh Air Duct",
+      "systemType": "Return Air",
+      "shape": "rectangular",
+      "direction": "in",
+      "origin": {
+        "x": 2718,
+        "y": 679.5,
+        "z": 519.5
+      },
+      "directionVector": {
+        "x": 1,
+        "y": 0,
+        "z": 0
+      },
+      "width": 1240,
+      "height": 310
+    },
+    {
+      "id": "cw-supply",
+      "name": "Chilled Water Supply",
+      "systemType": "Hydronic Supply",
+      "shape": "rectangular",
+      "direction": "in",
+      "origin": {
+        "x": 1650,
+        "y": 1439,
+        "z": 300
+      },
+      "directionVector": {
+        "x": 0,
+        "y": 1,
+        "z": 0
+      },
+      "diameter": 50
+    },
+    {
+      "id": "cw-return",
+      "name": "Chilled Water Return",
+      "systemType": "Hydronic Return",
+      "shape": "rectangular",
+      "direction": "out",
+      "origin": {
+        "x": 1850,
+        "y": 1439,
+        "z": 700
+      },
+      "directionVector": {
+        "x": 0,
+        "y": 1,
+        "z": 0
+      },
+      "diameter": 50
+    }
+  ],
+  "materials": [
+    {
+      "name": "AHU_Panel_Light_Grey",
+      "color": "#EBEEF0",
+      "metalness": 0.25,
+      "roughness": 0.6
+    },
+    {
+      "name": "Alu_Profile_Silver",
+      "color": "#CDD2D7",
+      "metalness": 0.85,
+      "roughness": 0.25
+    },
+    {
+      "name": "Base_Channel_Dark_Grey",
+      "color": "#41464B",
+      "metalness": 0.6,
+      "roughness": 0.5
+    },
+    {
+      "name": "Door_Latches_Black",
+      "color": "#232326",
+      "metalness": 0.4,
+      "roughness": 0.7
+    },
+    {
+      "name": "Sight_Glass_Clear",
+      "color": "#F5FAFF",
+      "metalness": 0,
+      "roughness": 0.05
+    },
+    {
+      "name": "Duct_Flange_Galvanized",
+      "color": "#C3C8CD",
+      "metalness": 0.5,
+      "roughness": 0.45
+    },
+    {
+      "name": "Stainless_Steel_Drain",
+      "color": "#C8CCCE",
+      "metalness": 0.75,
+      "roughness": 0.3
+    },
+    {
+      "name": "Copper_Coil",
+      "color": "#B87333",
+      "metalness": 0.7,
+      "roughness": 0.3
+    },
+    {
+      "name": "Filter_Media",
+      "color": "#CFC3A8",
+      "metalness": 0.05,
+      "roughness": 0.9
+    },
+    {
+      "name": "Electrical_Box",
+      "color": "#2F363D",
+      "metalness": 0.3,
+      "roughness": 0.6
+    },
+    {
+      "name": "Dark_Machinery",
+      "color": "#4B5257",
+      "metalness": 0.55,
+      "roughness": 0.5
+    }
+  ],
+  "notes": [
+    "Mô hình dựng đúng hệ trục gốc theo bản vẽ: (0,0,0) tại góc dưới-cùng bên trái mặt trước bệ thép, X=0 là mặt cửa gió cấp SA, Y=0 là vách cửa thao tác, Z=0 là mặt sàn; chiều dài chạy tới X=+2568 mm, chiều rộng tới Y=+1359 mm.",
+    "Mức chi tiết đã dựng: LOD 350 — phục vụ phối hợp MEP và kiểm tra va chạm. Đã có cổ bích và mặt bích 3 cửa gió, cửa thăm có tay khóa và bản lề, hộp điện, máng ngưng, 2 đầu ống chilled water DN50 và các điểm kết nối. Chưa dựng bulông, gioăng, ren, lỗ khoan ren và đường hàn (LOD 400).",
+    "Các kích thước bao: X từ -60 mm (đầu cổ SA) đến +2718 mm (mặt bích cửa gió hông), Y từ -25 mm (tay khóa cửa) đến +1440 mm (mặt bích ống nước/hộp điện), Z từ 0 đến +1089 mm (đỉnh mặt bích cửa gió nóc).",
+    "Bản vẽ không ghi góc nghiêng dàn lạnh nên dàn đang dựng thẳng đứng vuông góc dòng khí, kích thước mặt 1200 x 600 mm; nếu có góc nghiêng thiết kế vui lòng cung cấp để cập nhật.",
+    "Cao độ 2 đầu ống chilled water chưa ghi rõ, tạm bố trí DN50: đầu cấp thấp ở Z=+300 mm và đầu hồi cao ở Z=+700 mm, nhô 80 mm qua vách hậu; vui lòng xác nhận cao độ thực tế.",
+    "Cửa lấy gió hông phải đặt cao độ tâm Z=+519,5 mm (giữa thân vỏ) do bản vẽ chỉ ghi kích thước 1240 x 310 mm; vui lòng xác nhận cao độ tim cửa gió.",
+    "Hộp điện đặt ngoài vách hậu tại X=600–900 mm, cao Z=+450–750 mm để không che cửa thăm và không vướng 2 ống nước; vui lòng xác nhận vị trí hộp điện thực tế trên công trình.",
+    "Cửa buồng quạt dựng 4 tay khóa nẹp đúng bản vẽ kèm ô kính quan sát AKR1 Ø200 mm tại X=380 mm, Z=650 mm; cửa khoang coil/lọc dựng 2 cánh, mỗi cánh 1 bản lề và tay khóa đại diện.",
+    "Khoang tiêu âm 341 mm đang để trống kỹ thuật theo mô tả; nếu cần thêm vách chia hoặc tấm tiêu âm bên trong vui lòng cho biết để bổ sung."
+  ]
+}

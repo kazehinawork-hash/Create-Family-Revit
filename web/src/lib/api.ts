@@ -10,6 +10,15 @@ export interface DesignStats {
   attempts: number;
   elapsedMs: number;
   usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null;
+  cached?: boolean;
+  fastEdit?: {
+    name: string;
+    type: string;
+    value: number;
+    affectedParameters?: string[];
+    affectedParts?: string[];
+    affectedConnectors?: string[];
+  };
 }
 
 export interface StageEvent {
@@ -208,6 +217,7 @@ export interface BuildStats {
   driving?: string[];
   unlabelled?: string[];
   inert?: string[];
+  flex?: string;
 }
 
 export interface BuildResult {
@@ -302,6 +312,37 @@ export async function fetchSavedModels(): Promise<SavedModelMeta[]> {
 export async function fetchSavedModelDetail(id: string): Promise<SavedModelDetail | null> {
   try {
     const res = await fetch(`/api/models/${encodeURIComponent(id)}`);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+export interface SavedModelRevision {
+  stamp: string;
+  savedAt: number;
+  name: string;
+  parts: number;
+  parameters: number;
+}
+
+export async function fetchModelHistory(id: string): Promise<SavedModelRevision[]> {
+  try {
+    const res = await fetch(`/api/models/${encodeURIComponent(id)}/history`);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.revisions || [];
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchModelRevision(id: string, stamp: string): Promise<SavedModelDetail | null> {
+  try {
+    const res = await fetch(
+      `/api/models/${encodeURIComponent(id)}/history/${encodeURIComponent(stamp)}`,
+    );
     if (!res.ok) return null;
     return await res.json();
   } catch {

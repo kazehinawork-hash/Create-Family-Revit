@@ -14,6 +14,12 @@
       "type": "string",
       "enum": [
         "Mechanical Equipment",
+        "Duct Fitting",
+        "Duct Elbow",
+        "Duct Transition",
+        "Duct Tee",
+        "Duct Cross",
+        "Pipe Fitting",
         "Generic Model",
         "Plumbing Fixture",
         "Electrical Equipment",
@@ -35,6 +41,7 @@
     "template": { "type": "string", "description": "Optional template key override." },
     "units": { "const": "mm" },
     "revitVersion": { "type": "string" },
+    "lod": { "enum": [200, 300, 350, 400] },
     "description": { "type": "string" },
     "parameters": {
       "type": "array",
@@ -70,7 +77,11 @@
             "description": "Revit compatible formula. Reference parameters with [Param Name]."
           },
           "instance": { "type": "boolean" },
-          "description": { "type": "string" }
+          "description": { "type": "string" },
+          "axis": {
+            "enum": ["x", "y", "z"],
+            "description": "Explicit axis a Length parameter measures; overrides the name heuristic."
+          }
         }
       }
     },
@@ -84,6 +95,54 @@
           "color": { "type": "string" },
           "metalness": { "type": "number" },
           "roughness": { "type": "number" }
+        }
+      }
+    },
+    "connectors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "systemType", "shape", "direction", "origin"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": "string" },
+          "systemType": {
+            "enum": [
+              "SupplyAir",
+              "ReturnAir",
+              "ExhaustAir",
+              "HydronicSupply",
+              "HydronicReturn",
+              "Sanitary",
+              "DomesticColdWater",
+              "DomesticHotWater",
+              "Electrical",
+              "Supply Air",
+              "Return Air",
+              "Exhaust Air",
+              "Other Air",
+              "Hydronic Supply",
+              "Hydronic Return",
+              "Domestic Cold Water",
+              "Domestic Hot Water",
+              "Power - Unbalanced",
+              "Power - Balanced",
+              "Fire Protection Wet",
+              "Fire Protection Dry",
+              "Fire Protection Preaction",
+              "Fire Protection Other"
+            ]
+          },
+          "shape": { "enum": ["round", "rectangular"] },
+          "direction": { "enum": ["in", "out", "bidirectional"] },
+          "origin": { "$ref": "#/$defs/vec3" },
+          "directionVector": { "$ref": "#/$defs/vec3" },
+          "width": { "$ref": "#/$defs/numeric" },
+          "height": { "$ref": "#/$defs/numeric" },
+          "diameter": { "$ref": "#/$defs/numeric" },
+          "flow": { "$ref": "#/$defs/numeric" },
+          "flowUnit": { "enum": ["L/s", "m3/h", "CFM"] },
+          "pressureDrop": { "$ref": "#/$defs/numeric" }
         }
       }
     },
@@ -112,6 +171,15 @@
               },
               "axis": { "enum": ["x", "y", "z"] },
               "spacing": { "type": ["number", "string"] }
+            }
+          },
+          "anchor": {
+            "type": "object",
+            "description": "Pins which face is locked to the reference planes, per axis.",
+            "properties": {
+              "x": { "enum": ["min", "max"] },
+              "y": { "enum": ["min", "max"] },
+              "z": { "enum": ["min", "max"] }
             }
           }
         }
@@ -164,6 +232,33 @@
         },
         {
           "type": "object",
+          "required": ["kind", "base", "radiusBottom", "radiusTop", "height"],
+          "properties": {
+            "kind": { "const": "frustum" },
+            "base": { "$ref": "#/$defs/vec3", "description": "Centre of the base face." },
+            "radiusBottom": { "$ref": "#/$defs/numeric" },
+            "radiusTop": { "$ref": "#/$defs/numeric", "description": "Radius at the far end. 0 makes a cone." },
+            "height": { "$ref": "#/$defs/numeric", "description": "May be negative to extrude backwards." },
+            "axis": { "enum": ["x", "y", "z"] },
+            "segments": { "type": "integer", "minimum": 12, "maximum": 96 }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "center", "radius", "tubeRadius"],
+          "properties": {
+            "kind": { "const": "bend" },
+            "center": { "$ref": "#/$defs/vec3", "description": "Point on the revolution axis." },
+            "radius": { "$ref": "#/$defs/numeric", "description": "Distance from the axis to the tube centreline." },
+            "tubeRadius": { "$ref": "#/$defs/numeric" },
+            "angle": { "$ref": "#/$defs/numeric", "description": "Sweep angle in degrees. Default 90." },
+            "startAngle": { "$ref": "#/$defs/numeric", "description": "Start rotation around the axis, in degrees." },
+            "plane": { "enum": ["xy", "xz", "yz"] },
+            "segments": { "type": "integer", "minimum": 8, "maximum": 96 }
+          }
+        },
+        {
+          "type": "object",
           "required": ["kind", "plane", "points", "from", "to"],
           "properties": {
             "kind": { "const": "prism" },
@@ -178,8 +273,82 @@
                 "items": { "$ref": "#/$defs/numeric" }
               }
             },
+            "holes": {
+              "type": "array",
+              "description": "Inner loops cut out of the extrusion, same coordinate order as points.",
+              "items": {
+                "type": "array",
+                "minItems": 3,
+                "items": {
+                  "type": "array",
+                  "minItems": 2,
+                  "maxItems": 2,
+                  "items": { "$ref": "#/$defs/numeric" }
+                }
+              }
+            },
             "from": { "$ref": "#/$defs/numeric" },
             "to": { "$ref": "#/$defs/numeric" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "sections"],
+          "properties": {
+            "kind": { "const": "loft" },
+            "axis": { "enum": ["x", "y", "z"], "description": "Axis the sections are stacked along. Default z." },
+            "segments": { "type": "integer", "minimum": 8, "maximum": 96 },
+            "sections": {
+              "type": "array",
+              "minItems": 2,
+              "items": {
+                "type": "object",
+                "required": ["at", "profile"],
+                "properties": {
+                  "at": { "$ref": "#/$defs/numeric", "description": "Position along the loft axis. Must increase." },
+                  "profile": { "$ref": "#/$defs/loftProfile" }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "loftProfile": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["kind", "radius"],
+          "properties": {
+            "kind": { "const": "circle" },
+            "radius": { "$ref": "#/$defs/numeric" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "width", "height"],
+          "properties": {
+            "kind": { "const": "rect" },
+            "width": { "$ref": "#/$defs/numeric" },
+            "height": { "$ref": "#/$defs/numeric" },
+            "cornerRadius": { "$ref": "#/$defs/numeric" }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "points"],
+          "properties": {
+            "kind": { "const": "polygon" },
+            "points": {
+              "type": "array",
+              "minItems": 3,
+              "items": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": { "$ref": "#/$defs/numeric" }
+              }
+            }
           }
         }
       ]

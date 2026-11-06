@@ -116,6 +116,111 @@ namespace FamilyAgent.SelfTest
                 ExpectClose(casingLength.Number ?? -1, 1910, 0.01, "Casing Length value");
             });
 
+            Check("frustum resolves with the larger-radius bounds", () =>
+            {
+                const string json = @"{
+                  ""name"": ""Cone"",
+                  ""category"": ""Generic Model"",
+                  ""parameters"": [],
+                  ""parts"": [{
+                    ""id"": ""cone"",
+                    ""name"": ""Cone"",
+                    ""solid"": {
+                      ""kind"": ""frustum"",
+                      ""base"": { ""x"": 0, ""y"": 0, ""z"": 0 },
+                      ""radiusBottom"": 200,
+                      ""radiusTop"": 80,
+                      ""height"": 300
+                    }
+                  }]
+                }";
+
+                var spec = SpecLoader.Load(json);
+                var parameters = ParameterResolver.Resolve(spec);
+                var model = GeometryResolver.Resolve(spec, parameters);
+
+                Expect(model.Warnings.Count == 0, $"unexpected warnings: {string.Join("; ", model.Warnings)}");
+                Expect(model.Parts.Count == 1, "one part");
+
+                var solid = model.Parts[0].Solid;
+                Expect(solid.Kind == "frustum", "kind");
+                ExpectClose(solid.RadiusBottom, 200, 1e-9, "radiusBottom");
+                ExpectClose(solid.RadiusTop, 80, 1e-9, "radiusTop");
+
+                var bounds = GeometryResolver.BoundsOf(solid);
+                ExpectClose(bounds.MaxX - bounds.MinX, 400, 1e-9, "width");
+                ExpectClose(bounds.MaxZ - bounds.MinZ, 300, 1e-9, "height");
+            });
+
+            Check("bend resolves with an elbow envelope", () =>
+            {
+                const string json = @"{
+                  ""name"": ""Elbow"",
+                  ""category"": ""Pipe Fitting"",
+                  ""parameters"": [],
+                  ""parts"": [{
+                    ""id"": ""elbow"",
+                    ""name"": ""Elbow"",
+                    ""solid"": {
+                      ""kind"": ""bend"",
+                      ""center"": { ""x"": 0, ""y"": 0, ""z"": 0 },
+                      ""radius"": 150,
+                      ""tubeRadius"": 40,
+                      ""angle"": 90,
+                      ""plane"": ""xy""
+                    }
+                  }]
+                }";
+
+                var spec = SpecLoader.Load(json);
+                var parameters = ParameterResolver.Resolve(spec);
+                var model = GeometryResolver.Resolve(spec, parameters);
+
+                Expect(model.Warnings.Count == 0, $"unexpected warnings: {string.Join("; ", model.Warnings)}");
+                Expect(model.Parts.Count == 1, "one part");
+
+                var solid = model.Parts[0].Solid;
+                Expect(solid.Kind == "bend", "kind");
+                ExpectClose(solid.Radius, 150, 1e-9, "radius");
+                ExpectClose(solid.TubeRadius, 40, 1e-9, "tubeRadius");
+                ExpectClose(solid.Angle, 90, 1e-9, "angle");
+
+                var bounds = GeometryResolver.BoundsOf(solid);
+                ExpectClose(bounds.MaxX - bounds.MinX, 190, 1e-6, "width");
+                ExpectClose(bounds.MaxY - bounds.MinY, 190, 1e-6, "depth");
+                ExpectClose(bounds.MaxZ - bounds.MinZ, 80, 1e-6, "height");
+            });
+
+            Check("part anchor is resolved", () =>
+            {
+                const string json = @"{
+                  ""name"": ""Anchored"",
+                  ""category"": ""Generic Model"",
+                  ""parameters"": [],
+                  ""parts"": [{
+                    ""id"": ""body"",
+                    ""name"": ""Body"",
+                    ""anchor"": { ""x"": ""min"", ""z"": ""max"" },
+                    ""solid"": {
+                      ""kind"": ""box"",
+                      ""origin"": { ""x"": 0, ""y"": 0, ""z"": 0 },
+                      ""size"": { ""x"": 100, ""y"": 100, ""z"": 100 }
+                    }
+                  }]
+                }";
+
+                var spec = SpecLoader.Load(json);
+                var parameters = ParameterResolver.Resolve(spec);
+                var model = GeometryResolver.Resolve(spec, parameters);
+
+                Expect(model.Parts.Count == 1, "one part");
+                var anchor = model.Parts[0].Anchor;
+                Expect(anchor != null, "anchor present");
+                Expect(anchor.X == "min", "x = min");
+                Expect(anchor.Z == "max", "z = max");
+                Expect(anchor.ForAxis("y") == null, "y unset");
+            });
+
             Check("formula errors do not throw", () =>
             {
                 var spec = new FamilySpec
@@ -146,6 +251,44 @@ namespace FamilyAgent.SelfTest
                 Expect(parameters.Errors.Count > 0, "parameter error expected");
                 Expect(model.Warnings.Count > 0, "geometry warning expected");
                 Expect(model.Parts.Count == 0, "broken part should be skipped");
+            });
+
+            Check("loft resolves both profiles to one ring", () =>
+            {
+                const string json = @"{
+                  ""name"": ""Transition"",
+                  ""category"": ""Duct Transition"",
+                  ""parameters"": [],
+                  ""parts"": [{
+                    ""id"": ""transition"",
+                    ""name"": ""Transition"",
+                    ""solid"": {
+                      ""kind"": ""loft"",
+                      ""axis"": ""z"",
+                      ""segments"": 16,
+                      ""sections"": [
+                        { ""at"": 0, ""profile"": { ""kind"": ""rect"", ""width"": 500, ""height"": 300 } },
+                        { ""at"": 400, ""profile"": { ""kind"": ""circle"", ""radius"": 150 } }
+                      ]
+                    }
+                  }]
+                }";
+
+                var spec = SpecLoader.Load(json);
+                var parameters = ParameterResolver.Resolve(spec);
+                var model = GeometryResolver.Resolve(spec, parameters);
+
+                Expect(model.Warnings.Count == 0, $"unexpected warnings: {string.Join("; ", model.Warnings)}");
+                Expect(model.Parts.Count == 1, "one part");
+                var solid = model.Parts[0].Solid;
+                Expect(solid.Kind == "loft", "kind");
+                Expect(solid.Sections.Count == 2, "two sections");
+                Expect(solid.Sections[0].Points.Count == solid.Sections[1].Points.Count, "same ring size");
+
+                var bounds = GeometryResolver.BoundsOf(solid);
+                ExpectClose(bounds.MaxX - bounds.MinX, 500, 1e-6, "width");
+                ExpectClose(bounds.MaxY - bounds.MinY, 300, 1e-6, "depth");
+                ExpectClose(bounds.MaxZ - bounds.MinZ, 400, 1e-6, "height");
             });
 
             Console.WriteLine();

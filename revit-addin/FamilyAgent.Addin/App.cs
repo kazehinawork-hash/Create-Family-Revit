@@ -18,6 +18,9 @@ namespace FamilyAgent.Addin
                     "0",
                     StringComparison.OrdinalIgnoreCase))
             {
+                // Idling does not fire on the Revit start screen, so the listener has to
+                // start here; build requests are queued through an ExternalEvent and only
+                // execute when Revit is idle.
                 BridgeServer.Instance.Start(Commands.BridgePort());
             }
 
@@ -67,7 +70,7 @@ namespace FamilyAgent.Addin
                 "FamilyAgentBuildFile",
                 "Build from\nfile…",
                 assemblyPath,
-                "FamilyAgent.Addin.Commands.BuildFromFileCommand")
+                "FamilyAgent.Addin.BuildFromFileCommand")
             {
                 ToolTip = "Build a .rfa from a family spec JSON file.",
                 LongDescription =
@@ -78,7 +81,7 @@ namespace FamilyAgent.Addin
                 "FamilyAgentBuildPending",
                 "Build\npending",
                 assemblyPath,
-                "FamilyAgent.Addin.Commands.BuildPendingCommand")
+                "FamilyAgent.Addin.BuildPendingCommand")
             {
                 ToolTip = "Build the newest family spec queued by the studio.",
             };
@@ -87,13 +90,25 @@ namespace FamilyAgent.Addin
                 "FamilyAgentBridge",
                 "Studio\nbridge",
                 assemblyPath,
-                "FamilyAgent.Addin.Commands.ToggleBridgeCommand")
+                "FamilyAgent.Addin.ToggleBridgeCommand")
             {
                 ToolTip = "Start or stop the local studio bridge (127.0.0.1:8765).",
             };
 
+            var rebuild = new PushButtonData(
+                "FamilyAgentRebuild",
+                "Rebuild\nfrom spec",
+                assemblyPath,
+                "FamilyAgent.Addin.RebuildCommand")
+            {
+                ToolTip = "Rebuild the geometry from the spec stored in this family, using the current parameter values.",
+                LongDescription =
+                    "Recomputes every part from the stored Family Agent spec after you edit parameters in Revit.",
+            };
+
             panel.AddItem(buildFile);
             panel.AddItem(buildPending);
+            panel.AddItem(rebuild);
             panel.AddSeparator();
             panel.AddItem(bridge);
         }

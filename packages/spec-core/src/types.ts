@@ -42,6 +42,8 @@ export interface FamilyParameter {
   instance?: boolean;
   group?: ParameterGroup;
   description?: string;
+  /** Explicit axis this length parameter measures; overrides the name heuristic. */
+  axis?: Axis;
 }
 
 export interface BoxSolid {
@@ -67,23 +69,89 @@ export interface CylinderSolid {
   segments?: number;
 }
 
+export interface FrustumSolid {
+  kind: "frustum";
+  /** Centre of the base face. */
+  base: Vec3;
+  /** Radius at the base. */
+  radiusBottom: Numeric;
+  /** Radius at the far end. Zero makes a cone. */
+  radiusTop: Numeric;
+  /** May be negative to extrude against the axis direction. */
+  height: Numeric;
+  axis?: Axis;
+  segments?: number;
+}
+
+export interface BendSolid {
+  kind: "bend";
+  /** Point on the revolution axis (the centre of the torus). */
+  center: Vec3;
+  /** Distance from the axis to the tube centreline. */
+  radius: Numeric;
+  /** Radius of the circular section. */
+  tubeRadius: Numeric;
+  /** Sweep angle in degrees. Defaults to 90 (an elbow). */
+  angle?: Numeric;
+  /** Rotation of the start of the bend around the axis, in degrees. */
+  startAngle?: Numeric;
+  /** Plane containing the arc: xy (axis Z), xz (axis Y), yz (axis X). */
+  plane?: "xy" | "xz" | "yz";
+  segments?: number;
+}
+
 export interface PrismSolid {
   kind: "prism";
   plane: "xy" | "xz" | "yz";
   /** 2D points in the plane axes order: xy => [x, y], xz => [x, z], yz => [y, z]. */
   points: [Numeric, Numeric][];
+  /** Optional inner loops cut out of the extrusion, in the same coordinate order as points. */
+  holes?: [Numeric, Numeric][][];
   /** Extrusion start and end along the plane normal. */
   from: Numeric;
   to: Numeric;
 }
 
-export type SolidPrimitive = BoxSolid | CylinderSolid | PrismSolid;
+export type LoftProfile =
+  | { kind: "circle"; radius: Numeric }
+  | { kind: "rect"; width: Numeric; height: Numeric; cornerRadius?: Numeric }
+  | { kind: "polygon"; points: [Numeric, Numeric][] };
+
+export interface LoftSection {
+  /** Position along the loft axis, in millimetres. Sections must be in increasing order. */
+  at: Numeric;
+  profile: LoftProfile;
+}
+
+export interface LoftSolid {
+  kind: "loft";
+  /** Axis the sections are stacked along. Defaults to z. */
+  axis?: Axis;
+  /** Number of points each profile is resampled to. Defaults to 32. */
+  segments?: number;
+  sections: LoftSection[];
+}
+
+export type SolidPrimitive =
+  | BoxSolid
+  | CylinderSolid
+  | FrustumSolid
+  | BendSolid
+  | PrismSolid
+  | LoftSolid;
 
 export interface PartArray {
   /** Number, or an expression resolving to a whole number (e.g. "[Fin Count]"). */
   count: Numeric;
   axis: Axis;
   spacing: Numeric;
+}
+
+export interface PartAnchor {
+  /** Which face of this part is driven on the X axis. */
+  x?: "min" | "max";
+  y?: "min" | "max";
+  z?: "min" | "max";
 }
 
 export interface FamilyPart {
@@ -94,6 +162,8 @@ export interface FamilyPart {
   material?: string;
   color?: string;
   array?: PartArray;
+  /** Pins which face the builder locks to the reference planes, per axis. */
+  anchor?: PartAnchor;
 }
 
 export interface MaterialDef {
@@ -115,7 +185,21 @@ export interface MepConnector {
     | "Sanitary"
     | "DomesticColdWater"
     | "DomesticHotWater"
-    | "Electrical";
+    | "Electrical"
+    | "Other Air"
+    | "Supply Air"
+    | "Return Air"
+    | "Exhaust Air"
+    | "Hydronic Supply"
+    | "Hydronic Return"
+    | "Domestic Cold Water"
+    | "Domestic Hot Water"
+    | "Power - Unbalanced"
+    | "Power - Balanced"
+    | "Fire Protection Wet"
+    | "Fire Protection Dry"
+    | "Fire Protection Preaction"
+    | "Fire Protection Other";
   shape: "round" | "rectangular";
   direction: "in" | "out" | "bidirectional";
   origin: Vec3;
@@ -214,6 +298,17 @@ export const LIMITS = {
   maxParts: 250,
   maxArrayCount: 500,
   maxNameLength: 80,
+};
+
+/**
+ * Practical part budgets by LOD. LOD describes the required information, not a
+ * hard part count; these are performance guardrails, not BIM definitions.
+ */
+export const LOD_PART_BUDGETS: Record<number, { min: number; max: number }> = {
+  200: { min: 3, max: 10 },
+  300: { min: 5, max: 20 },
+  350: { min: 10, max: 40 },
+  400: { min: 20, max: 150 },
 };
 
 export const UNITS_PER_METER = 1000;

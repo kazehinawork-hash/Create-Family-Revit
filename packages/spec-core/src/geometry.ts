@@ -32,15 +32,54 @@ export interface ResolvedCylinder {
   segments: number;
 }
 
+export interface ResolvedFrustum {
+  kind: "frustum";
+  base: Vec3n;
+  radiusBottom: number;
+  radiusTop: number;
+  height: number;
+  axis: Axis;
+  segments: number;
+}
+
+export interface ResolvedBend {
+  kind: "bend";
+  center: Vec3n;
+  radius: number;
+  tubeRadius: number;
+  angle: number;
+  startAngle: number;
+  plane: "xy" | "xz" | "yz";
+  segments: number;
+}
+
 export interface ResolvedPrism {
   kind: "prism";
   plane: "xy" | "xz" | "yz";
   points: [number, number][];
+  holes: [number, number][][];
   from: number;
   to: number;
 }
 
-export type ResolvedSolid = ResolvedBox | ResolvedCylinder | ResolvedPrism;
+export interface ResolvedLoftSection {
+  at: number;
+  points: [number, number][];
+}
+
+export interface ResolvedLoft {
+  kind: "loft";
+  axis: Axis;
+  sections: ResolvedLoftSection[];
+}
+
+export type ResolvedSolid =
+  | ResolvedBox
+  | ResolvedCylinder
+  | ResolvedFrustum
+  | ResolvedBend
+  | ResolvedPrism
+  | ResolvedLoft;
 
 export interface ResolvedPart {
   id: string;
@@ -105,6 +144,51 @@ function finalize(bounds: Bounds): Bounds | null {
   return bounds;
 }
 
+function signedArea2D(points: [number, number][]): number {
+  let area = 0;
+  for (let index = 0; index < points.length; index += 1) {
+    const [ax, ay] = points[index];
+    const [bx, by] = points[(index + 1) % points.length];
+    area += ax * by - bx * ay;
+  }
+  return area / 2;
+}
+
+/** Resamples a closed polygon to a fixed vertex count and makes it counter-clockwise. */
+function resampleLoop(points: [number, number][], count: number): [number, number][] {
+  if (points.length === 0 || count < 3) return [];
+  const loop = signedArea2D(points) < 0 ? [...points].reverse() : points;
+
+  const cumulative: number[] = [0];
+  for (let index = 0; index < loop.length; index += 1) {
+    const [ax, ay] = loop[index];
+    const [bx, by] = loop[(index + 1) % loop.length];
+    cumulative.push(cumulative[index] + Math.hypot(bx - ax, by - ay));
+  }
+
+  const total = cumulative[cumulative.length - 1];
+  if (!(total > 1e-9)) return [];
+
+  const result: [number, number][] = [];
+  let segment = 0;
+  for (let index = 0; index < count; index += 1) {
+    const distance = (total * index) / count;
+    while (segment < loop.length - 1 && cumulative[segment + 1] < distance) segment += 1;
+    const [ax, ay] = loop[segment];
+    const [bx, by] = loop[(segment + 1) % loop.length];
+    const span = cumulative[segment + 1] - cumulative[segment];
+    const t = span > 1e-12 ? (distance - cumulative[segment]) / span : 0;
+    result.push([ax + (bx - ax) * t, ay + (by - ay) * t]);
+  }
+  return result;
+}
+
+function loftPoint(axis: Axis, at: number, a: number, b: number): Vec3n {
+  if (axis === "x") return { x: at, y: a, z: b };
+  if (axis === "y") return { x: a, y: at, z: b };
+  return { x: a, y: b, z: at };
+}
+
 function solidBounds(solid: ResolvedSolid): Bounds {
   const bounds = emptyBounds();
 
@@ -155,6 +239,83 @@ function solidBounds(solid: ResolvedSolid): Bounds {
     };
     grow(bounds, lo);
     grow(bounds, hi);
+    return bounds;
+  }
+
+  if (solid.kind === "frustum") {
+    const { base, height, axis } = solid;
+    const radius = Math.max(solid.radiusBottom, solid.radiusTop);
+    const end = { ...base };
+    end[axis] += height;
+    grow(bounds, {
+      x: Math.min(base.x, end.x) - (axis === "x" ? 0 : radius),
+      y: Math.min(base.y, end.y) - (axis === "y" ? 0 : radius),
+      z: Math.min(base.z, end.z) - (axis === "z" ? 0 : radius),
+    });
+    grow(bounds, {
+      x: Math.max(base.x, end.x) + (axis === "x" ? 0 : radius),
+      y: Math.max(base.y, end.y) + (axis === "y" ? 0 : radius),
+      z: Math.max(base.z, end.z) + (axis === "z" ? 0 : radius),
+    });
+    return bounds;
+  }
+
+  if (solid.kind === "bend") {
+    // Exact envelope of the swept tube. Sampling the centreline and growing by the
+    // cross-section extent in each axis avoids the old full-ring box, which made a
+    // 90-degree elbow reserve a whole circle and pushed reference planes far away.
+    const { center, radius, tubeRadius, plane } = solid;
+    const start = (solid.startAngle * Math.PI) / 180;
+    const sweep = (solid.angle * Math.PI) / 180;
+    const u = plane === "yz" ? { x: 0, y: 1, z: 0 } : { x: 1, y: 0, z: 0 };
+    const v = plane === "xy" ? { x: 0, y: 1, z: 0 } : { x: 0, y: 0, z: 1 };
+    const steps = Math.max(
+      8,
+      Math.min(256, Math.ceil((Math.abs(sweep) * (radius + tubeRadius)) / 10)),
+    );
+
+    for (let index = 0; index <= steps; index += 1) {
+      const angle = start + (sweep * index) / steps;
+      const cos = Math.cos(angle);
+      const sin = Math.sin(angle);
+      const radial = {
+        x: u.x * cos + v.x * sin,
+        y: u.y * cos + v.y * sin,
+        z: u.z * cos + v.z * sin,
+      };
+      const point = {
+        x: center.x + radial.x * radius,
+        y: center.y + radial.y * radius,
+        z: center.z + radial.z * radius,
+      };
+      grow(bounds, point);
+
+      // The tube disc is perpendicular to the tangent, so its extent along a world
+      // axis is tubeRadius * sqrt(1 - tangent_axis^2).
+      const tangent = {
+        x: -u.x * sin + v.x * cos,
+        y: -u.y * sin + v.y * cos,
+        z: -u.z * sin + v.z * cos,
+      };
+      const extent = (component: number) =>
+        tubeRadius * Math.sqrt(Math.max(0, 1 - component * component));
+
+      const ex = extent(tangent.x);
+      const ey = extent(tangent.y);
+      const ez = extent(tangent.z);
+      grow(bounds, { x: point.x - ex, y: point.y - ey, z: point.z - ez });
+      grow(bounds, { x: point.x + ex, y: point.y + ey, z: point.z + ez });
+    }
+
+    return bounds;
+  }
+
+  if (solid.kind === "loft") {
+    for (const section of solid.sections) {
+      for (const [a, b] of section.points) {
+        grow(bounds, loftPoint(solid.axis, section.at, a, b));
+      }
+    }
     return bounds;
   }
 
@@ -222,7 +383,7 @@ export function resolveModel(
       return evaluateNode(compileExpression(text), resolution.lookup);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      throw new Error(`${path}: ${message}`);
+      throw new Error(`${path}: ${message}`, { cause: error });
     }
   };
 
@@ -277,6 +438,59 @@ export function resolveModel(
       };
     }
 
+    if (kind === "frustum") {
+      const axis = (solid.axis as Axis | undefined) ?? "z";
+      if (!["x", "y", "z"].includes(axis)) throw new Error(`${path}.axis must be x, y or z`);
+      const radiusBottom = num(solid.radiusBottom as Numeric, `${path}.radiusBottom`);
+      const radiusTop = num(solid.radiusTop as Numeric, `${path}.radiusTop`);
+      if (radiusBottom < 0 || radiusTop < 0) {
+        throw new Error(`${path} radii must be zero or greater`);
+      }
+      if (radiusBottom <= 0 && radiusTop <= 0) {
+        throw new Error(`${path} needs at least one radius greater than zero`);
+      }
+      const height = num(solid.height as Numeric, `${path}.height`);
+      if (Math.abs(height) < 1e-9) throw new Error(`${path}.height must not be zero`);
+      const segments = Math.min(96, Math.max(12, Number(solid.segments) || DEFAULT_SEGMENTS));
+      return {
+        kind: "frustum",
+        base: numVec(solid.base as { x: Numeric; y: Numeric; z: Numeric }, `${path}.base`),
+        radiusBottom,
+        radiusTop,
+        height,
+        axis,
+        segments,
+      };
+    }
+
+    if (kind === "bend") {
+      const plane = (solid.plane as "xy" | "xz" | "yz" | undefined) ?? "xy";
+      if (!["xy", "xz", "yz"].includes(plane)) {
+        throw new Error(`${path}.plane must be xy, xz or yz`);
+      }
+      const radius = num(solid.radius as Numeric, `${path}.radius`);
+      const tubeRadius = num(solid.tubeRadius as Numeric, `${path}.tubeRadius`);
+      if (radius <= 0) throw new Error(`${path}.radius must be greater than zero`);
+      if (tubeRadius <= 0) throw new Error(`${path}.tubeRadius must be greater than zero`);
+      if (tubeRadius >= radius) {
+        throw new Error(`${path}.tubeRadius must be smaller than radius`);
+      }
+      const angle = num(solid.angle as Numeric | undefined, `${path}.angle`, 90);
+      if (!(angle > 0) || angle > 360) {
+        throw new Error(`${path}.angle must be between 0 and 360 degrees`);
+      }
+      return {
+        kind: "bend",
+        center: numVec(solid.center as { x: Numeric; y: Numeric; z: Numeric }, `${path}.center`),
+        radius,
+        tubeRadius,
+        angle,
+        startAngle: num(solid.startAngle as Numeric | undefined, `${path}.startAngle`, 0),
+        plane,
+        segments: Math.min(96, Math.max(8, Number(solid.segments) || 48)),
+      };
+    }
+
     if (kind === "prism") {
       const plane = solid.plane;
       if (plane !== "xy" && plane !== "xz" && plane !== "yz") {
@@ -295,16 +509,140 @@ export function resolveModel(
           number,
         ];
       });
+
+      const rawHoles = Array.isArray(solid.holes) ? solid.holes : [];
+      const holes = rawHoles.map((hole, holeIndex) => {
+        if (!Array.isArray(hole) || hole.length < 3) {
+          throw new Error(`${path}.holes[${holeIndex}] needs at least 3 [a, b] pairs`);
+        }
+        return hole.map((point, pointIndex) => {
+          if (!Array.isArray(point) || point.length < 2) {
+            throw new Error(`${path}.holes[${holeIndex}][${pointIndex}] must be an [a, b] pair`);
+          }
+          return [
+            num(point[0], `${path}.holes[${holeIndex}][${pointIndex}][0]`),
+            num(point[1], `${path}.holes[${holeIndex}][${pointIndex}][1]`),
+          ] as [number, number];
+        });
+      });
+
       return {
         kind: "prism",
         plane,
         points,
+        holes,
         from: num(solid.from as Numeric, `${path}.from`),
         to: num(solid.to as Numeric, `${path}.to`),
       };
     }
 
-    throw new Error(`${path}.kind must be box, cylinder or prism`);
+    if (kind === "loft") {
+      const axis = (solid.axis as Axis | undefined) ?? "z";
+      if (!["x", "y", "z"].includes(axis)) throw new Error(`${path}.axis must be x, y or z`);
+      const segments = Math.min(96, Math.max(8, Number(solid.segments) || 32));
+      const rawSections = solid.sections;
+      if (!Array.isArray(rawSections) || rawSections.length < 2) {
+        throw new Error(`${path}.sections needs at least two profiles`);
+      }
+
+      const profilePoints = (profile: unknown, profilePath: string): [number, number][] => {
+        if (!profile || typeof profile !== "object") {
+          throw new Error(`${profilePath} is required`);
+        }
+        const shape = profile as Record<string, unknown>;
+        const profileKind = shape.kind;
+
+        if (profileKind === "circle") {
+          const radius = num(shape.radius as Numeric, `${profilePath}.radius`);
+          if (radius <= 0) throw new Error(`${profilePath}.radius must be greater than zero`);
+          return Array.from({ length: segments }, (_, index) => {
+            const angle = (2 * Math.PI * index) / segments;
+            return [Math.cos(angle) * radius, Math.sin(angle) * radius] as [number, number];
+          });
+        }
+
+        if (profileKind === "rect") {
+          const width = num(shape.width as Numeric, `${profilePath}.width`);
+          const height = num(shape.height as Numeric, `${profilePath}.height`);
+          if (width <= 0 || height <= 0) {
+            throw new Error(`${profilePath}.width and height must be greater than zero`);
+          }
+          const halfWidth = width / 2;
+          const halfHeight = height / 2;
+          const corner = Math.min(
+            Math.max(num(shape.cornerRadius as Numeric | undefined, `${profilePath}.cornerRadius`, 0), 0),
+            Math.min(halfWidth, halfHeight),
+          );
+          if (corner <= 1e-9) {
+            return [
+              [-halfWidth, -halfHeight],
+              [halfWidth, -halfHeight],
+              [halfWidth, halfHeight],
+              [-halfWidth, halfHeight],
+            ];
+          }
+
+          const points: [number, number][] = [];
+          const corners: [number, number, number][] = [
+            [halfWidth - corner, halfHeight - corner, 0],
+            [-(halfWidth - corner), halfHeight - corner, Math.PI / 2],
+            [-(halfWidth - corner), -(halfHeight - corner), Math.PI],
+            [halfWidth - corner, -(halfHeight - corner), (3 * Math.PI) / 2],
+          ];
+          for (const [cx, cy, start] of corners) {
+            for (let step = 0; step <= 8; step += 1) {
+              const angle = start + (step / 8) * (Math.PI / 2);
+              points.push([cx + Math.cos(angle) * corner, cy + Math.sin(angle) * corner]);
+            }
+          }
+          return points;
+        }
+
+        if (profileKind === "polygon") {
+          const rawPoints = shape.points;
+          if (!Array.isArray(rawPoints) || rawPoints.length < 3) {
+            throw new Error(`${profilePath}.points needs at least 3 [a, b] pairs`);
+          }
+          return rawPoints.map((point, index) => {
+            if (!Array.isArray(point) || point.length < 2) {
+              throw new Error(`${profilePath}.points[${index}] must be an [a, b] pair`);
+            }
+            return [
+              num(point[0], `${profilePath}.points[${index}][0]`),
+              num(point[1], `${profilePath}.points[${index}][1]`),
+            ] as [number, number];
+          });
+        }
+
+        throw new Error(`${profilePath}.kind must be circle, rect or polygon`);
+      };
+
+      const sections: ResolvedLoftSection[] = rawSections.map((section, index) => {
+        if (!section || typeof section !== "object") {
+          throw new Error(`${path}.sections[${index}] must be an object`);
+        }
+        const at = num(section.at as Numeric, `${path}.sections[${index}].at`);
+        const points = profilePoints(section.profile, `${path}.sections[${index}].profile`);
+        return { at, points };
+      });
+
+      for (let index = 1; index < sections.length; index += 1) {
+        if (!(sections[index].at > sections[index - 1].at)) {
+          throw new Error(`${path}.sections must be ordered by increasing at`);
+        }
+      }
+
+      const count = Math.max(segments, ...sections.map((section) => section.points.length));
+      const normalized = sections.map((section) => {
+        const points = resampleLoop(section.points, count);
+        if (points.length < 3) throw new Error(`${path} has a profile with no usable perimeter`);
+        return { at: section.at, points };
+      });
+
+      return { kind: "loft", axis, sections: normalized };
+    }
+
+    throw new Error(`${path}.kind must be box, cylinder, frustum, bend, prism or loft`);
   };
 
   spec.parts.forEach((part, index) => {
