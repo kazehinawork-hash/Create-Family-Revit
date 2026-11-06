@@ -7,9 +7,13 @@ export function slugify(name) {
   return (
     String(name || "family")
       .normalize("NFKD")
-      .replace(/[^\p{L}\p{N}]+/gu, "-")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/đ/g, "d")
+      .replace(/Đ/g, "D")
+      .replace(/[^a-zA-Z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "")
-      .slice(0, 80) || "family"
+      .slice(0, 80)
+      .replace(/^-+|-+$/g, "") || "family"
   );
 }
 
