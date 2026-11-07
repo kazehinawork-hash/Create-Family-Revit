@@ -44,7 +44,7 @@ function generatePs1Script(specName, safeName) {
 $ErrorActionPreference = "Continue"
 
 Write-Host "=====================================================================" -ForegroundColor Cyan
-Write-Host "  DANG KHOI DONG RUNNER DUNG NATIVE FAMILY CHO REVIT (TU DONG 100%)" -ForegroundColor Green
+Write-Host "  DANG KHOI DONG RUNNER DUNG FAMILY SNAPSHOT CHO REVIT (TU DONG 100%)" -ForegroundColor Green
 Write-Host "  Model: ${specName}" -ForegroundColor Yellow
 Write-Host "=====================================================================" -ForegroundColor Cyan
 
@@ -156,6 +156,7 @@ Write-Host "Ban khong can thao tac gi them, he thong se TU DONG dung truc tiep f
 Write-Host "---------------------------------------------------------------------" -ForegroundColor Gray
 Write-Host ""
 
+$buildStartedAt = Get-Date
 $revitProcess = Start-Process $revitExe -PassThru
 
 Write-Host "Dang theo doi va cho file .rfa xuat hien tai thu muc nay..." -ForegroundColor Cyan
@@ -163,7 +164,9 @@ Write-Host "Dang theo doi va cho file .rfa xuat hien tai thu muc nay..." -Foregr
 $rfaFound = $false
 for ($i = 0; $i -lt 180; $i++) {
     Start-Sleep -Seconds 2
-    $rfaFiles = Get-ChildItem -Path $currentDir -Filter "*.rfa"
+    $rfaFiles = Get-ChildItem -Path $currentDir -Filter "*.rfa" |
+        Where-Object { $_.LastWriteTime -ge $buildStartedAt } |
+        Sort-Object LastWriteTime -Descending
     if ($rfaFiles.Count -gt 0) {
         $rfaFound = $true
         $targetRfa = $rfaFiles[0].FullName
@@ -176,7 +179,7 @@ if ($rfaFound) {
     Write-Host "=====================================================================" -ForegroundColor Green
     Write-Host "  THANH CONG! FILE .RFA DA DUOC TAO TRUC TIEP TAI THU MUC CUA BAN:" -ForegroundColor Green
     Write-Host "  -> $targetRfa" -ForegroundColor Yellow
-    Write-Host "  File la Native Family 100% (Day du khoi Solid va tham so bien thien)!" -ForegroundColor Green
+    Write-Host "  File la snapshot day du hinh khoi; parameter la metadata, khong tu bien thien kich thuoc." -ForegroundColor Green
     Write-Host "=====================================================================" -ForegroundColor Green
 } else {
     Write-Host "Tien trinh cho qua thoi gian hoac chua hoan tat. Vui long kiem tra file build_error.log." -ForegroundColor Yellow
@@ -262,11 +265,13 @@ export async function createPortablePackage(spec) {
     "Newtonsoft.Json.dll"
   ];
 
+  const missing = requiredDlls.filter((dll) => !fs.existsSync(path.join(binDir, dll)));
+  if (missing.length > 0) {
+    throw new Error(`Add-in build is incomplete: missing ${missing.join(", ")}. Run npm run addin first.`);
+  }
+
   for (const dll of requiredDlls) {
-    const src = path.join(binDir, dll);
-    if (fs.existsSync(src)) {
-      fs.copyFileSync(src, path.join(packageDir, dll));
-    }
+    fs.copyFileSync(path.join(binDir, dll), path.join(packageDir, dll));
   }
 
   // 3. Tạo file PowerShell script (.ps1) chuẩn UTF-8 với tên riêng theo model
@@ -278,11 +283,12 @@ export async function createPortablePackage(spec) {
   fs.writeFileSync(path.join(packageDir, `1-Click-Build-${safeName}.bat`), batContent, "ascii");
 
   // 5. Tạo file HDSD ngắn gọn với tên riêng theo model
-  const readmeContent = `HUONG DAN DUNG FILE .RFA NATIVE TU DONG 100%:
-1. Chi can click dup chuot vao file "1-Click-Build-${safeName}.bat".
-2. Revit se tu dong khoi dong ngam, tu dong tao Family, dung tung khoi Solid va gan tham so.
+  const readmeContent = `HUONG DAN DUNG FILE .RFA SNAPSHOT TU DONG:
+1. Click dup chuot vao file "1-Click-Build-${safeName}.bat".
+2. Revit se tu dong khoi dong ngam, tao family snapshot day du hinh khoi va tham so.
 3. File .rfa se duoc TU DONG MOVE ve ngay thu muc nay.
 4. Cua so thu muc se tu dong mo len cho ban lay file!
+5. Parameter trong .rfa la metadata; khong tu dieu khien kich thuoc nhu studio.
 `;
   fs.writeFileSync(path.join(packageDir, `HUONG_DAN-${safeName}.txt`), readmeContent, "utf8");
 
