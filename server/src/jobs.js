@@ -74,6 +74,7 @@ export function createJob({
     spec_hash: specHash,
     idempotency_key: idempotencyKey || null,
     approved: Boolean(approved),
+    output_policy: outputPolicy,
     requester,
     spec,
     created_at: now,
@@ -138,3 +139,4 @@ function persistJob(job) {
     console.warn(`[Jobs] Failed to persist job ${job.job_id}:`, err.message);
   }
 }
+

@@ -4,7 +4,7 @@ import path from "node:path";
 import fs from "node:fs";
 import { analyzeSpec } from "@family/spec-core";
 import { config, ROOT } from "../config.js";
-import { bridgeAlive, ensureBridge, findRevitExe } from "../revit.js";
+import { bridgeAlive, findRevitExe } from "../revit.js";
 import { buildFamily } from "../bridge.js";
 import {
   computeSpecHash,
@@ -15,7 +15,6 @@ import {
   updateJob,
   listJobs,
 } from "../jobs.js";
-import { safeDownloadPath } from "../security.js";
 
 export const v1Router = express.Router();
 
