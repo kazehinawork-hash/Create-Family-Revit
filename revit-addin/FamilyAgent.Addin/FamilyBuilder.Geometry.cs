@@ -839,6 +839,10 @@ namespace FamilyAgent.Addin
                             warnings.Add($"Connector \"{connector.Id ?? connector.Name}\" was rejected by Revit");
                             continue;
                         }
+
+                        // Associate connector dimensions and MEP properties to Family Parameters
+                        ConfigureConnectorParameters(document, element, connector, parameters);
+
                         created += 1;
                     }
                     catch (Exception ex)
@@ -1012,6 +1016,74 @@ namespace FamilyAgent.Addin
                 default:
                     return ConnectorElement.CreateDuctConnector(
                         document, DuctSystemType.SupplyAir, shape, reference);
+            }
+        }
+
+        private static void ConfigureConnectorParameters(
+            Document document,
+            ConnectorElement element,
+            MepConnector connector,
+            CoreParameterSet parameters)
+        {
+            if (element == null || connector == null) return;
+            var manager = document.FamilyManager;
+
+            void TryAssociateOrSet(BuiltInParameter bip, Num? num, double fallbackVal, bool isRadius = false)
+            {
+                var p = element.get_Parameter(bip);
+                if (p == null || p.IsReadOnly) return;
+
+                if (num.HasValue)
+                {
+                    var n = num.Value;
+                    if (n.IsExpression)
+                    {
+                        var expr = n.Expression.Trim();
+                        // If expression directly references a parameter like "[Nominal Diameter]" or "[Duct Width]"
+                        var matchName = expr.Trim('[', ']');
+                        var famParam = FindParameter(manager, matchName);
+                        if (famParam != null)
+                        {
+                            try
+                            {
+                                manager.AssociateElementParameterToFamilyParameter(p, famParam);
+                                return;
+                            }
+                            catch { }
+                        }
+
+                        try
+                        {
+                            var evaluated = Expression.Evaluate(expr, parameters.Lookup);
+                            var ft = Ft(isRadius ? evaluated / 2.0 : evaluated);
+                            p.Set(ft);
+                            return;
+                        }
+                        catch { }
+                    }
+                    else if (n.Value > 0)
+                    {
+                        var ft = Ft(isRadius ? n.Value / 2.0 : n.Value);
+                        p.Set(ft);
+                        return;
+                    }
+                }
+
+                if (fallbackVal > 0)
+                {
+                    try { p.Set(Ft(isRadius ? fallbackVal / 2.0 : fallbackVal)); } catch { }
+                }
+            }
+
+            if (element.Shape == ConnectorProfileType.Round)
+            {
+                // Pipe or round duct radius
+                TryAssociateOrSet(BuiltInParameter.CONNECTOR_RADIUS, connector.Diameter, 50, isRadius: true);
+            }
+            else if (element.Shape == ConnectorProfileType.Rectangular)
+            {
+                TryAssociateOrSet(BuiltInParameter.CONNECTOR_WIDTH, connector.Width, 200);
+                TryAssociateOrSet(BuiltInParameter.CONNECTOR_HEIGHT, connector.Height, 200);
             }
         }
 
