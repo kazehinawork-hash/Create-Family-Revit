@@ -647,8 +647,14 @@ namespace FamilyAgent.Addin
 
         private static Extrusion CreatePrismForm(Document document, ResolvedSolid solid, Vec3d offset, bool isSolid)
         {
-            var length = Ft(Math.Abs(solid.To - solid.From));
-            if (length <= 0) throw new InvalidOperationException("prism has a zero depth");
+            var rawDepthMm = Math.Abs(solid.To - solid.From);
+            if (rawDepthMm <= 1e-9) throw new InvalidOperationException("prism has a zero depth");
+
+            // Revit requires extrusion depth to be at least ShortCurveTolerance (~0.85 mm = 1/360 ft).
+            // For decorative face graphics (like gauge scale markings with 0.7 mm depth), clamp to 0.9 mm
+            // to satisfy Revit's tolerance without affecting visual fidelity.
+            var depthMm = Math.Max(0.9, rawDepthMm);
+            var length = Ft(depthMm);
 
             XYZ u, v, axisUnit;
             XYZ origin;
