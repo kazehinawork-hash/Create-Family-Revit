@@ -273,7 +273,28 @@ namespace FamilyAgent.Addin
                 }
             }
 
-            return document.FamilyCreate.NewExtrusion(isSolid, profile, sketchPlane, length);
+            try
+            {
+                return document.FamilyCreate.NewExtrusion(isSolid, profile, sketchPlane, length);
+            }
+            catch
+            {
+                var reversed = new List<XYZ>(points);
+                reversed.Reverse();
+                var altProfile = new CurveArrArray();
+                altProfile.Append(LoopArray(reversed));
+                if (holes != null)
+                {
+                    foreach (var hole in holes)
+                    {
+                        if (hole == null || hole.Count < 3) continue;
+                        var revHole = new List<XYZ>(hole);
+                        revHole.Reverse();
+                        altProfile.Append(LoopArray(revHole));
+                    }
+                }
+                return document.FamilyCreate.NewExtrusion(isSolid, altProfile, sketchPlane, length);
+            }
         }
 
         private static Plane PlaneAt(XYZ origin, XYZ normal)
@@ -316,10 +337,14 @@ namespace FamilyAgent.Addin
 
             var halfWidth = width / 2;
             var halfDepth = depth / 2;
-            var radius = Ft(Math.Max(0, solid.CornerRadius));
+            var minHalf = Math.Min(halfWidth, halfDepth);
+            // If the corner radius or box thickness is close to Revit's short-curve tolerance (~0.8 mm),
+            // skip corner rounding or clamp so no zero-length straight segments or micro-chords are emitted.
+            var maxSafeRadius = Math.Max(0, minHalf - Ft(0.9));
+            var radius = Math.Min(Ft(Math.Max(0, solid.CornerRadius)), maxSafeRadius);
 
-            var points = radius > 1e-6
-                ? RoundedRectPoints(center, u, v, halfWidth, halfDepth, Math.Min(radius, Math.Min(halfWidth, halfDepth) - 1e-9))
+            var points = radius > Ft(1.2)
+                ? RoundedRectPoints(center, u, v, halfWidth, halfDepth, radius)
                 : new List<XYZ>
                 {
                     center - u * halfWidth - v * halfDepth,
@@ -393,6 +418,20 @@ namespace FamilyAgent.Addin
             var end = asBore ? length + Ft(1.2) : length;
 
             var plane = PlaneAt(start, direction);
+
+            // Use a true two-arc circular loop when radius >= 1 mm so Revit renders a smooth
+            // cylindrical surface with no vertical facet lines, matching the Three.js Smooth Shading.
+            if (radiusMm >= 1.0)
+            {
+                var sketchPlane = SketchPlane.Create(document, plane);
+                var profile = new CurveArrArray();
+                var arcLoop = new CurveArray();
+                arcLoop.Append(Arc.Create(plane, radius, 0, Math.PI));
+                arcLoop.Append(Arc.Create(plane, radius, Math.PI, 2 * Math.PI));
+                profile.Append(arcLoop);
+                return document.FamilyCreate.NewExtrusion(isSolid, profile, sketchPlane, end);
+            }
+
             var segments = SegmentsFor(radiusMm, solid.Segments);
             var points = new List<XYZ>(segments);
 
@@ -434,6 +473,26 @@ namespace FamilyAgent.Addin
             topRadius = Math.Max(topRadius, minRadius);
 
             var plane = PlaneAt(basePoint, direction);
+            if (Math.Min(bottomRadius, topRadius) * MmPerFoot >= 1.0)
+            {
+                var topCenter = basePoint + direction * height;
+                var topPlane = Plane.CreateByOriginAndBasis(topCenter, plane.XVec, plane.YVec);
+
+                var profile1Arc = new CurveArray();
+                profile1Arc.Append(Arc.Create(plane, bottomRadius, 0, Math.PI));
+                profile1Arc.Append(Arc.Create(plane, bottomRadius, Math.PI, 2 * Math.PI));
+
+                var profile2Arc = new CurveArray();
+                profile2Arc.Append(Arc.Create(topPlane, topRadius, 0, Math.PI));
+                profile2Arc.Append(Arc.Create(topPlane, topRadius, Math.PI, 2 * Math.PI));
+
+                return document.FamilyCreate.NewBlend(
+                    isSolid,
+                    profile1Arc,
+                    profile2Arc,
+                    SketchPlane.Create(document, plane));
+            }
+
             var segments = SegmentsFor(Math.Max(bottomRadius, topRadius) * MmPerFoot, solid.Segments);
             var bottom = CirclePoints(plane, basePoint, bottomRadius, segments);
             var top = CirclePoints(plane, basePoint + direction * height, topRadius, segments);
@@ -480,9 +539,9 @@ namespace FamilyAgent.Addin
         }
 
         /// <summary>
-        /// A round elbow is a circular profile revolved around an axis, which Revit stores
-        /// as a native Revolution. The profile plane contains the axis and the radial
-        /// direction, so the sweep stays planar and can be edited in the family.
+        /// A round elbow is swept as a solid ring/tube along its circular arc and materialised
+        /// as a FreeFormElement (or native Sweep), matching the studio preview's exact
+        /// coordinate basis (u, v, n) without sketch-plane revolution handedness ambiguity.
         /// </summary>
         private static Element CreateBendForm(
             Document document,
@@ -523,38 +582,67 @@ namespace FamilyAgent.Addin
             }
 
             var start = solid.StartAngle * DegToRad;
-            var radial = (u * Math.Cos(start) + v * Math.Sin(start)).Normalize();
-            var profileCenter = center + radial * radius;
-
-            var plane = Plane.CreateByOriginAndBasis(profileCenter, radial, axisUnit);
-            var segments = SegmentsFor(solid.TubeRadius, solid.Segments);
-            var points = new List<XYZ>(segments);
-            for (var i = 0; i < segments; i += 1)
-            {
-                var t = 2 * Math.PI * i / segments;
-                points.Add(
-                    profileCenter
-                    + radial * (Math.Cos(t) * tube)
-                    + axisUnit * (Math.Sin(t) * tube));
-            }
-
-            var profile = new CurveArrArray();
-            profile.Append(LoopArray(points));
-
-            var axis = Line.CreateUnbound(center, axisUnit);
-            var sketchPlane = SketchPlane.Create(document, plane);
             var angle = solid.Angle * DegToRad;
+            var end = start + angle;
+            var mid = start + angle * 0.5;
 
-            try
+            XYZ PointOnArc(double theta)
             {
-                return document.FamilyCreate.NewRevolution(isSolid, profile, sketchPlane, axis, 0, angle);
+                var dir = (u * Math.Cos(theta) + v * Math.Sin(theta)).Normalize();
+                return center + dir * radius;
             }
-            catch
+
+            var radialStart = (u * Math.Cos(start) + v * Math.Sin(start)).Normalize();
+            var tangentStart = (-u * Math.Sin(start) + v * Math.Cos(start)).Normalize();
+            var profileCenter = center + radialStart * radius;
+
+            // Ensure right-handed basis (radialStart, bitangent, tangentStart) so the profile
+            // loop is strictly counter-clockwise relative to the path tangent at parameter 0.
+            var bitangent = tangentStart.CrossProduct(radialStart).Normalize();
+            CurveLoop loop;
+            if (solid.TubeRadius >= 1.0)
             {
-                // The sketch-plane normal decides the sweep direction; -angle is the
-                // same bend on the other side of the start plane.
-                return document.FamilyCreate.NewRevolution(isSolid, profile, sketchPlane, axis, 0, -angle);
+                var profilePlane = Plane.CreateByOriginAndBasis(profileCenter, radialStart, bitangent);
+                loop = new CurveLoop();
+                loop.Append(Arc.Create(profilePlane, tube, 0, Math.PI));
+                loop.Append(Arc.Create(profilePlane, tube, Math.PI, 2 * Math.PI));
             }
+            else
+            {
+                var segments = SegmentsFor(solid.TubeRadius, solid.Segments);
+                var points = new List<XYZ>(segments);
+                for (var i = 0; i < segments; i += 1)
+                {
+                    var t = 2 * Math.PI * i / segments;
+                    points.Add(
+                        profileCenter
+                        + radialStart * (Math.Cos(t) * tube)
+                        + bitangent * (Math.Sin(t) * tube));
+                }
+                loop = Loop(points);
+            }
+
+            Curve pathCurve;
+            if (Math.Abs(solid.Angle) >= 359.9)
+            {
+                var arcPlane = Plane.CreateByOriginAndBasis(center, u, v);
+                pathCurve = Arc.Create(arcPlane, radius, 0, 2 * Math.PI);
+            }
+            else
+            {
+                pathCurve = Arc.Create(PointOnArc(start), PointOnArc(end), PointOnArc(mid));
+            }
+
+            var pathLoop = new CurveLoop();
+            pathLoop.Append(pathCurve);
+
+            var sweptSolid = GeometryCreationUtilities.CreateSweptGeometry(
+                pathLoop,
+                0,
+                pathCurve.GetEndParameter(0),
+                new List<CurveLoop> { loop });
+
+            return FreeFormElement.Create(document, sweptSolid);
         }
 
         private static Extrusion CreatePrismForm(Document document, ResolvedSolid solid, Vec3d offset, bool isSolid)
@@ -923,10 +1011,25 @@ namespace FamilyAgent.Addin
 
         private static CurveLoop Loop(IList<XYZ> points)
         {
-            var loop = new CurveLoop();
-            for (var i = 0; i < points.Count; i += 1)
+            const double minEdgeFt = 0.85 / MmPerFoot;
+            var filtered = new List<XYZ>(points.Count);
+            foreach (var pt in points)
             {
-                loop.Append(Line.CreateBound(points[i], points[(i + 1) % points.Count]));
+                if (filtered.Count == 0 || pt.DistanceTo(filtered[filtered.Count - 1]) >= minEdgeFt)
+                {
+                    filtered.Add(pt);
+                }
+            }
+            if (filtered.Count > 3 && filtered[filtered.Count - 1].DistanceTo(filtered[0]) < minEdgeFt)
+            {
+                filtered.RemoveAt(filtered.Count - 1);
+            }
+            if (filtered.Count < 3) filtered = new List<XYZ>(points);
+
+            var loop = new CurveLoop();
+            for (var i = 0; i < filtered.Count; i += 1)
+            {
+                loop.Append(Line.CreateBound(filtered[i], filtered[(i + 1) % filtered.Count]));
             }
             return loop;
         }

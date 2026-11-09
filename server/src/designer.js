@@ -27,6 +27,14 @@ Start like this and include every part you described:
 
 It must start with { and end with }.`;
 
+const JSON_OUTPUT_CONTRACT = `FINAL OUTPUT CONTRACT
+Return exactly one JSON object and nothing else.
+- The first non-whitespace character must be { and the last must be }.
+- Do not write a title, explanation, table, checklist, Markdown fence or prose before/after it.
+- Use this top-level shape:
+  {"schemaVersion":"1.0","name":"...","category":"...","units":"mm","parameters":[],"materials":[],"parts":[],"connectors":[]}
+- Put every dimension, part and material inside the JSON fields. A human-readable design document is invalid.`;
+
 /**
  * A retry only needs the spec, not the model's prose or pretty-printed whitespace.
  * Compact JSON keeps the second and third attempts from doubling the input tokens.
@@ -248,7 +256,7 @@ export async function design({ prompt, currentSpec, lod, emit, model, customApiC
 
   messages.push({
     role: "user",
-    content: `${prompt}\n\n---\nReturn the family spec as ONE JSON object only — no markdown, no headings, no explanation.`,
+    content: `${prompt}\n\n---\n${JSON_OUTPUT_CONTRACT}`,
   });
 
   const promptChars = messages.reduce((size, message) => size + message.content.length, 0);
@@ -266,6 +274,7 @@ export async function design({ prompt, currentSpec, lod, emit, model, customApiC
 
   let analysis = null;
   let attempts = 0;
+  let proseRetries = 0;
   let usage = null;
   let layoutPassUsed = false;
 
@@ -287,10 +296,18 @@ export async function design({ prompt, currentSpec, lod, emit, model, customApiC
       result = await generateJson(messages, modelOptions);
     } catch (error) {
       // The model sometimes answers with a design document instead of the JSON object.
-      // Feed it back and ask again instead of failing the whole run.
-      if (error?.name !== "LlmError" || attempt >= MAX_ATTEMPTS) throw error;
+      // Feed it back once and ask again; do not spend three full model timeouts on prose.
+      if (error?.name !== "LlmError") throw error;
 
-      emit({ type: "stage", stage: "repairing", message: "The answer was prose — asking for the JSON spec again" });
+      const proseText = typeof error.text === "string" ? error.text.trim() : "";
+      if (!proseText || proseRetries >= 1 || attempt >= MAX_ATTEMPTS) throw error;
+
+      proseRetries += 1;
+      emit({
+        type: "stage",
+        stage: "repairing",
+        message: "The answer was prose — asking for the JSON spec again",
+      });
 
       // Do not echo the prose answer: it can be tens of thousands of tokens, which makes
       // the retry slower than the original request. The brief is still in the messages.
