@@ -214,6 +214,46 @@ export function ParameterPanel({
     return map;
   }, [spec]);
 
+  const selectedPart = selectedPartId
+    ? spec.parts.find((part) => part.id === selectedPartId) ?? null
+    : null;
+
+  // Parameters that drive the selected part, including the base parameters behind
+  // any formula it references. Those base values are what the user actually edits.
+  const selectedPartParameters = useMemo(() => {
+    if (!selectedPartId) return [];
+    const part = collectPartDependencies(spec).find((entry) => entry.id === selectedPartId);
+    if (!part) return [];
+
+    const graph = buildParameterGraph(spec.parameters);
+    const byKey = new Map(spec.parameters.map((param) => [paramKey(param.name), param]));
+    const keys = new Set<string>();
+    const directKeys = new Set(part.parameters.map(paramKey));
+    const queue = [...directKeys];
+
+    while (queue.length > 0) {
+      const key = queue.shift()!;
+      if (keys.has(key)) continue;
+      keys.add(key);
+      const node = graph.byKey.get(key);
+      if (node) queue.push(...node.dependsOn.map(paramKey));
+    }
+
+    return [...keys]
+      .map((key) => {
+        const param = byKey.get(key);
+        const resolved = analysis.parameters.byKey.get(key);
+        return param && resolved ? { param, resolved, direct: directKeys.has(key) } : null;
+      })
+      .filter((item): item is { param: FamilyParameter; resolved: ResolvedParameter; direct: boolean } => Boolean(item))
+      .sort(
+        (a, b) =>
+          Number(Boolean(a.resolved.formula)) - Number(Boolean(b.resolved.formula)) ||
+          Number(b.direct) - Number(a.direct) ||
+          a.param.name.localeCompare(b.param.name),
+      );
+  }, [analysis.parameters, selectedPartId, spec]);
+
   const materialColor = (name?: string) =>
     spec.materials?.find((material) => material.name === name)?.color ?? "#a9aeb2";
 
@@ -227,6 +267,44 @@ export function ParameterPanel({
 
   return (
     <section className="pane right">
+      {selectedPart && (
+        <div className="selected-part-params">
+          <div className="selected-part-params-head">
+            <span className="selected-part-label">Part</span>
+            <strong className="selected-part-name" title={selectedPart.name}>
+              {selectedPart.name}
+            </strong>
+            <span className="selected-part-count">
+              {selectedPartParameters.length} parameter
+            </span>
+            <button
+              type="button"
+              className="selected-part-clear"
+              onClick={() => onSelectPart?.(null)}
+              title="Bỏ chọn part"
+              aria-label="Bỏ chọn part"
+            >
+              ×
+            </button>
+          </div>
+          <div className="selected-part-param-list">
+            {selectedPartParameters.length > 0 ? (
+              selectedPartParameters.map(({ param, resolved }) => (
+                <ParameterRow
+                  key={param.name}
+                  param={param}
+                  resolved={resolved}
+                  units={units}
+                  onUpdate={onUpdateParameter}
+                />
+              ))
+            ) : (
+              <div className="selected-part-empty">Part này không tham chiếu parameter trực tiếp.</div>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="tabs">
         <button
           type="button"

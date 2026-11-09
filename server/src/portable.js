@@ -31,10 +31,22 @@ function zipFolder(sourceFolder, zipFilePath) {
 }
 
 /**
+ * Escape chuỗi để nhúng an toàn vào chuỗi "..." của PowerShell.
+ * Tên family thường chứa dấu " (inch) hoặc $, làm script vỡ cú pháp.
+ */
+export function escapePowerShellString(value) {
+  return String(value)
+    .replace(/`/g, "``")
+    .replace(/"/g, '`"')
+    .replace(/\$/g, "`$");
+}
+
+/**
  * Tạo kịch bản PowerShell chạy Portable tự động 100% (Zero-click):
  * Khởi động Revit, tự động dựng hình, MOVE file .rfa ra ngoài và tự đóng Revit.
  */
-function generatePs1Script(specName, safeName) {
+function generatePs1Script(rawSpecName, safeName) {
+  const specName = escapePowerShellString(rawSpecName);
   const runnerPs1Name = `runner-${safeName}.ps1`;
   const batLauncherName = `1-Click-Build-${safeName}.bat`;
   const specFileName = `${safeName}-spec.json`;
@@ -148,7 +160,10 @@ $isRunning = Get-Process -Name "Revit" -ErrorAction SilentlyContinue
 Write-Host ""
 Write-Host "---------------------------------------------------------------------" -ForegroundColor Gray
 if ($isRunning) {
-    Write-Host "[THONG BAO]: Revit dang chay tren may. Dang khoi dong them session dung hinh..." -ForegroundColor Yellow
+    Write-Host "[LOI]: Revit dang chay. Revit chi nap add-in mot lan khi khoi dong, nen phien dang mo co the van dung DLL cu." -ForegroundColor Red
+    Write-Host "Hay DONG HOAN TOAN tat ca cua so Revit roi chay lai file .bat nay." -ForegroundColor Yellow
+    Read-Host "Nhan Enter de thoat..."
+    exit 1
 } else {
     Write-Host "[THONG BAO]: Dang khoi dong Revit de tu dong dung Native Family..." -ForegroundColor Green
 }
@@ -274,9 +289,10 @@ export async function createPortablePackage(spec) {
     fs.copyFileSync(path.join(binDir, dll), path.join(packageDir, dll));
   }
 
-  // 3. Tạo file PowerShell script (.ps1) chuẩn UTF-8 với tên riêng theo model
+  // 3. Tạo file PowerShell script (.ps1) với BOM UTF-8, vì Windows PowerShell 5.1
+  // đọc file không BOM theo ANSI và sẽ làm hỏng tên family có dấu tiếng Việt.
   const ps1Content = generatePs1Script(spec.name || "Family", safeName);
-  fs.writeFileSync(path.join(packageDir, `runner-${safeName}.ps1`), ps1Content, "utf8");
+  fs.writeFileSync(path.join(packageDir, `runner-${safeName}.ps1`), `\uFEFF${ps1Content}`, "utf8");
 
   // 4. Tạo file .bat wrapper chuẩn ASCII với tên riêng theo model
   const batContent = `@echo off\r\ncd /d "%~dp0"\r\npowershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0runner-${safeName}.ps1"\r\n`;

@@ -9,6 +9,8 @@ import { buildFamily } from "./bridge.js";
 import { agentStatus, detectAgentBackends, getCmdcModels } from "./agents.js";
 import { bridgeAlive, ensureBridge, findRevitExe } from "./revit.js";
 import { createPortablePackage } from "./portable.js";
+import { extractModelIds, normalizeModelBaseUrl } from "./model-list.js";
+import { checkModel } from "./model-check.js";
 import { writeJsonAtomic } from "./files.js";
 import {
   checkOutboundUrl,
@@ -143,7 +145,13 @@ app.get("/api/uploads/:name", (req, res) => {
   if (!INLINE_EXTENSIONS.has(extension)) {
     res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(path.basename(target))}"`);
   }
-  res.sendFile(target, { dotfiles: "deny" });
+  res.type(extension);
+  const stream = fs.createReadStream(target);
+  stream.on("error", () => {
+    if (!res.headersSent) res.status(500).json({ error: "Could not read upload" });
+    else res.end();
+  });
+  stream.pipe(res);
 });
 
 // Cheap liveness probe: the studio polls this while waiting, /api/health is too heavy
@@ -164,58 +172,143 @@ app.post("/api/verify-api", async (req, res) => {
     return res.json({ ok: false, error: guard.error });
   }
 
-  const url = (baseUrl || "").toLowerCase();
+  const modelBase = normalizeModelBaseUrl(baseUrl) || "https://api.openai.com/v1";
+  const url = modelBase.toLowerCase();
+  const trimmedKey = apiKey.trim();
   try {
     if (url.includes("googleapis.com")) {
-      // Test Gemini API with a dummy model request
-      const endpoint = `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey.trim()}`;
-      const testRes = await fetch(endpoint, { signal: AbortSignal.timeout(6000) });
+      // The Models endpoint both validates the key and returns the live catalog.
+      const root = modelBase.replace(/\/+$/, "");
+      const endpoint = `${root}/models?key=${encodeURIComponent(trimmedKey)}`;
+      const testRes = await fetch(endpoint, { signal: AbortSignal.timeout(8000) });
       if (!testRes.ok) {
-        return res.json({ ok: false, status: testRes.status, error: "API Key Google không hợp lệ hoặc không có quyền truy cập." });
+        return res.json({
+          ok: false,
+          status: testRes.status,
+          error: "API Key Google không hợp lệ hoặc không có quyền truy cập.",
+        });
       }
-      return res.json({ ok: true, provider: "Google Gemini" });
+      const payload = await testRes.json().catch(() => null);
+      return res.json({
+        ok: true,
+        provider: "Google Gemini",
+        models: extractModelIds("gemini", payload),
+      });
     }
 
     if (url.includes("anthropic.com")) {
-      // Test Anthropic Messages API
-      const endpoint = "https://api.anthropic.com/v1/messages";
+      const root = modelBase;
+      const endpoint = root.endsWith("/models") ? root : `${root}/models`;
       const testRes = await fetch(endpoint, {
-        method: "POST",
         headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey.trim(),
+          "x-api-key": trimmedKey,
           "anthropic-version": "2023-06-01",
         },
-        body: JSON.stringify({
-          model: model || "claude-3-5-haiku-latest",
-          max_tokens: 1,
-          messages: [{ role: "user", content: "hi" }],
-        }),
-        signal: AbortSignal.timeout(6000),
+        signal: AbortSignal.timeout(8000),
       });
 
       if (testRes.status === 401 || testRes.status === 403) {
-        return res.json({ ok: false, status: testRes.status, error: "API Key Anthropic không hợp lệ hoặc đã hết hạn." });
+        return res.json({
+          ok: false,
+          status: testRes.status,
+          error: "API Key Anthropic không hợp lệ hoặc đã hết hạn.",
+        });
       }
-      return res.json({ ok: true, provider: "Anthropic Claude" });
+      if (!testRes.ok) {
+        // Older Anthropic deployments may not expose /models; still verify the key.
+        const fallback = await fetch(`${root}/messages`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": trimmedKey,
+            "anthropic-version": "2023-06-01",
+          },
+          body: JSON.stringify({
+            model: model || "claude-3-5-haiku-latest",
+            max_tokens: 1,
+            messages: [{ role: "user", content: "hi" }],
+          }),
+          signal: AbortSignal.timeout(6000),
+        });
+        if (fallback.status === 401 || fallback.status === 403) {
+          return res.json({
+            ok: false,
+            status: fallback.status,
+            error: "API Key Anthropic không hợp lệ hoặc đã hết hạn.",
+          });
+        }
+        return res.json({ ok: true, provider: "Anthropic Claude", models: [] });
+      }
+      const payload = await testRes.json().catch(() => null);
+      return res.json({
+        ok: true,
+        provider: "Anthropic Claude",
+        models: extractModelIds("anthropic", payload),
+      });
     }
 
-    // Default: OpenAI compatible endpoint
-    const endpoint = (baseUrl || "https://api.openai.com/v1").replace(/\/+$/, "");
+    // Default: OpenAI compatible endpoint (OpenAI, DeepSeek, OpenRouter, Ollama...).
+    const endpoint = modelBase;
     const testUrl = `${endpoint}/models`;
     const testRes = await fetch(testUrl, {
-      headers: { Authorization: `Bearer ${apiKey.trim()}` },
+      headers: { Authorization: `Bearer ${trimmedKey}` },
       redirect: "error",
-      signal: AbortSignal.timeout(6000),
+      signal: AbortSignal.timeout(8000),
     });
 
     if (testRes.status === 401 || testRes.status === 403) {
       return res.json({ ok: false, status: testRes.status, error: "API Key không hợp lệ hoặc sai endpoint." });
     }
-    return res.json({ ok: true, provider: "OpenAI Compatible" });
+    if (!testRes.ok) {
+      // Some proxies expose chat/completions but no model catalog. Keep the key
+      // usable and let the user type a model rather than pretending it is invalid.
+      if (testRes.status === 404 || testRes.status === 405) {
+        return res.json({
+          ok: true,
+          provider: "OpenAI Compatible",
+          models: [],
+          warning: "Endpoint không cung cấp /models; hãy nhập model thủ công.",
+        });
+      }
+      return res.json({
+        ok: false,
+        status: testRes.status,
+        error: `Endpoint trả về lỗi ${testRes.status}. Kiểm tra base URL.`,
+      });
+    }
+    const payload = await testRes.json().catch(() => null);
+    return res.json({
+      ok: true,
+      provider: "OpenAI Compatible",
+      models: extractModelIds("openai", payload),
+    });
   } catch (err) {
     return res.json({ ok: false, error: err.message || "Không thể kết nối tới máy chủ API" });
   }
+});
+
+// Lightweight availability probe for the model chosen from the scanned catalog.
+app.post("/api/check-model", async (req, res) => {
+  const { baseUrl, apiKey, model } = req.body || {};
+  if (!apiKey || !apiKey.trim()) {
+    return res.json({ ok: false, error: "Chưa nhập API Key" });
+  }
+  if (!model || !String(model).trim()) {
+    return res.json({ ok: false, error: "Chưa chọn model" });
+  }
+
+  const guard = checkOutboundUrl(baseUrl || "https://api.openai.com/v1");
+  if (!guard.ok) {
+    return res.json({ ok: false, error: guard.error });
+  }
+
+  return res.json(
+    await checkModel({
+      baseUrl,
+      apiKey: apiKey.trim(),
+      model: String(model).trim(),
+    }),
+  );
 });
 
 app.get("/api/health", async (_req, res) => {

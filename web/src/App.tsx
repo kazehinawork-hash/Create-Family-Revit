@@ -427,8 +427,7 @@ export function App() {
     if (running || uploading) return;
     const hadSpec = Boolean(spec);
     const docs = attachments;
-    const names = docs.map((d) => d.name).join(", ");
-    pushEntry({ role: "user", text: docs.length > 0 ? `${text}\n(${names})` : text });
+    pushEntry({ role: "user", text, attachments: docs.length > 0 ? docs : undefined });
     setRunning(true);
     setRunStartedAt(Date.now());
     setNow(Date.now());
