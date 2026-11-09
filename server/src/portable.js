@@ -32,7 +32,7 @@ export function generateTypeCatalogContent(spec) {
   // Bảng kích thước tiêu chuẩn dải van Fivalco F6316-PPR PN16 (từ DN50 đến DN200)
   const isFivalcoPrv = (spec.name || "").toLowerCase().includes("f6316") || (spec.name || "").toLowerCase().includes("prv");
 
-  let rows = [];
+  let rows;
   if (isFivalcoPrv) {
     rows = [
       { type: "DN50 PN16 (2\")", values: [50, 230, 165, 19, 99, 125, 18] },
@@ -166,6 +166,36 @@ if (-not (Test-Path $addinDir)) {
     New-Item -ItemType Directory -Path $addinDir -Force | Out-Null
 }
 
+# Cai dat luon FamilyAgent Add-in vao %APPDATA% de sau khi build xong, mo bat ky file .rfa nao
+# trong Revit cung tu dong co tab Family Agent va tu dong cap nhat hinh hoc 3D khi sua Parameter!
+$permTargetDir = [System.IO.Path]::Combine($addinDir, "FamilyAgent")
+if (-not (Test-Path $permTargetDir)) {
+    New-Item -ItemType Directory -Path $permTargetDir -Force | Out-Null
+}
+foreach ($dll in $runnerDlls) {
+    $src = [System.IO.Path]::Combine($currentDir, $dll)
+    if (Test-Path $src) {
+        Copy-Item -Path $src -Destination (Join-Path $permTargetDir $dll) -Force -ErrorAction SilentlyContinue
+    }
+}
+$permAssemblyPath = [System.IO.Path]::Combine($permTargetDir, "FamilyAgent.Addin.dll")
+$permGuid = "8b0f4a8e-2c11-4f5a-9a0e-6f1f4d1c2a77"
+$permManifestFile = [System.IO.Path]::Combine($addinDir, "FamilyAgent.addin")
+$permManifestContent = @"
+<?xml version="1.0" encoding="utf-8"?>
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>Family Agent</Name>
+    <Assembly>$permAssemblyPath</Assembly>
+    <AddInId>$permGuid</AddInId>
+    <FullClassName>FamilyAgent.Addin.App</FullClassName>
+    <VendorId>FAMLYAGT</VendorId>
+    <VendorDescription>Family Agent — parametric Revit family studio</VendorDescription>
+  </AddIn>
+</RevitAddIns>
+"@
+[System.IO.File]::WriteAllText($permManifestFile, $permManifestContent, (New-Object System.Text.UTF8Encoding($false)))
+
 $manifestFile = [System.IO.Path]::Combine($addinDir, "FamilyAgent_Portable_Temp.addin")
 # Assembly tro den ban copy trong %TEMP%, hoan toan giai phong thu muc Downloads
 $assemblyPath = [System.IO.Path]::Combine($shadowDir, "FamilyAgent.Addin.dll")
@@ -181,6 +211,7 @@ foreach ($regKey in $codeSigningKeys) {
         New-Item -Path $regKey -Force | Out-Null
     }
     Set-ItemProperty -Path $regKey -Name $addInGuid -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
+    Set-ItemProperty -Path $regKey -Name $permGuid -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
 }
 
 # Manifest dang Application tu dong thuc thi khi khoi dong

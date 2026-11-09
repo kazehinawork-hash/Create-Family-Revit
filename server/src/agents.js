@@ -5,6 +5,52 @@ import path from "node:path";
 import { config } from "./config.js";
 import { LlmError, chatJson as openAiChatJson, dispatchCustomApi, parseModelJson } from "./llm.js";
 
+/**
+ * Antigravity CLI (agy) always writes a conversation entry, even in --print mode;
+ * it has no --no-session flag. These entries are disposable agent jobs, not user
+ * conversations, so purge the ones created from our temporary workspaces.
+ */
+async function pruneAgySessions() {
+  try {
+    const { DatabaseSync } = await import("node:sqlite");
+    const root = path.join(os.homedir(), ".gemini", "antigravity-cli");
+    const dbPath = path.join(root, "conversation_summaries.db");
+    if (!fs.existsSync(dbPath)) return;
+
+    const db = new DatabaseSync(dbPath);
+    try {
+      const rows = db
+        .prepare(
+          "SELECT conversation_id FROM conversation_summaries " +
+            "WHERE preview LIKE 'You are Family Agent%' " +
+            "AND (workspace_uris LIKE '%/Temp%' OR workspace_uris LIKE '%family-agent%')",
+        )
+        .all();
+
+      for (const row of rows) {
+        const id = String(row.conversation_id || "");
+        if (!/^[a-f0-9-]{36}$/i.test(id)) continue;
+        try {
+          try {
+            db.prepare("DELETE FROM conversations_fts WHERE conversation_id = ?").run(id);
+          } catch {
+            /* older Antigravity builds may not have the FTS table */
+          }
+          db.prepare("DELETE FROM conversation_summaries WHERE conversation_id = ?").run(id);
+          fs.rmSync(path.join(root, "brain", id), { recursive: true, force: true });
+          fs.rmSync(path.join(root, "conversations", `${id}.db`), { force: true });
+        } catch {
+          /* a live agy process may still hold this entry */
+        }
+      }
+    } finally {
+      db.close();
+    }
+  } catch (error) {
+    console.warn("[agy] session cleanup skipped:", error.message);
+  }
+}
+
 function flatten(messages) {
   const system = messages
     .filter((message) => message.role === "system")
@@ -270,10 +316,11 @@ function runCliProcess({
 
 function runCommandCode(prompt, timeoutMs, model, cwd, onProgress, signal, maxTurns = 3) {
   const chosen = model || config.agent.model;
+  const isAgy = Boolean(chosen && chosen.startsWith("agy:"));
   let executable = config.agent.command;
   let args;
 
-  if (chosen && chosen.startsWith("agy:")) {
+  if (isAgy) {
     executable = "agy";
     args = [
       "--output-format",
@@ -283,7 +330,7 @@ function runCommandCode(prompt, timeoutMs, model, cwd, onProgress, signal, maxTu
       "--dangerously-skip-permissions",
     ];
   } else {
-    args = ["-p", "--output-format", "json", "--skip-onboarding", "--max-turns", String(maxTurns)];
+    args = ["-p", "--no-session", "--output-format", "json", "--skip-onboarding", "--max-turns", String(maxTurns)];
 
     const effort = (config.agent.effort || "").trim().toLowerCase();
     if (["off", "high", "max"].includes(effort)) args.push("--effort", effort);
@@ -292,19 +339,25 @@ function runCommandCode(prompt, timeoutMs, model, cwd, onProgress, signal, maxTu
     if (safeChosen) args.push("-m", safeChosen);
   }
 
-  return runCliProcess({
-    tag: "",
-    executable,
-    args,
-    prompt,
-    cwd,
-    timeoutMs,
-    signal,
-    onStdoutLine: (event) => {
-      const description = describeEvent(event);
-      if (description && onProgress) onProgress(description);
-    },
-  });
+  return (async () => {
+    try {
+      return await runCliProcess({
+        tag: "",
+        executable,
+        args,
+        prompt,
+        cwd,
+        timeoutMs,
+        signal,
+        onStdoutLine: (event) => {
+          const description = describeEvent(event);
+          if (description && onProgress) onProgress(description);
+        },
+      });
+    } finally {
+      if (isAgy) await pruneAgySessions();
+    }
+  })();
 }
 
 function runCodexCli(prompt, timeoutMs, model, cwd, onProgress, signal) {

@@ -1,17 +1,29 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using Autodesk.Revit.DB.Events;
 using Autodesk.Revit.UI;
+using Autodesk.Revit.UI.Events;
 
 namespace FamilyAgent.Addin
 {
     public sealed class App : IExternalApplication
     {
+        public static bool AutoSyncEnabled = true;
+        private static bool _rebuilding;
+        private static readonly HashSet<int> _dirtyDocHashes = new HashSet<int>();
+        private static readonly Dictionary<int, string> _lastSignatures = new Dictionary<int, string>();
+
         public Result OnStartup(UIControlledApplication application)
         {
             AppDomain.CurrentDomain.AssemblyResolve += ResolveLocalAssembly;
 
             CreateRibbon(application);
+
+            application.ControlledApplication.DocumentChanged += OnDocumentChanged;
+            application.ControlledApplication.DocumentOpened += OnDocumentOpened;
+            application.Idling += OnIdling;
 
             if (!string.Equals(
                     Environment.GetEnvironmentVariable("FAMILY_AGENT_BRIDGE"),
@@ -29,8 +41,98 @@ namespace FamilyAgent.Addin
 
         public Result OnShutdown(UIControlledApplication application)
         {
+            application.ControlledApplication.DocumentChanged -= OnDocumentChanged;
+            application.ControlledApplication.DocumentOpened -= OnDocumentOpened;
+            application.Idling -= OnIdling;
             BridgeServer.Instance.Stop();
             return Result.Succeeded;
+        }
+
+        private static void OnDocumentOpened(object sender, DocumentOpenedEventArgs e)
+        {
+            try
+            {
+                var doc = e.Document;
+                if (doc == null || !doc.IsFamilyDocument) return;
+                var sig = FamilyBuilder.ParameterSignature(doc);
+                if (!string.IsNullOrEmpty(sig))
+                {
+                    _lastSignatures[doc.GetHashCode()] = sig;
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        private static void OnDocumentChanged(object sender, DocumentChangedEventArgs e)
+        {
+            if (_rebuilding || !AutoSyncEnabled) return;
+
+            try
+            {
+                var doc = e.GetDocument();
+                if (doc == null || !doc.IsFamilyDocument) return;
+
+                foreach (var txName in e.GetTransactionNames())
+                {
+                    if (txName != null && txName.StartsWith("Family Agent", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return;
+                    }
+                }
+
+                _dirtyDocHashes.Add(doc.GetHashCode());
+            }
+            catch
+            {
+            }
+        }
+
+        private static void OnIdling(object sender, IdlingEventArgs e)
+        {
+            if (_rebuilding || !AutoSyncEnabled || _dirtyDocHashes.Count == 0) return;
+
+            var uiApp = sender as UIApplication;
+            var doc = uiApp?.ActiveUIDocument?.Document;
+            if (doc == null || !doc.IsFamilyDocument || doc.IsModifiable) return;
+
+            var docHash = doc.GetHashCode();
+            if (!_dirtyDocHashes.Remove(docHash)) return;
+
+            try
+            {
+                var currentSig = FamilyBuilder.ParameterSignature(doc);
+                if (string.IsNullOrEmpty(currentSig)) return;
+
+                if (!_lastSignatures.TryGetValue(docHash, out var previousSig))
+                {
+                    // First edit after opening/creating: rebuild so the user's new parameter values take effect.
+                    _lastSignatures[docHash] = currentSig;
+                }
+                else if (string.Equals(previousSig, currentSig, StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                _rebuilding = true;
+                try
+                {
+                    var result = FamilyBuilder.Rebuild(doc);
+                    if (result.Ok)
+                    {
+                        _lastSignatures[docHash] = FamilyBuilder.ParameterSignature(doc);
+                    }
+                }
+                finally
+                {
+                    _rebuilding = false;
+                }
+            }
+            catch
+            {
+                _rebuilding = false;
+            }
         }
 
         private static Assembly ResolveLocalAssembly(object sender, ResolveEventArgs args)
