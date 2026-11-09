@@ -365,3 +365,58 @@ export async function deleteSavedModel(id: string): Promise<{ ok: boolean }> {
   });
   return await res.json();
 }
+
+export interface ExternalSpecPayload {
+  preview_id: string | null;
+  spec_hash: string;
+  spec: FamilySpec;
+  updated_at: string;
+  geometry_summary?: {
+    bounds?: { x: number; y: number; z: number } | null;
+    parts_count?: number;
+    parameters_count?: number;
+    connectors_count?: number;
+  };
+  warnings?: string[];
+}
+
+export async function fetchLatestExternalSpec(): Promise<ExternalSpecPayload | null> {
+  try {
+    const res = await fetch("/api/v1/spec/external/latest");
+    if (!res.ok) return null;
+    const body = await res.json();
+    return body.data || null;
+  } catch {
+    return null;
+  }
+}
+
+export function subscribeExternalSpecStream(
+  onSpec: (data: ExternalSpecPayload) => void,
+): () => void {
+  let eventSource: EventSource | null = null;
+  let active = true;
+
+  try {
+    eventSource = new EventSource("/api/v1/spec/external/stream");
+    eventSource.onmessage = (event) => {
+      if (!active) return;
+      try {
+        const data = JSON.parse(event.data);
+        if (data && data.spec && data.spec_hash) {
+          onSpec(data);
+        }
+      } catch {}
+    };
+    eventSource.onerror = () => {
+      // EventSource automatically retries connection
+    };
+  } catch {}
+
+  return () => {
+    active = false;
+    if (eventSource) {
+      eventSource.close();
+    }
+  };
+}

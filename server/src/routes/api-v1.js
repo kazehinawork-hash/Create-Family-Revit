@@ -14,6 +14,9 @@ import {
   getJob,
   updateJob,
   listJobs,
+  setLatestExternalSpec,
+  getLatestExternalSpec,
+  subscribeExternalSpec,
 } from "../jobs.js";
 
 export const v1Router = express.Router();
@@ -222,6 +225,86 @@ v1Router.post("/spec/preview", (req, res) => {
       created_at: preview.created_at,
     }),
   );
+});
+
+/**
+ * 3b. POST /api/v1/spec/external
+ * Explicitly push an external family spec from Agent/MCP to Web UI and store it.
+ */
+v1Router.post("/spec/external", (req, res) => {
+  const spec = req.body?.spec;
+  if (!spec || typeof spec !== "object") {
+    return res.status(400).json(
+      makeEnvelope(req, false, null, {
+        code: "INVALID_SPEC",
+        message: "Field 'spec' is required",
+      }),
+    );
+  }
+
+  const analysis = analyzeSpec(spec);
+  const specHash = computeSpecHash(spec);
+  const record = setLatestExternalSpec({
+    spec,
+    specHash,
+    analysis,
+    warnings: analysis?.warnings || [],
+  });
+
+  res.json(
+    makeEnvelope(req, true, {
+      pushed: true,
+      spec_hash: record.spec_hash,
+      name: spec.name || "Family",
+      updated_at: record.updated_at,
+      geometry_summary: record.geometry_summary,
+    }),
+  );
+});
+
+/**
+ * 3c. GET /api/v1/spec/external/latest
+ * Read the latest external spec (used by Web UI polling or manual fetch)
+ */
+v1Router.get("/spec/external/latest", (req, res) => {
+  const latest = getLatestExternalSpec();
+  res.json(
+    makeEnvelope(req, true, latest),
+  );
+});
+
+/**
+ * 3d. GET /api/v1/spec/external/stream
+ * Server-Sent Events stream for instant real-time sync to Web UI
+ */
+v1Router.get("/spec/external/stream", (req, res) => {
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+  });
+
+  const latest = getLatestExternalSpec();
+  if (latest) {
+    res.write(`data: ${JSON.stringify(latest)}\n\n`);
+  }
+
+  const unsubscribe = subscribeExternalSpec((data) => {
+    try {
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    } catch {}
+  });
+
+  const heartbeat = setInterval(() => {
+    try {
+      res.write(": keepalive\n\n");
+    } catch {}
+  }, 15000);
+
+  req.on("close", () => {
+    clearInterval(heartbeat);
+    unsubscribe();
+  });
 });
 
 /**
