@@ -142,7 +142,6 @@ export function parseFastParameterEdit(prompt, spec) {
   let blocked = false;
 
   for (const clause of clauses) {
-    let clauseMatched = false;
     for (const param of spec.parameters) {
       if (!param || typeof param.name !== "string") continue;
 
@@ -172,7 +171,6 @@ export function parseFastParameterEdit(prompt, spec) {
         type: param.type,
         value: param.type === "Integer" ? Math.round(value) : value,
       });
-      clauseMatched = true;
       break;
     }
     if (blocked) return null;

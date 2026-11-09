@@ -26,7 +26,7 @@ export function writeJsonAtomic(file, value, space = 2) {
         fs.copyFileSync(temp, file);
         try { fs.unlinkSync(temp); } catch {}
         return;
-      } catch (copyErr) {
+      } catch {
         // Fall back to direct write if rename and copy both fail
         fs.writeFileSync(file, JSON.stringify(value, null, space), "utf8");
         try { fs.unlinkSync(temp); } catch {}
