@@ -55,6 +55,27 @@ test("refuses formula parameters and ambiguous requests", () => {
   assert.equal(parseFastParameterEdit("làm rack dài hơn", spec), null);
 });
 
+test("supports relative adjustment (tăng / giảm)", () => {
+  const inc = parseFastParameterEdit("tăng Rack Length thêm 200 mm", spec);
+  assert.equal(inc?.value, 1200);
+
+  const dec = parseFastParameterEdit("giảm Rack Length 150", spec);
+  assert.equal(dec?.value, 850);
+});
+
+test("supports direct material and part color edits", () => {
+  const specWithMat = {
+    ...spec,
+    materials: [{ name: "Steel", color: "#888888" }],
+  };
+  const colorEdit = parseFastParameterEdit("đổi màu Steel thành đỏ", specWithMat);
+  assert.equal(colorEdit?.kind, "material-color");
+  assert.equal(colorEdit?.color, "#ff2222");
+
+  const applied = applyFastParameterEdit(specWithMat, colorEdit);
+  assert.equal(applied.materials[0].color, "#ff2222");
+});
+
 test("design applies a precise edit without invoking the agent", async () => {
   const result = await design({
     prompt: "đổi Rack Length thành 2000 mm",

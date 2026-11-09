@@ -68,6 +68,39 @@ function stripFences(text) {
   return trimmed;
 }
 
+/**
+ * Executes a fetch request with exponential backoff retry for transient network/rate-limit errors (429, 502, 503, 504).
+ */
+async function fetchWithRetry(url, init, retries = 2, baseDelayMs = 1200) {
+  let lastError;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const response = await fetch(url, init);
+      // If rate limited or server overloaded and retries remain, wait and retry
+      if (
+        attempt < retries &&
+        (response.status === 429 || response.status === 502 || response.status === 503 || response.status === 504)
+      ) {
+        const delay = baseDelayMs * Math.pow(2, attempt) + Math.random() * 300;
+        console.warn(`[llm] HTTP ${response.status} from ${url.split("?")[0]}, retrying in ${Math.round(delay)}ms (attempt ${attempt + 1}/${retries})...`);
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+      return response;
+    } catch (err) {
+      lastError = err;
+      if (attempt < retries && (err.name === "TypeError" || err.message?.includes("fetch failed"))) {
+        const delay = baseDelayMs * Math.pow(2, attempt) + Math.random() * 300;
+        console.warn(`[llm] Network failure, retrying in ${Math.round(delay)}ms (attempt ${attempt + 1}/${retries})...`);
+        await new Promise((r) => setTimeout(r, delay));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastError;
+}
+
 function noJsonError(text) {
   const preview = text.replace(/\s+/g, " ").trim().slice(0, 120);
   const error = new LlmError(
@@ -212,7 +245,7 @@ export async function geminiChatJson(messages, options = {}) {
     endpoint += (endpoint.includes("?") ? "&" : "?") + `key=${apiKey}`;
   }
 
-  const res = await fetch(endpoint, {
+  const res = await fetchWithRetry(endpoint, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -282,7 +315,7 @@ export async function anthropicChatJson(messages, options = {}) {
     body.system = systemMessage.content + "\n\nCRITICAL: Respond ONLY in valid JSON.";
   }
 
-  const res = await fetch(endpoint, {
+  const res = await fetchWithRetry(endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -352,7 +385,7 @@ export async function chatJson(messages, options = {}) {
 
   let response;
   try {
-    response = await fetch(endpoint, {
+    response = await fetchWithRetry(endpoint, {
       method: "POST",
       headers,
       body: JSON.stringify(body),
@@ -370,7 +403,7 @@ export async function chatJson(messages, options = {}) {
     schemaSupported = false;
     body.response_format = { type: "json_object" };
     try {
-      response = await fetch(endpoint, {
+      response = await fetchWithRetry(endpoint, {
         method: "POST",
         headers,
         body: JSON.stringify(body),

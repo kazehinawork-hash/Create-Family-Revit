@@ -70,13 +70,15 @@ Optional `anchor` pins which face the builder locks to the reference planes on e
 ## Geometry quality checklist (self-check before returning)
 
 - Casing, access doors, top deck or mounting rails, duct collars, electrical box, pipe stubs and internal equipment must all be modelled when the brief implies them.
+- **Revit short curve tolerance constraint**: Every dimension, thickness, and radius must be $\ge 1.0\text{ mm}$ (e.g. wall thickness, panel thickness, sheet metal). Never output dimensions or radii $< 1.0\text{ mm}$ as Revit will fail to create lines/curves shorter than 0.8 mm (1/32").
 - Real thickness: panels, flanges, gaskets and doors are 1.5-30 mm thick and tied to a parameter such as `[Panel Thickness]`. Thin visible edges are thin plates, not solid blocks.
-- Hollow connections: use `innerRadius` on collars, sleeves and fan rings instead of two nested cylinders.
+- Hollow connections: use `innerRadius` on collars, sleeves and fan rings instead of two nested cylinders. Ensure `innerRadius < radius` (recommended wall thickness $\ge 1.5\text{ mm}$).
 - Tapered sections: use `frustum` for round-to-round, `loft` for a section that changes shape (rect ↔ round), or a true `prism` profile; never a staircase of boxes.
 - No coincident faces: parts that touch are offset by 0.5-1 mm along the normal to avoid z-fighting and duplicate-face errors in Revit.
 - Nothing pokes through the casing: internal parts stay inside; pipe stubs and collars protrude only 20-80 mm.
 - Symmetry is intentional: floor/ceiling units are centred on X = 0 and Y = 0; repeated details use `array`.
 - Materials: every part has a `material` declared in `materials`, with colour, metalness and roughness.
+- **Service & Clearance Zones**: For equipment requiring maintenance (filters, valves, coil pull, burner service), create a bounding part with `id: "clearance-zone"`, `name: "Clearance Zone"`, and `material: "Clearance"` (color `#ff8c00`) to represent the operational access clearance zone.
 - No zero-size parts, no placeholder parts, no part that nothing uses.
 
 Material palette: casing steel `#b9bec2` (metalness 0.35, roughness 0.55); copper pipe `#b87333` (0.7 / 0.3); dark machinery, motor and fan scroll `#4b5257`; filter media `#cfc3a8`; electrical box `#2f363d`; galvanized trim and flange `#9aa1a6`.
@@ -114,6 +116,7 @@ Verify the pairs above (pan-coil, fan-collar, electrical box-casing, door-pipes)
 - Pipe stubs: a plain cylinder protruding 50-80 mm with the nominal DN diameter. Threads are not modelled.
 - Electrical box: a simple box on the casing side.
 - Declare `connectors` for every real port: id, name, systemType, shape, direction, origin, directionVector, and width/height or diameter, plus flow and pressureDrop when known.
+- **Accurate Connector Placement**: The connector `origin` must lie strictly on the exterior face plane of the stub or flange (offset $< 1.0\text{ mm}$ from the solid face boundary). Never place connector origins inside empty internal voids.
 
 ## Categories
 
