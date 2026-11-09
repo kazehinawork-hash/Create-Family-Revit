@@ -65,7 +65,9 @@ function ParameterRow({
   onHighlight?: (partIds: string[]) => void;
 }) {
   const derived = Boolean(resolved.formula);
-  const locked = derived || param.type === "YesNo" || (param.type === "Length" && units === "ft-in");
+  const isYesNo = param.type === "YesNo";
+  const isNumeric = param.type === "Length" || param.type === "Angle" || param.type === "Number" || param.type === "Integer";
+  const locked = derived || (param.type === "Length" && units === "ft-in");
   const display = parameterDisplay(resolved, units);
   const unit = parameterUnit(resolved, units);
   const [draft, setDraft] = useState(display);
@@ -99,6 +101,15 @@ function ParameterRow({
     }
   };
 
+  const stepValue = (direction: number) => {
+    if (locked || derived) return;
+    const currentNum = typeof resolved.value === "number" ? resolved.value : Number(draft);
+    if (!Number.isFinite(currentNum)) return;
+    const delta = param.type === "Integer" ? 1 : (currentNum < 10 ? 1 : currentNum < 100 ? 5 : 10);
+    const updated = Math.max(0, currentNum + direction * delta);
+    onUpdate(param.name, updated);
+  };
+
   return (
     <div className={`param-row ${derived ? "derived" : ""}`}>
       <span className="swatch" />
@@ -122,24 +133,67 @@ function ParameterRow({
         )}
       </div>
       <div className="param-value-wrap">
-        <input
-          className="param-input"
-          value={draft}
-          disabled={locked}
-          inputMode={param.type === "Text" ? "text" : "decimal"}
-          onChange={handleInputChange}
-          onBlur={commit}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") event.currentTarget.blur();
-            if (event.key === "Escape") {
-              setDraft(display);
-              event.currentTarget.blur();
-            }
-          }}
-          aria-label={param.name}
-          title={String(display)}
-        />
-        {unit && <span className="param-unit">{unit}</span>}
+        {isYesNo ? (
+          <label className="param-checkbox-wrap" title={`Bật/Tắt ${param.name}`}>
+            <input
+              type="checkbox"
+              className="param-checkbox"
+              disabled={derived}
+              checked={Boolean(resolved.value)}
+              onChange={(e) => onUpdate(param.name, e.target.checked ? 1 : 0)}
+            />
+            <span className="param-checkbox-label">{resolved.value ? "Yes" : "No"}</span>
+          </label>
+        ) : (
+          <>
+            {isNumeric && !locked && !derived && (
+              <div className="param-stepper">
+                <button
+                  type="button"
+                  className="btn-step"
+                  onClick={() => stepValue(-1)}
+                  title="Giảm giá trị"
+                >
+                  −
+                </button>
+                <button
+                  type="button"
+                  className="btn-step"
+                  onClick={() => stepValue(1)}
+                  title="Tăng giá trị"
+                >
+                  +
+                </button>
+              </div>
+            )}
+            <input
+              className="param-input"
+              value={draft}
+              disabled={locked}
+              inputMode={param.type === "Text" ? "text" : "decimal"}
+              onChange={handleInputChange}
+              onBlur={commit}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") event.currentTarget.blur();
+                if (event.key === "Escape") {
+                  setDraft(display);
+                  event.currentTarget.blur();
+                }
+                if (event.key === "ArrowUp") {
+                  event.preventDefault();
+                  stepValue(1);
+                }
+                if (event.key === "ArrowDown") {
+                  event.preventDefault();
+                  stepValue(-1);
+                }
+              }}
+              aria-label={param.name}
+              title={String(display)}
+            />
+            {unit && <span className="param-unit">{unit}</span>}
+          </>
+        )}
       </div>
     </div>
   );
@@ -161,7 +215,7 @@ export function ParameterPanel({
   onAddParameter,
   onHighlightParts,
 }: Props) {
-  const [tab, setTab] = useState<"parameters" | "parts">("parameters");
+  const [tab, setTab] = useState<"parameters" | "parts" | "connectors">("parameters");
   const [filter, setFilter] = useState("");
   const [partFilter, setPartFilter] = useState("");
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
@@ -320,6 +374,13 @@ export function ParameterPanel({
         >
           Parts <span className="count">{spec.parts.length}</span>
         </button>
+        <button
+          type="button"
+          className={`tab ${tab === "connectors" ? "active" : ""}`}
+          onClick={() => setTab("connectors")}
+        >
+          Connectors <span className="count">{spec.connectors?.length ?? 0}</span>
+        </button>
       </div>
 
       {tab === "parameters" && (
@@ -440,71 +501,148 @@ export function ParameterPanel({
                 const isSelected = part.id === selectedPartId;
                 const isHidden = hiddenPartIds.includes(part.id);
                 const isTransparent = transparentPartIds.includes(part.id);
-                const hasIssue = issuePartIds.includes(part.id);
+                const partIssues = analysis.issues.filter(
+                  (issue) => issue.path === `logic.geometry.${part.id}` || issue.path.startsWith(`logic.geometry.${part.id}.`)
+                );
+                const hasIssue = partIssues.length > 0 || issuePartIds.includes(part.id);
                 return (
                   <div
                     key={part.id}
-                    className={`part-row ${isSelected ? "selected" : ""} ${isHidden ? "hidden-part" : ""} ${isTransparent ? "transparent-part" : ""}`}
-                    onClick={() => onSelectPart?.(isSelected ? null : part.id)}
-                    title="Click to highlight in 3D viewer"
+                    className={`part-row-wrap ${isSelected ? "selected" : ""}`}
                   >
-                    <span className="swatch" style={{ background: part.color || materialColor(part.material) }} />
-                    <span className="name">{part.name}</span>
-                    {hasIssue && <span className="part-issue-dot" title="Cảnh báo bố trí" />}
-                    <span className="id">{part.id}</span>
-                    <div className="part-actions" onClick={(e) => e.stopPropagation()}>
-                      {onIsolatePart && (
+                    <div
+                      className={`part-row ${isSelected ? "selected" : ""} ${isHidden ? "hidden-part" : ""} ${isTransparent ? "transparent-part" : ""}`}
+                      onClick={() => onSelectPart?.(isSelected ? null : part.id)}
+                      title="Click to highlight in 3D viewer"
+                    >
+                      <span className="swatch" style={{ background: part.color || materialColor(part.material) }} />
+                      <span className="name">{part.name}</span>
+                      {hasIssue && <span className="part-issue-dot" title="Cảnh báo bố trí" />}
+                      <span className="id">{part.id}</span>
+                      <div className="part-actions" onClick={(e) => e.stopPropagation()}>
+                        {onIsolatePart && (
+                          <button
+                            type="button"
+                            className="btn-part-action"
+                            title="Chỉ hiện part này (Isolate)"
+                            onClick={() => onIsolatePart(part.id)}
+                          >
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <circle cx="12" cy="12" r="7" />
+                              <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
+                            </svg>
+                          </button>
+                        )}
                         <button
-                          type="button"
-                          className="btn-part-action"
-                          title="Chỉ hiện part này (Isolate)"
-                          onClick={() => onIsolatePart(part.id)}
-                        >
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <circle cx="12" cy="12" r="7" />
-                            <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
-                          </svg>
-                        </button>
-                      )}
+                        type="button"
+                        className={`btn-part-action ${isTransparent ? "active" : ""}`}
+                        title={isTransparent ? "Làm đặc lại (Opaque)" : "Làm mờ (Ghost / Translucent)"}
+                        onClick={() => onToggleTransparentPart?.(part.id)}
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z" />
+                          <path d="M12 6a6 6 0 0 0 0 12z" fill="currentColor" opacity={isTransparent ? 0.9 : 0.4} />
+                        </svg>
+                      </button>
                       <button
-                      type="button"
-                      className={`btn-part-action ${isTransparent ? "active" : ""}`}
-                      title={isTransparent ? "Làm đặc lại (Opaque)" : "Làm mờ (Ghost / Translucent)"}
-                      onClick={() => onToggleTransparentPart?.(part.id)}
-                    >
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z" />
-                        <path d="M12 6a6 6 0 0 0 0 12z" fill="currentColor" opacity={isTransparent ? 0.9 : 0.4} />
-                      </svg>
-                    </button>
-                    <button
-                      type="button"
-                      className={`btn-hide-part ${isHidden ? "hidden" : ""}`}
-                      title={isHidden ? "Unhide part (Hiện cấu kiện)" : "Hide part (Ẩn cấu kiện)"}
-                      onClick={() => onToggleHidePart?.(part.id)}
-                    >
-                      {isHidden ? (
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
-                          <line x1="1" y1="1" x2="23" y2="23" />
-                        </svg>
-                      ) : (
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                          <circle cx="12" cy="12" r="3" />
-                        </svg>
-                      )}
-                    </button>
+                        type="button"
+                        className={`btn-hide-part ${isHidden ? "hidden" : ""}`}
+                        title={isHidden ? "Unhide part (Hiện cấu kiện)" : "Hide part (Ẩn cấu kiện)"}
+                        onClick={() => onToggleHidePart?.(part.id)}
+                      >
+                        {isHidden ? (
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                            <line x1="1" y1="1" x2="23" y2="23" />
+                          </svg>
+                        ) : (
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                            <circle cx="12" cy="12" r="3" />
+                          </svg>
+                        )}
+                      </button>
+                    </div>
                   </div>
+                  {partIssues.length > 0 && (
+                    <div className="part-issues-list">
+                      {partIssues.map((issue, idx) => (
+                        <div key={idx} className={`part-issue-item ${issue.severity}`}>
+                          <span className="issue-icon">⚠</span>
+                          <span className="issue-msg">{issue.message}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              );
-            })}
+                );
+              })}
           </div>
           <div className="banner info">
             {analysis.model.instances} solids in the model · {spec.materials?.length ?? 0} materials
           </div>
         </div>
         </>
+      )}
+
+      {tab === "connectors" && (
+        <div className="param-scroll">
+          <div className="connectors-tab-list">
+            {(spec.connectors ?? []).length === 0 ? (
+              <div style={{ padding: "18px 12px", color: "#8c8e91" }}>
+                Chưa có MEP Connector nào trong mô hình này.
+              </div>
+            ) : (
+              (spec.connectors ?? []).map((conn, idx) => {
+                const connIssues = analysis.issues.filter(
+                  (issue) => issue.path === `logic.geometry.connector.${conn.id}`
+                );
+                const isOrphan = connIssues.some((issue) => issue.message.includes("orphaned"));
+                const dir = (conn.direction ?? "bidirectional").toLowerCase();
+                const isRound = conn.shape !== "rectangular";
+                const sizeText = isRound
+                  ? `Ø${conn.diameter ?? 50}mm`
+                  : `${conn.width ?? 200}×${conn.height ?? 200}mm`;
+
+                return (
+                  <div key={conn.id || idx} className="connector-card">
+                    <div className="connector-card-head">
+                      <div className="connector-card-title">
+                        <span className="connector-icon">⌾</span>
+                        <span className="connector-name">{conn.name || conn.id}</span>
+                        <span className={`badge-flow ${dir}`}>{dir.toUpperCase()}</span>
+                      </div>
+                      <span className="connector-size">{sizeText}</span>
+                    </div>
+
+                    <div className="connector-meta-row">
+                      <span className="connector-system">{conn.systemType}</span>
+                      <span className="connector-coords">
+                        ({Math.round(Number(conn.origin?.x ?? 0))}, {Math.round(Number(conn.origin?.y ?? 0))}, {Math.round(Number(conn.origin?.z ?? 0))})
+                      </span>
+                    </div>
+
+                    {conn.flow !== undefined && (
+                      <div className="connector-flow-row">
+                        <span>Flow: {conn.flow} {conn.flowUnit || "L/s"}</span>
+                        {conn.pressureDrop !== undefined && <span> · ΔP: {conn.pressureDrop} Pa</span>}
+                      </div>
+                    )}
+
+                    {isOrphan && (
+                      <div className="connector-orphan-warning">
+                        ⚠ Cổng kết nối đang bị lơ lửng, không chạm bề mặt chi tiết nào!
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+          <div className="banner info">
+            {spec.connectors?.length ?? 0} MEP connectors configured
+          </div>
+        </div>
       )}
     </section>
   );

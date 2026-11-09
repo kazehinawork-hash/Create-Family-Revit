@@ -275,14 +275,21 @@ export function solidGeometry(solid: ResolvedSolid): THREE.BufferGeometry {
     let geometry: THREE.BufferGeometry;
 
     if (solid.innerRadius > 0) {
-      const profile = [
-        new THREE.Vector2(solid.innerRadius, 0),
-        new THREE.Vector2(solid.radius, 0),
-        new THREE.Vector2(solid.radius, height),
-        new THREE.Vector2(solid.innerRadius, height),
-        new THREE.Vector2(solid.innerRadius, 0),
-      ];
-      geometry = new THREE.LatheGeometry(profile, segments);
+      const shape = new THREE.Shape();
+      shape.absarc(0, 0, solid.radius, 0, Math.PI * 2, false);
+      const holePath = new THREE.Path();
+      holePath.absarc(0, 0, solid.innerRadius, 0, Math.PI * 2, true);
+      shape.holes.push(holePath);
+
+      // Extrude in 2D (X, Y) along Z by `height`.
+      // Rotate by +90 around X so extrusion axis Z aligns with UP (0, 1, 0),
+      // exactly matching CylinderGeometry before applyQuaternion(quaternion).
+      geometry = new THREE.ExtrudeGeometry(shape, {
+        depth: height,
+        bevelEnabled: false,
+        curveSegments: Math.max(16, Math.floor(segments / 2)),
+      });
+      geometry.rotateX(-Math.PI / 2);
     } else {
       geometry = new THREE.CylinderGeometry(solid.radius, solid.radius, height, segments, 1, false);
       geometry.translate(0, height / 2, 0);
@@ -341,15 +348,30 @@ export function solidGeometry(solid: ResolvedSolid): THREE.BufferGeometry {
   });
 
   const low = Math.min(solid.from, solid.to);
-  const high = Math.max(solid.from, solid.to);
 
   if (solid.plane === "xy") {
     geometry.translate(0, 0, low);
   } else if (solid.plane === "xz") {
-    geometry.rotateX(Math.PI / 2);
-    geometry.translate(0, high, 0);
+    // Revit basis for xz: u = BasisX (a -> X), v = BasisZ (b -> Z), axisUnit = BasisY (from/to -> Y)
+    // ExtrudeGeometry generates 2D shape in (X, Y) with extrusion along +Z (0 to depth).
+    // We map 2D (X, Y) -> (X, Z) and depth (Z) -> Y.
+    const basis = new THREE.Matrix4().set(
+      1, 0, 0, 0,
+      0, 0, 1, 0,
+      0, 1, 0, 0,
+      0, 0, 0, 1
+    );
+    geometry.applyMatrix4(basis);
+    geometry.translate(0, low, 0);
   } else {
-    const basis = new THREE.Matrix4().set(0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1);
+    // Revit basis for yz: u = BasisY (a -> Y), v = BasisZ (b -> Z), axisUnit = BasisX (from/to -> X)
+    // We map 2D (X, Y) -> (Y, Z) and depth (Z) -> X.
+    const basis = new THREE.Matrix4().set(
+      0, 0, 1, 0,
+      1, 0, 0, 0,
+      0, 1, 0, 0,
+      0, 0, 0, 1
+    );
     geometry.applyMatrix4(basis);
     geometry.translate(low, 0, 0);
   }
@@ -527,13 +549,57 @@ export function instanceEdgeGeometry(
   return geometry;
 }
 
+function expandCutterSolid(solid: ResolvedSolid, delta = 0.5): ResolvedSolid {
+  switch (solid.kind) {
+    case "cylinder": {
+      const isPositive = solid.height >= 0;
+      const h = Math.abs(solid.height);
+      const newHeight = h + delta * 2;
+      const base = { ...solid.base };
+      base[solid.axis] += isPositive ? -delta : delta;
+      return {
+        ...solid,
+        base,
+        height: isPositive ? newHeight : -newHeight,
+      };
+    }
+    case "box": {
+      const signZ = solid.size.z >= 0 ? 1 : -1;
+      return {
+        ...solid,
+        origin: {
+          x: solid.origin.x,
+          y: solid.origin.y,
+          z: solid.origin.z - signZ * delta,
+        },
+        size: {
+          x: solid.size.x,
+          y: solid.size.y,
+          z: solid.size.z + signZ * delta * 2,
+        },
+      };
+    }
+    case "prism": {
+      const isPositive = solid.to >= solid.from;
+      return {
+        ...solid,
+        from: isPositive ? solid.from - delta : solid.from + delta,
+        to: isPositive ? solid.to + delta : solid.to - delta,
+      };
+    }
+    default:
+      return solid;
+  }
+}
+
 export function buildPartGeometry(part: ResolvedPart): PartGeometry {
   let geometry = prepare(solidGeometry(part.solid));
   let cutFailed = false;
 
   for (const cut of part.cuts) {
     try {
-      const cutter = prepare(solidGeometry(cut));
+      const expandedCut = expandCutterSolid(cut, 0.5);
+      const cutter = prepare(solidGeometry(expandedCut));
       const left = new Brush(geometry);
       const right = new Brush(cutter);
       left.updateMatrixWorld();

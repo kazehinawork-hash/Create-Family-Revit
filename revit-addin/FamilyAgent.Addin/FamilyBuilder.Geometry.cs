@@ -32,15 +32,35 @@ namespace FamilyAgent.Addin
                     for (var index = 0; index < Math.Max(1, part.ArrayCount); index += 1)
                     {
                         var offset = ArrayOffsetMm(part, index);
-                        var hasCuts = part.Cuts.Count > 0 ||
-                                      (part.Solid.Kind == "cylinder" && part.Solid.InnerRadius > 0);
+                        var hasInnerRadius = part.Solid.Kind == "cylinder" && part.Solid.InnerRadius > 0;
+                        var hasCuts = part.Cuts.Count > 0;
 
                         Element body;
-                        if (hasCuts)
+                        if (CanCreateNativeFlangeExtrusion(part))
+                        {
+                            // A cylinder with concentric inner bore and/or parallel bolt hole cuts
+                            // is extruded as a SINGLE native Revit Extrusion with 1 outer loop and multiple inner loops!
+                            try
+                            {
+                                body = CreateNativeMultiHoleFlangeForm(document, part, offset, true);
+                            }
+                            catch
+                            {
+                                body = CreateBooleanBody(document, part, offset, warnings);
+                            }
+                        }
+                        else if (hasCuts)
                         {
                             // Revit voids cut every intersecting solid, not only their host.
                             // A per-part boolean keeps the cut local, exactly like the studio.
                             body = CreateBooleanBody(document, part, offset, warnings);
+                        }
+                        else if (hasInnerRadius)
+                        {
+                            // A hollow cylinder (pipe, collar, flange sleeve) can be created directly as a
+                            // native Revit Extrusion with concentric outer and inner loops, keeping it parametric
+                            // and lightweight without resorting to a FreeFormElement.
+                            body = CreateHollowCylinderForm(document, part.Solid, offset, true);
                         }
                         else
                         {
@@ -74,6 +94,8 @@ namespace FamilyAgent.Addin
                             MaterialColor(part, materials),
                             warnings,
                             materialCache);
+
+                        ApplyVisibilitySettings(document, body, part);
                         forms.Add(body);
                         if (partByForm != null && body.Id != ElementId.InvalidElementId)
                         {
@@ -146,7 +168,52 @@ namespace FamilyAgent.Addin
             {
                 foreach (var cut in part.Cuts)
                 {
-                    var cutter = CreateForm(document, cut, offset, true);
+                    // Extend the cutter solid slightly (+0.5 mm at both ends) to prevent coplanar face
+                    // z-fighting and sliver artifacts during Revit BooleanOperationsUtils difference.
+                    var extendedCut = cut;
+                    if (cut.Kind == "cylinder")
+                    {
+                        extendedCut = new ResolvedSolid
+                        {
+                            Kind = cut.Kind,
+                            Radius = cut.Radius,
+                            InnerRadius = cut.InnerRadius,
+                            Axis = cut.Axis,
+                            Segments = cut.Segments,
+                            Height = cut.Height >= 0 ? cut.Height + 1.0 : cut.Height - 1.0,
+                            Base = new Vec3d(
+                                cut.Base.X + (cut.Axis == "x" ? (cut.Height >= 0 ? -0.5 : 0.5) : 0),
+                                cut.Base.Y + (cut.Axis == "y" ? (cut.Height >= 0 ? -0.5 : 0.5) : 0),
+                                cut.Base.Z + (cut.Axis == "z" ? (cut.Height >= 0 ? -0.5 : 0.5) : 0))
+                        };
+                    }
+                    else if (cut.Kind == "box")
+                    {
+                        var signZ = cut.Size.Z >= 0 ? 1.0 : -1.0;
+                        extendedCut = new ResolvedSolid
+                        {
+                            Kind = cut.Kind,
+                            Origin = new Vec3d(cut.Origin.X, cut.Origin.Y, cut.Origin.Z - signZ * 0.5),
+                            Size = new Vec3d(cut.Size.X, cut.Size.Y, cut.Size.Z + signZ * 1.0),
+                            RotationZ = cut.RotationZ,
+                            CornerRadius = cut.CornerRadius
+                        };
+                    }
+                    else if (cut.Kind == "prism")
+                    {
+                        var signP = cut.To >= cut.From ? 1.0 : -1.0;
+                        extendedCut = new ResolvedSolid
+                        {
+                            Kind = cut.Kind,
+                            Plane = cut.Plane,
+                            Points = cut.Points,
+                            Holes = cut.Holes,
+                            From = cut.From - signP * 0.5,
+                            To = cut.To + signP * 0.5
+                        };
+                    }
+
+                    var cutter = CreateForm(document, extendedCut, offset, true);
                     if (cutter == null) continue;
 
                     var cutterSolid = SolidOf(cutter);
@@ -338,29 +405,25 @@ namespace FamilyAgent.Addin
             var halfWidth = width / 2;
             var halfDepth = depth / 2;
             var minHalf = Math.Min(halfWidth, halfDepth);
-            // If the corner radius or box thickness is close to Revit's short-curve tolerance (~0.8 mm),
-            // skip corner rounding or clamp so no zero-length straight segments or micro-chords are emitted.
             var maxSafeRadius = Math.Max(0, minHalf - Ft(0.9));
             var radius = Math.Min(Ft(Math.Max(0, solid.CornerRadius)), maxSafeRadius);
 
-            var points = radius > Ft(1.2)
-                ? RoundedRectPoints(center, u, v, halfWidth, halfDepth, radius)
-                : new List<XYZ>
-                {
-                    center - u * halfWidth - v * halfDepth,
-                    center + u * halfWidth - v * halfDepth,
-                    center + u * halfWidth + v * halfDepth,
-                    center - u * halfWidth + v * halfDepth,
-                };
+            var plane = Plane.CreateByOriginAndBasis(center, u, v);
+            var sketchPlane = SketchPlane.Create(document, plane);
+            var profile = new CurveArrArray();
+            var loop = BuildRectLoop(plane, center, u, v, halfWidth, halfDepth, radius);
+            profile.Append(loop);
 
-            return Extrude(document, Plane.CreateByOriginAndBasis(center, u, v), points, height, isSolid);
+            return document.FamilyCreate.NewExtrusion(isSolid, profile, sketchPlane, height);
         }
 
         /// <summary>
-        /// Polyline outline of a rectangle with rounded corners, counter-clockwise in the (u, v) basis.
-        /// Revit profiles are built from lines, so the arcs are tessellated.
+        /// Creates a rectangular CurveArray profile with true Arc corners (if radius > 1.2mm)
+        /// or sharp corners (Line.CreateBound).
+        /// Using true Arc curves prevents dense faceted shading edges in Revit Hidden Line views.
         /// </summary>
-        private static List<XYZ> RoundedRectPoints(
+        private static CurveArray BuildRectLoop(
+            Plane plane,
             XYZ center,
             XYZ u,
             XYZ v,
@@ -368,30 +431,74 @@ namespace FamilyAgent.Addin
             double halfDepth,
             double radius)
         {
-            const int maxSegmentsPerCorner = 8;
-            var segmentsPerCorner = Math.Max(
-                2,
-                Math.Min(maxSegmentsPerCorner, (int)Math.Ceiling((Math.PI / 2) * radius / 1.5)));
-            var innerX = halfWidth - radius;
-            var innerY = halfDepth - radius;
-            var cornerX = new[] { innerX, -innerX, -innerX, innerX };
-            var cornerY = new[] { innerY, innerY, -innerY, -innerY };
-            var cornerStart = new[] { 0.0, Math.PI / 2, Math.PI, 3 * Math.PI / 2 };
+            var loop = new CurveArray();
 
-            var points = new List<XYZ>(4 * (segmentsPerCorner + 1));
-            for (var corner = 0; corner < 4; corner += 1)
+            if (radius > Ft(1.2) && (halfWidth - radius) >= Ft(0.8) && (halfDepth - radius) >= Ft(0.8))
             {
-                for (var step = 0; step <= segmentsPerCorner; step += 1)
-                {
-                    var angle = cornerStart[corner] + step * (Math.PI / 2) / segmentsPerCorner;
-                    points.Add(
-                        center
-                        + u * (cornerX[corner] + Math.Cos(angle) * radius)
-                        + v * (cornerY[corner] + Math.Sin(angle) * radius));
-                }
+                var innerX = halfWidth - radius;
+                var innerY = halfDepth - radius;
+
+                // Center points of the 4 corner arcs
+                var c1 = center + u * innerX + v * innerY;
+                var c2 = center - u * innerX + v * innerY;
+                var c3 = center - u * innerX - v * innerY;
+                var c4 = center + u * innerX - v * innerY;
+
+                // Arc 1: (x > 0, y > 0) from angle 0 to PI/2
+                var p1_start = c1 + u * radius;
+                var p1_end = c1 + v * radius;
+                var arc1 = Arc.Create(p1_start, p1_end, c1 + (u + v).Normalize() * radius);
+
+                // Line top: from c1 top to c2 top
+                var p2_start = c2 + v * radius;
+                var lineTop = Line.CreateBound(p1_end, p2_start);
+
+                // Arc 2: (x < 0, y > 0) from PI/2 to PI
+                var p2_end = c2 - u * radius;
+                var arc2 = Arc.Create(p2_start, p2_end, c2 + (-u + v).Normalize() * radius);
+
+                // Line left: from c2 left to c3 left
+                var p3_start = c3 - u * radius;
+                var lineLeft = Line.CreateBound(p2_end, p3_start);
+
+                // Arc 3: (x < 0, y < 0) from PI to 3*PI/2
+                var p3_end = c3 - v * radius;
+                var arc3 = Arc.Create(p3_start, p3_end, c3 + (-u - v).Normalize() * radius);
+
+                // Line bottom: from c3 bottom to c4 bottom
+                var p4_start = c4 - v * radius;
+                var lineBottom = Line.CreateBound(p3_end, p4_start);
+
+                // Arc 4: (x > 0, y < 0) from 3*PI/2 to 2*PI
+                var p4_end = c4 + u * radius;
+                var arc4 = Arc.Create(p4_start, p4_end, c4 + (u - v).Normalize() * radius);
+
+                // Line right: from c4 right to c1 right
+                var lineRight = Line.CreateBound(p4_end, p1_start);
+
+                loop.Append(arc1);
+                loop.Append(lineTop);
+                loop.Append(arc2);
+                loop.Append(lineLeft);
+                loop.Append(arc3);
+                loop.Append(lineBottom);
+                loop.Append(arc4);
+                loop.Append(lineRight);
+            }
+            else
+            {
+                var pt1 = center - u * halfWidth - v * halfDepth;
+                var pt2 = center + u * halfWidth - v * halfDepth;
+                var pt3 = center + u * halfWidth + v * halfDepth;
+                var pt4 = center - u * halfWidth + v * halfDepth;
+
+                loop.Append(Line.CreateBound(pt1, pt2));
+                loop.Append(Line.CreateBound(pt2, pt3));
+                loop.Append(Line.CreateBound(pt3, pt4));
+                loop.Append(Line.CreateBound(pt4, pt1));
             }
 
-            return points;
+            return loop;
         }
 
         private static Extrusion CreateCylinderForm(
@@ -442,6 +549,249 @@ namespace FamilyAgent.Addin
             }
 
             return Extrude(document, plane, points, end, isSolid);
+        }
+
+        private static Extrusion CreateHollowCylinderForm(
+            Document document,
+            ResolvedSolid solid,
+            Vec3d offset,
+            bool isSolid)
+        {
+            var outerRadius = Ft(solid.Radius);
+            var innerRadius = Ft(solid.InnerRadius);
+            var length = Ft(Math.Abs(solid.Height));
+
+            if (outerRadius <= 0 || innerRadius <= 0 || length <= 0)
+                throw new InvalidOperationException("hollow cylinder has a non-positive dimension");
+            if (innerRadius >= outerRadius)
+                throw new InvalidOperationException("inner radius cannot be greater than or equal to outer radius");
+
+            var direction = AxisUnit(solid.Axis) * (solid.Height >= 0 ? 1 : -1);
+            var basePoint = new XYZ(
+                Ft(solid.Base.X + offset.X),
+                Ft(solid.Base.Y + offset.Y),
+                Ft(solid.Base.Z + offset.Z));
+
+            var plane = PlaneAt(basePoint, direction);
+            var sketchPlane = SketchPlane.Create(document, plane);
+            var profile = new CurveArrArray();
+
+            if (solid.InnerRadius >= 1.0)
+            {
+                var outerLoop = new CurveArray();
+                outerLoop.Append(Arc.Create(plane, outerRadius, 0, Math.PI));
+                outerLoop.Append(Arc.Create(plane, outerRadius, Math.PI, 2 * Math.PI));
+                profile.Append(outerLoop);
+
+                var innerLoop = new CurveArray();
+                innerLoop.Append(Arc.Create(plane, innerRadius, 0, Math.PI));
+                innerLoop.Append(Arc.Create(plane, innerRadius, Math.PI, 2 * Math.PI));
+                profile.Append(innerLoop);
+            }
+            else
+            {
+                var segments = SegmentsFor(solid.Radius, solid.Segments);
+                var outerPoints = CirclePoints(plane, basePoint, outerRadius, segments);
+                var innerPoints = CirclePoints(plane, basePoint, innerRadius, segments);
+                profile.Append(LoopArray(outerPoints));
+                profile.Append(LoopArray(innerPoints));
+            }
+
+            return document.FamilyCreate.NewExtrusion(isSolid, profile, sketchPlane, length);
+        }
+
+        private static double Distance2D(double a, double b) => Math.Sqrt(a * a + b * b);
+
+        private static bool CanCreateNativeFlangeExtrusion(ResolvedPart part)
+        {
+            if (part.Cuts.Count == 0) return false;
+
+            if (part.Solid.Kind == "cylinder")
+            {
+                var axis = part.Solid.Axis;
+                var flangeRadius = part.Solid.Radius;
+                var innerBore = part.Solid.InnerRadius;
+
+                // Every cut must be a parallel cylinder along the same axis
+                for (var i = 0; i < part.Cuts.Count; i += 1)
+                {
+                    var cut = part.Cuts[i];
+                    if (cut.Kind != "cylinder" || cut.Axis != axis) return false;
+                    if (cut.Radius <= 0) return false;
+
+                    // Compute cut center distance to flange center on the perpendicular plane
+                    var dx = cut.Base.X - part.Solid.Base.X;
+                    var dy = cut.Base.Y - part.Solid.Base.Y;
+                    var dz = cut.Base.Z - part.Solid.Base.Z;
+                    var dist = axis == "x" ? Distance2D(dy, dz) : axis == "y" ? Distance2D(dx, dz) : Distance2D(dx, dy);
+
+                    // Hole must be fully within outer rim (with safe margin)
+                    if (dist + cut.Radius > flangeRadius - 0.78) return false;
+
+                    // Hole must not intersect inner bore (if bore exists)
+                    if (innerBore > 0 && dist - cut.Radius < innerBore + 0.78) return false;
+
+                    // Hole must not intersect another hole
+                    for (var j = i + 1; j < part.Cuts.Count; j += 1)
+                    {
+                        var other = part.Cuts[j];
+                        var ox = cut.Base.X - other.Base.X;
+                        var oy = cut.Base.Y - other.Base.Y;
+                        var oz = cut.Base.Z - other.Base.Z;
+                        var holeDist = axis == "x" ? Distance2D(oy, oz) : axis == "y" ? Distance2D(ox, oz) : Distance2D(ox, oy);
+                        if (holeDist < cut.Radius + other.Radius + 0.78) return false;
+                    }
+                }
+                return true;
+            }
+
+            if (part.Solid.Kind == "box")
+            {
+                var halfX = Math.Abs(part.Solid.Size.X) / 2.0;
+                var halfY = Math.Abs(part.Solid.Size.Y) / 2.0;
+                var centerX = part.Solid.Origin.X;
+                var centerY = part.Solid.Origin.Y;
+
+                // Box baseplate/flange: cuts must be perpendicular holes along Z axis
+                for (var i = 0; i < part.Cuts.Count; i += 1)
+                {
+                    var cut = part.Cuts[i];
+                    if (cut.Kind != "cylinder" || cut.Axis != "z") return false;
+                    if (cut.Radius <= 0) return false;
+
+                    // Hole must stay inside box footprint
+                    var dx = Math.Abs(cut.Base.X - centerX);
+                    var dy = Math.Abs(cut.Base.Y - centerY);
+                    if (dx + cut.Radius > halfX - 0.78 || dy + cut.Radius > halfY - 0.78) return false;
+
+                    // Hole must not intersect another hole
+                    for (var j = i + 1; j < part.Cuts.Count; j += 1)
+                    {
+                        var other = part.Cuts[j];
+                        var hx = cut.Base.X - other.Base.X;
+                        var hy = cut.Base.Y - other.Base.Y;
+                        var holeDist = Distance2D(hx, hy);
+                        if (holeDist < cut.Radius + other.Radius + 0.78) return false;
+                    }
+                }
+                return true;
+            }
+
+            return false;
+        }
+
+        private static Extrusion CreateNativeMultiHoleFlangeForm(
+            Document document,
+            ResolvedPart part,
+            Vec3d offset,
+            bool isSolid)
+        {
+            var solid = part.Solid;
+
+            if (solid.Kind == "box")
+            {
+                var width = Ft(Math.Abs(solid.Size.X));
+                var depth = Ft(Math.Abs(solid.Size.Y));
+                var height = Ft(Math.Abs(solid.Size.Z));
+
+                if (width <= 0 || depth <= 0 || height <= 0)
+                    throw new InvalidOperationException("box baseplate has non-positive dimensions");
+
+                var angle = solid.RotationZ * DegToRad;
+                var u = new XYZ(Math.Cos(angle), Math.Sin(angle), 0);
+                var v = new XYZ(-Math.Sin(angle), Math.Cos(angle), 0);
+
+                var zBase = Math.Min(solid.Origin.Z, solid.Origin.Z + solid.Size.Z) + offset.Z;
+                var center = new XYZ(
+                    Ft(solid.Origin.X + offset.X),
+                    Ft(solid.Origin.Y + offset.Y),
+                    Ft(zBase));
+
+                var halfWidth = width / 2;
+                var halfDepth = depth / 2;
+                var minHalf = Math.Min(halfWidth, halfDepth);
+                var maxSafeRadius = Math.Max(0, minHalf - Ft(0.9));
+                var radius = Math.Min(Ft(Math.Max(0, solid.CornerRadius)), maxSafeRadius);
+
+                var plane = Plane.CreateByOriginAndBasis(center, u, v);
+                var sketchPlane = SketchPlane.Create(document, plane);
+                var profile = new CurveArrArray();
+
+                // 1. Outer box rim (with true arc corners or lines)
+                var outerLoop = BuildRectLoop(plane, center, u, v, halfWidth, halfDepth, radius);
+                profile.Append(outerLoop);
+
+                // 2. Bolt hole loops from cuts
+                foreach (var cut in part.Cuts)
+                {
+                    var holeRadius = Ft(cut.Radius);
+                    var holeBase = new XYZ(
+                        Ft(cut.Base.X + offset.X),
+                        Ft(cut.Base.Y + offset.Y),
+                        Ft(zBase));
+
+                    var holePlane = Plane.CreateByOriginAndBasis(holeBase, u, v);
+                    var holeLoop = new CurveArray();
+                    holeLoop.Append(Arc.Create(holePlane, holeRadius, 0, Math.PI));
+                    holeLoop.Append(Arc.Create(holePlane, holeRadius, Math.PI, 2 * Math.PI));
+                    profile.Append(holeLoop);
+                }
+
+                return document.FamilyCreate.NewExtrusion(isSolid, profile, sketchPlane, height);
+            }
+
+            var outerRadius = Ft(solid.Radius);
+            var length = Ft(Math.Abs(solid.Height));
+
+            if (outerRadius <= 0 || length <= 0)
+                throw new InvalidOperationException("flange cylinder has non-positive dimensions");
+
+            var direction = AxisUnit(solid.Axis) * (solid.Height >= 0 ? 1 : -1);
+            var basePoint = new XYZ(
+                Ft(solid.Base.X + offset.X),
+                Ft(solid.Base.Y + offset.Y),
+                Ft(solid.Base.Z + offset.Z));
+
+            var cylPlane = PlaneAt(basePoint, direction);
+            var cylSketchPlane = SketchPlane.Create(document, cylPlane);
+            var cylProfile = new CurveArrArray();
+
+            // 1. Outer rim loop
+            var outerCylLoop = new CurveArray();
+            outerCylLoop.Append(Arc.Create(cylPlane, outerRadius, 0, Math.PI));
+            outerCylLoop.Append(Arc.Create(cylPlane, outerRadius, Math.PI, 2 * Math.PI));
+            cylProfile.Append(outerCylLoop);
+
+            // 2. Concentric inner bore loop (if any)
+            if (solid.InnerRadius > 0 && solid.InnerRadius < solid.Radius)
+            {
+                var innerRadius = Ft(solid.InnerRadius);
+                var innerLoop = new CurveArray();
+                innerLoop.Append(Arc.Create(cylPlane, innerRadius, 0, Math.PI));
+                innerLoop.Append(Arc.Create(cylPlane, innerRadius, Math.PI, 2 * Math.PI));
+                cylProfile.Append(innerLoop);
+            }
+
+            // 3. Bolt hole loops from cuts
+            foreach (var cut in part.Cuts)
+            {
+                var holeRadius = Ft(cut.Radius);
+                var holeBase = new XYZ(
+                    Ft(cut.Base.X + offset.X),
+                    Ft(cut.Base.Y + offset.Y),
+                    Ft(cut.Base.Z + offset.Z));
+
+                // Project hole center onto the flange sketch plane so all loops are strictly coplanar
+                var delta = holeBase - basePoint;
+                var projectedCenter = holeBase - direction * delta.DotProduct(direction);
+                var holePlane = Plane.CreateByOriginAndBasis(projectedCenter, cylPlane.XVec, cylPlane.YVec);
+                var holeLoop = new CurveArray();
+                holeLoop.Append(Arc.Create(holePlane, holeRadius, 0, Math.PI));
+                holeLoop.Append(Arc.Create(holePlane, holeRadius, Math.PI, 2 * Math.PI));
+                cylProfile.Append(holeLoop);
+            }
+
+            return document.FamilyCreate.NewExtrusion(isSolid, cylProfile, cylSketchPlane, length);
         }
 
         /// <summary>
@@ -802,6 +1152,8 @@ namespace FamilyAgent.Addin
             {
                 transaction.Start();
 
+                var createdElements = new List<ConnectorElement>();
+
                 foreach (var connector in spec.Connectors)
                 {
                     try
@@ -843,11 +1195,43 @@ namespace FamilyAgent.Addin
                         // Associate connector dimensions and MEP properties to Family Parameters
                         ConfigureConnectorParameters(document, element, connector, parameters);
 
+                        createdElements.Add(element);
                         created += 1;
                     }
                     catch (Exception ex)
                     {
                         warnings.Add($"Connector \"{connector.Id ?? connector.Name}\" failed: {ex.Message}");
+                    }
+                }
+
+                // Primary Connector & Link Connectors (e.g. for Valves, Strainers, inline MEP fittings)
+                if (createdElements.Count > 0)
+                {
+                    try
+                    {
+                        // Designate primary connector
+                        var primary = createdElements.FirstOrDefault(c =>
+                            Regex.IsMatch(c.Name ?? "", @"(inlet|supply|in|primary)", RegexOptions.IgnoreCase))
+                            ?? createdElements[0];
+                        if (primary != null && !primary.IsPrimary)
+                        {
+                            primary.AssignAsPrimary();
+                        }
+
+                        // Link two-way connectors (e.g. 2 pipe/duct connectors on inline components)
+                        if (createdElements.Count == 2)
+                        {
+                            var cA = createdElements[0];
+                            var cB = createdElements[1];
+                            if (cA.Domain == cB.Domain && cA.GetLinkedConnectorElement() == null)
+                            {
+                                cA.SetLinkedConnectorElement(cB);
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        warnings.Add($"Linking connectors notice: {ex.Message}");
                     }
                 }
 
@@ -871,15 +1255,13 @@ namespace FamilyAgent.Addin
         {
             host = null;
             PlanarFace best = null;
+            var bestDist = double.PositiveInfinity;
             var bestAlong = double.NegativeInfinity;
-            var bestProjection = double.PositiveInfinity;
             var maxDistance = 300.0 / MmPerFoot;
             var faces = 0;
             var noReference = 0;
             var alignedCount = 0;
             var inRange = 0;
-            var projectedCount = 0;
-            var insideCount = 0;
 
             foreach (var form in forms)
             {
@@ -901,33 +1283,34 @@ namespace FamilyAgent.Addin
                     if (normal.GetLength() < 1e-9) continue;
                     normal = normal.Normalize();
 
+                    // Connector direction must be parallel/aligned with face normal
                     var alignment = Math.Abs(normal.DotProduct(direction));
                     if (alignment < 0.95) continue;
                     alignedCount += 1;
 
+                    // Signed distance from face origin to connector origin along direction
                     var along = face.Origin.Subtract(origin).DotProduct(direction);
                     if (along < -1.0 / MmPerFoot || along > maxDistance) continue;
                     inRange += 1;
 
-                    // Face.Project/IsInside are unreliable for points that sit on the
-                    // collar axis rather than its surface. The aligned face furthest
-                    // along the connector direction is the port face in practice.
-                    projectedCount += 1;
-                    insideCount += 1;
+                    // Distance from connector origin to the face plane
+                    var distToPlane = Math.Abs(along);
 
-                    if (along <= bestAlong + 1e-9) continue;
-
-                    best = face;
-                    bestAlong = along;
-                    bestProjection = 0;
-                    host = form;
+                    // Prioritize face closest to connector origin (|along| smallest).
+                    // If multiple faces are equally close, pick the one pointing in the connector direction.
+                    if (distToPlane < bestDist - 1e-5 || (Math.Abs(distToPlane - bestDist) <= 1e-5 && along > bestAlong))
+                    {
+                        best = face;
+                        bestDist = distToPlane;
+                        bestAlong = along;
+                        host = form;
+                    }
                 }
             }
 
             diagnosis =
                 $"faces={faces}, noRef={noReference}, aligned={alignedCount}, inRange={inRange}, " +
-                $"projected={projectedCount}, inside={insideCount}, bestAlong={Math.Round(bestAlong * MmPerFoot, 2)}mm, " +
-                $"bestProjection={Math.Round(bestProjection * MmPerFoot, 2)}mm";
+                $"bestAlong={Math.Round(bestAlong * MmPerFoot, 2)}mm, bestDist={Math.Round(bestDist * MmPerFoot, 2)}mm";
             return best;
         }
 
@@ -1084,6 +1467,123 @@ namespace FamilyAgent.Addin
             {
                 TryAssociateOrSet(BuiltInParameter.CONNECTOR_WIDTH, connector.Width, 200);
                 TryAssociateOrSet(BuiltInParameter.CONNECTOR_HEIGHT, connector.Height, 200);
+            }
+
+            // Associate Flow and Pressure Drop if present
+            if (connector.Flow.HasValue)
+            {
+                TryAssociateOrSet(BuiltInParameter.RBS_PIPE_FLOW_PARAM, connector.Flow, 0);
+                TryAssociateOrSet(BuiltInParameter.RBS_DUCT_FLOW_PARAM, connector.Flow, 0);
+            }
+
+            if (connector.PressureDrop.HasValue)
+            {
+                TryAssociateOrSet(BuiltInParameter.RBS_PIPE_PRESSUREDROP_PARAM, connector.PressureDrop, 0);
+                TryAssociateOrSet(BuiltInParameter.RBS_DUCT_PRESSURE_DROP, connector.PressureDrop, 0);
+                TryAssociateOrSet(BuiltInParameter.RBS_PRESSURE_DROP, connector.PressureDrop, 0);
+            }
+
+            // Configure Flow Direction based on connector direction or name
+            try
+            {
+                var directionStr = (connector.Direction ?? "").Trim().ToLowerInvariant();
+                var nameStr = (connector.Name ?? connector.Id ?? "").Trim().ToLowerInvariant();
+
+                // 1 = In, 2 = Out, 0 = Bidirectional
+                var flowDirVal = 0;
+                if (directionStr == "in" || Regex.IsMatch(nameStr, @"(inlet|supply|in|return_in|primary)"))
+                {
+                    flowDirVal = 1; // In
+                }
+                else if (directionStr == "out" || Regex.IsMatch(nameStr, @"(outlet|exhaust|out|return_out|secondary)"))
+                {
+                    flowDirVal = 2; // Out
+                }
+
+                // Check pipe flow direction parameter
+                var pPipeDir = element.get_Parameter(BuiltInParameter.RBS_PIPE_FLOW_DIRECTION_PARAM);
+                if (pPipeDir != null && !pPipeDir.IsReadOnly)
+                {
+                    pPipeDir.Set(flowDirVal);
+                }
+
+                // Check duct flow direction parameter
+                var pDuctDir = element.get_Parameter(BuiltInParameter.RBS_DUCT_FLOW_DIRECTION_PARAM);
+                if (pDuctDir != null && !pDuctDir.IsReadOnly)
+                {
+                    pDuctDir.Set(flowDirVal);
+                }
+            }
+            catch { }
+        }
+
+        private static void ApplyVisibilitySettings(Document document, Element body, ResolvedPart part)
+        {
+            if (body is GenericForm form)
+            {
+                try
+                {
+                    var isClearance = Regex.IsMatch(
+                        (part.Id ?? "") + " " + (part.Name ?? ""),
+                        @"(clearance|maintenance|access[_\s-]?zone|service[_\s-]?area|pull[_\s-]?space)",
+                        RegexOptions.IgnoreCase);
+
+                    // If clearance, assign Clearance subcategory with custom dashed style & coarse hidden
+                    if (isClearance)
+                    {
+                        try
+                        {
+                            var familyCat = document.OwnerFamily?.FamilyCategory;
+                            if (familyCat != null && familyCat.CanAddSubcategory)
+                            {
+                                Category clearanceSubcat = null;
+                                if (familyCat.SubCategories.Contains("Clearance"))
+                                {
+                                    clearanceSubcat = familyCat.SubCategories.get_Item("Clearance");
+                                }
+                                else
+                                {
+                                    clearanceSubcat = document.Settings.Categories.NewSubcategory(familyCat, "Clearance");
+                                    clearanceSubcat.LineColor = new Color(255, 128, 0); // Orange indicator
+                                    var dashedPattern = LinePatternElement.GetLinePatternElementByName(document, "Hidden")
+                                        ?? LinePatternElement.GetLinePatternElementByName(document, "Dashed");
+                                    if (dashedPattern != null)
+                                    {
+                                        clearanceSubcat.SetLinePatternId(dashedPattern.Id, GraphicsStyleType.Projection);
+                                    }
+                                }
+
+                                if (clearanceSubcat != null)
+                                {
+                                    form.Subcategory = clearanceSubcat;
+                                }
+                            }
+                        }
+                        catch { }
+                    }
+
+                    // Small fasteners, bolts, labels or trim are set to Medium/Fine to keep Coarse views clean
+                    // Clearance is also hidden in Coarse views by default for clean 2D documentation
+                    var isSmallDetail = Regex.IsMatch(
+                        part.Name ?? "",
+                        @"(bolt|nut|screw|washer|pin|label|tag|indicator|hole)",
+                        RegexOptions.IgnoreCase);
+
+                    var vis = new FamilyElementVisibility(FamilyElementVisibilityType.Model)
+                    {
+                        IsShownInCoarse = !isSmallDetail && !isClearance,
+                        IsShownInMedium = true,
+                        IsShownInFine = true,
+                        IsShownInFrontBack = true,
+                        IsShownInLeftRight = true,
+                        IsShownInPlanRCPCut = true
+                    };
+                    form.SetVisibility(vis);
+                }
+                catch
+                {
+                    // Some generic forms may not accept visibility overrides.
+                }
             }
         }
 

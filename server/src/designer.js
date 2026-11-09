@@ -19,6 +19,176 @@ const repairPrompt = fs.readFileSync(path.join(config.dirs.prompts, "repair.md")
 
 const MAX_ATTEMPTS = 3;
 
+/** Default materials used to auto-heal missing material references */
+const DEFAULT_MATERIAL_PALETTE = {
+  steel: { color: "#8a9ba8", metalness: 0.8, roughness: 0.3 },
+  "stainless steel": { color: "#c0c0c0", metalness: 0.9, roughness: 0.2 },
+  copper: { color: "#b87333", metalness: 0.85, roughness: 0.3 },
+  brass: { color: "#d4af37", metalness: 0.8, roughness: 0.35 },
+  aluminum: { color: "#dcdcdc", metalness: 0.7, roughness: 0.4 },
+  "cast iron": { color: "#4a4a4a", metalness: 0.7, roughness: 0.6 },
+  rubber: { color: "#222222", metalness: 0.05, roughness: 0.9 },
+  plastic: { color: "#f0f0f0", metalness: 0.1, roughness: 0.5 },
+  pvc: { color: "#e8e8e8", metalness: 0.1, roughness: 0.4 },
+  glass: { color: "#a8c0d0", metalness: 0.1, roughness: 0.1 },
+  clearance: { color: "#ff8c00", metalness: 0.0, roughness: 1.0 },
+};
+
+/**
+ * Deterministic Auto-Healer / Sanitizer.
+ * Corrects trivial or deterministic spec errors before running analyzeSpec or calling LLM retry.
+ */
+export function autoHealSpec(spec) {
+  if (!spec || typeof spec !== "object") return spec;
+
+  // 1. Schema version and units
+  if (!spec.schemaVersion) spec.schemaVersion = "1.0";
+  if (!spec.units) spec.units = "mm";
+  if (typeof spec.name !== "string" || !spec.name.trim()) spec.name = "Parametric Component";
+  if (typeof spec.category !== "string" || !spec.category.trim()) spec.category = "Generic Model";
+
+  // Normalize common category name casing to match CATEGORIES in @family/spec-core
+  const catLower = spec.category.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const catMap = {
+    genericmodel: "Generic Model",
+    genericmodels: "Generic Model",
+    pipefitting: "Pipe Fitting",
+    pipefittings: "Pipe Fitting",
+    pipeaccessory: "Pipe Fitting",
+    pipeaccessories: "Pipe Fitting",
+    pipevalve: "Pipe Fitting",
+    pipevalves: "Pipe Fitting",
+    ductfitting: "Duct Fitting",
+    ductfittings: "Duct Fitting",
+    ductaccessory: "Duct Fitting",
+    ductaccessories: "Duct Fitting",
+    ductelbow: "Duct Elbow",
+    ducttransition: "Duct Transition",
+    ducttee: "Duct Tee",
+    ductcross: "Duct Cross",
+    mechanicalequipment: "Mechanical Equipment",
+    plumbingfixture: "Plumbing Fixture",
+    plumbingfixtures: "Plumbing Fixture",
+    electricalequipment: "Electrical Equipment",
+    electricalfixture: "Lighting Fixture",
+    electricalfixtures: "Lighting Fixture",
+    lightingfixture: "Lighting Fixture",
+    lightingfixtures: "Lighting Fixture",
+    specialtyequipment: "Specialty Equipment",
+    furniture: "Furniture",
+    casework: "Casework",
+    door: "Door",
+    window: "Window",
+  };
+  if (catMap[catLower]) {
+    spec.category = catMap[catLower];
+  }
+
+  // 2. Parameters normalization & clean-up
+  if (!Array.isArray(spec.parameters)) {
+    spec.parameters = [];
+  } else {
+    for (const param of spec.parameters) {
+      if (!param || typeof param !== "object") continue;
+      // If parameter has formula, it must not have value
+      if (typeof param.formula === "string" && param.formula.trim()) {
+        param.formula = param.formula.trim();
+        // Auto-fix bare subtraction/addition of bare numbers with mm if Length type: e.g. "[Height] - 140" -> "[Height] - 140mm"
+        if (!param.type || param.type === "Length") {
+          param.formula = param.formula.replace(
+            /(\[[^\]]+\]\s*[-+]\s*)(\d+(?:\.\d+)?)(?!\s*(?:mm|cm|m|ft|in|deg|°|\*|\/|[a-zA-Z]))/g,
+            "$1$2mm",
+          );
+        }
+        delete param.value;
+      }
+      if (param.type === "Integer" && typeof param.value === "number") {
+        param.value = Math.round(param.value);
+      }
+    }
+  }
+
+  // 3. Materials auto-repair: Ensure every part's material exists in spec.materials
+  if (!Array.isArray(spec.materials)) {
+    spec.materials = [];
+  }
+  const existingMats = new Map(
+    spec.materials
+      .filter((m) => m && typeof m.name === "string")
+      .map((m) => [m.name.trim().toLowerCase(), m]),
+  );
+
+  if (Array.isArray(spec.parts)) {
+    for (let i = 0; i < spec.parts.length; i++) {
+      const part = spec.parts[i];
+      if (!part || typeof part !== "object") continue;
+
+      // Ensure valid ID
+      if (!part.id || typeof part.id !== "string") {
+        part.id = `part_${i + 1}`;
+      }
+      if (!part.name || typeof part.name !== "string") {
+        part.name = `Part ${i + 1}`;
+      }
+
+      // Check material
+      const matName = typeof part.material === "string" ? part.material.trim() : "";
+      if (matName) {
+        const lowerMat = matName.toLowerCase();
+        if (!existingMats.has(lowerMat)) {
+          // Find standard color or default neutral
+          let foundStyle = { color: "#8a9ba8", metalness: 0.5, roughness: 0.5 };
+          for (const [key, val] of Object.entries(DEFAULT_MATERIAL_PALETTE)) {
+            if (lowerMat.includes(key)) {
+              foundStyle = val;
+              break;
+            }
+          }
+          const newMat = {
+            name: matName,
+            color: foundStyle.color,
+            metalness: foundStyle.metalness,
+            roughness: foundStyle.roughness,
+          };
+          spec.materials.push(newMat);
+          existingMats.set(lowerMat, newMat);
+        }
+      }
+
+      // 4. Geometry sanitizing: clamp innerRadius if innerRadius >= radius
+      const checkAndClampCylinder = (solid) => {
+        if (!solid || typeof solid !== "object") return;
+        if (solid.kind === "cylinder") {
+          const r = Number(solid.radius);
+          const ir = Number(solid.innerRadius);
+          if (Number.isFinite(r) && Number.isFinite(ir) && ir >= r && r > 0) {
+            solid.innerRadius = Math.round(r * 0.8 * 100) / 100;
+          }
+        }
+      };
+
+      checkAndClampCylinder(part.solid);
+      if (Array.isArray(part.cuts)) {
+        for (const cut of part.cuts) {
+          checkAndClampCylinder(cut);
+        }
+      }
+    }
+  }
+
+  // 5. Connectors normalization
+  if (Array.isArray(spec.connectors)) {
+    for (let i = 0; i < spec.connectors.length; i++) {
+      const conn = spec.connectors[i];
+      if (!conn || typeof conn !== "object") continue;
+      if (!conn.id) conn.id = `conn_${i + 1}`;
+      if (!conn.systemType) conn.systemType = "SupplyAir";
+    }
+  }
+
+  return spec;
+}
+
 const PROSE_REPAIR = `Your previous answer was prose, so it cannot be built. Do not repeat or explain it.
 Reply with ONE JSON object and nothing else: no headings, no bullet lists, no code fences.
 
@@ -158,9 +328,14 @@ export async function design({ prompt, currentSpec, lod, emit, model, customApiC
       if (analysis.ok) {
         analysis.spec.lod = level;
         const graph = buildParameterGraph(nextSpec.parameters);
-        const affectedParameters = graph.impactOf([edit.name]);
+        const editedNames = Array.isArray(edit.changes)
+          ? edit.changes.map((c) => c.name).filter(Boolean)
+          : edit.name && !edit.kind
+            ? [edit.name]
+            : [];
+        const affectedParameters = editedNames.length > 0 ? graph.impactOf(editedNames) : [];
         const affectedKeys = new Set(
-          [edit.name, ...affectedParameters].map((name) => name.toLowerCase()),
+          [...editedNames, ...affectedParameters].map((name) => name.toLowerCase()),
         );
         const affectedParts = collectPartDependencies(nextSpec)
           .filter((part) => part.parameters.some((name) => affectedKeys.has(name.toLowerCase())))
@@ -273,6 +448,7 @@ export async function design({ prompt, currentSpec, lod, emit, model, customApiC
   emit({ type: "stage", stage: "thinking", message: "Reading the brief" });
 
   let analysis = null;
+  let bestAnalysis = null;
   let attempts = 0;
   let proseRetries = 0;
   let usage = null;
@@ -295,6 +471,13 @@ export async function design({ prompt, currentSpec, lod, emit, model, customApiC
     try {
       result = await generateJson(messages, modelOptions);
     } catch (error) {
+      // If we already have a working or better analysis from a previous attempt, gracefully fall back
+      if (bestAnalysis && bestAnalysis.ok) {
+        console.warn(`[design] Error on attempt ${attempt}, falling back to best valid spec:`, error.message);
+        analysis = bestAnalysis;
+        break;
+      }
+
       // The model sometimes answers with a design document instead of the JSON object.
       // Feed it back once and ask again; do not spend three full model timeouts on prose.
       if (error?.name !== "LlmError") throw error;
@@ -323,7 +506,23 @@ export async function design({ prompt, currentSpec, lod, emit, model, customApiC
     );
 
     emit({ type: "stage", stage: "checking", message: "Checking the model" });
+
+    // Run deterministic auto-healer before analyzing spec
+    if (result && result.json && typeof result.json === "object") {
+      result.json = autoHealSpec(result.json);
+    }
+
     analysis = analyzeSpec(result.json);
+
+    // Keep track of the best spec seen so far
+    if (
+      !bestAnalysis ||
+      (analysis.ok && !bestAnalysis.ok) ||
+      (analysis.ok && (analysis.issues?.length ?? 0) <= (bestAnalysis.issues?.length ?? 0)) ||
+      (!analysis.ok && !bestAnalysis.ok && (analysis.errors?.length ?? 999) < (bestAnalysis.errors?.length ?? 999))
+    ) {
+      bestAnalysis = analysis;
+    }
 
     if (analysis.ok) {
       // A valid spec can still be physically wrong (e.g. a drain pan above the coil).
@@ -369,6 +568,11 @@ export async function design({ prompt, currentSpec, lod, emit, model, customApiC
         content: repairInstructions(result.json, analysis.errors, prompt),
       });
     }
+  }
+
+  // If final attempt degraded or failed, fall back to bestAnalysis if available
+  if (bestAnalysis && (!analysis || (!analysis.ok && bestAnalysis.ok))) {
+    analysis = bestAnalysis;
   }
 
   if (analysis?.spec) analysis.spec.lod = level;
