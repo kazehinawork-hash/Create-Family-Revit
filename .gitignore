@@ -16,3 +16,4 @@ blob-report/
 
 # Local studio output: generated families are the user's data, never committed.
 saved-models/
+.jobs/
