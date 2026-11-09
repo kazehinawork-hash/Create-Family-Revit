@@ -28,6 +28,7 @@ import {
   modelSaveRequest,
   uploadRequest,
 } from "./schemas.js";
+import { v1Router } from "./routes/api-v1.js";
 
 const app = express();
 app.disable("x-powered-by");
@@ -70,6 +71,9 @@ const designLimiter = createRateLimiter({ windowMs: 60_000, max: 6 });
 const buildLimiter = createRateLimiter({ windowMs: 60_000, max: 12 });
 
 app.use(express.json({ limit: "30mb" }));
+
+// Standardized V1 API for external integrations (DG App / MCP Adapter)
+app.use("/api/v1", v1Router);
 
 function normalizeAttachments(raw) {
   if (!Array.isArray(raw)) return [];
