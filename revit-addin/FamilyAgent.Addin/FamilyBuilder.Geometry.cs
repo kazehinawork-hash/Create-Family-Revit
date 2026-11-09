@@ -405,6 +405,8 @@ namespace FamilyAgent.Addin
             var halfWidth = width / 2;
             var halfDepth = depth / 2;
             var minHalf = Math.Min(halfWidth, halfDepth);
+            // If the corner radius or box thickness is close to Revit's short-curve tolerance (~0.8 mm),
+            // skip corner rounding or clamp so no zero-length straight segments or micro-chords are emitted.
             var maxSafeRadius = Math.Max(0, minHalf - Ft(0.9));
             var radius = Math.Min(Ft(Math.Max(0, solid.CornerRadius)), maxSafeRadius);
 
