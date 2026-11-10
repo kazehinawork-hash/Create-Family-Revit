@@ -259,6 +259,44 @@
         },
         {
           "type": "object",
+          "required": ["kind", "points"],
+          "properties": {
+            "kind": { "const": "revolve" },
+            "axis": { "enum": ["x", "y", "z"], "description": "Axis of revolution. Default z." },
+            "origin": { "$ref": "#/$defs/vec3", "description": "Point on the revolution axis." },
+            "points": {
+              "type": "array",
+              "minItems": 3,
+              "items": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": { "$ref": "#/$defs/numeric" }
+              },
+              "description": "Closed polygon profile in (radial, height) coordinates where radial >= 0."
+            },
+            "angle": { "$ref": "#/$defs/numeric", "description": "Revolution sweep angle in degrees. Default 360." },
+            "startAngle": { "$ref": "#/$defs/numeric", "description": "Start angle in degrees. Default 0." },
+            "segments": { "type": "integer", "minimum": 12, "maximum": 96 }
+          }
+        },
+        {
+          "type": "object",
+          "required": ["kind", "start", "end", "radius"],
+          "properties": {
+            "kind": { "const": "tube" },
+            "start": { "$ref": "#/$defs/vec3", "description": "Centre of the start face." },
+            "end": { "$ref": "#/$defs/vec3", "description": "Centre of the end face." },
+            "radius": { "$ref": "#/$defs/numeric" },
+            "innerRadius": {
+              "$ref": "#/$defs/numeric",
+              "description": "Optional inner radius; makes the tube a hollow pipe."
+            },
+            "segments": { "type": "integer", "minimum": 12, "maximum": 96 }
+          }
+        },
+        {
+          "type": "object",
           "required": ["kind", "plane", "points", "from", "to"],
           "properties": {
             "kind": { "const": "prism" },

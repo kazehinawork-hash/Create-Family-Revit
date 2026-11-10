@@ -20,23 +20,113 @@ namespace FamilyAgent.Addin
             ResolvedModel model,
             IDictionary<string, MaterialDef> materials,
             List<string> warnings,
-            IDictionary<long, ResolvedPart> partByForm)
+            IDictionary<long, ResolvedPart> partByForm,
+            List<string> failedParts)
         {
             var forms = new List<Element>();
             var materialCache = new Dictionary<string, Material>(StringComparer.OrdinalIgnoreCase);
 
-            foreach (var part in model.Parts)
+            void AddBody(Element body, ResolvedPart part, string name, string failureLabel)
             {
+                if (body == null)
+                {
+                    warnings.Add($"Part \"{failureLabel}\" produced no solid");
+                    failedParts?.Add($"{failureLabel}: produced no solid");
+                    return;
+                }
+
                 try
                 {
-                    for (var index = 0; index < Math.Max(1, part.ArrayCount); index += 1)
+                    body.Name = name;
+                }
+                catch
+                {
+                    // Forms do not always accept a name.
+                }
+
+                AssignMaterial(
+                    document,
+                    body,
+                    MaterialName(part, materials),
+                    MaterialColor(part, materials),
+                    warnings,
+                    materialCache);
+
+                ApplyVisibilitySettings(document, body, part);
+                forms.Add(body);
+                if (partByForm != null && body.Id != ElementId.InvalidElementId)
+                {
+                    // LockGeometry needs to know which part a form belongs to in
+                    // order to honour its anchor.
+                    partByForm[body.Id.Value] = part;
+                }
+            }
+
+            foreach (var part in model.Parts)
+            {
+                for (var index = 0; index < Math.Max(1, part.ArrayCount); index += 1)
+                {
+                    var label = part.ArrayCount > 1 ? $"{part.Id}[{index + 1}]" : part.Id;
+                    try
                     {
                         var offset = ArrayOffsetMm(part, index);
                         var hasInnerRadius = part.Solid.Kind == "cylinder" && part.Solid.InnerRadius > 0;
                         var hasCuts = part.Cuts.Count > 0;
+                        var displayName = part.ArrayCount > 1 ? $"{part.Name} {index + 1}" : part.Name;
+
+                        if (TrySplitPrismByThroughCuts(part, out var splitPieces))
+                        {
+                            // The studio preview shows the pieces left by a through-cut;
+                            // build each piece as its own native prism instead of dropping
+                            // the notch and keeping one uncut body.
+                            var createdPieces = 0;
+                            for (var pieceIndex = 0; pieceIndex < splitPieces.Count; pieceIndex += 1)
+                            {
+                                var pieceName = part.ArrayCount > 1
+                                    ? $"{part.Name} {index + 1}.{pieceIndex + 1}"
+                                    : $"{part.Name} {pieceIndex + 1}";
+                                var pieceLabel = $"{label}.{pieceIndex + 1}";
+                                try
+                                {
+                                    var pieceBody = CreateNativeMultiHolePrismForm(
+                                        document,
+                                        part,
+                                        offset,
+                                        true,
+                                        splitPieces[pieceIndex],
+                                        new List<List<Vec2d>>());
+                                    if (pieceBody != null) createdPieces += 1;
+                                    AddBody(pieceBody, part, pieceName, pieceLabel);
+                                }
+                                catch (Exception ex)
+                                {
+                                    warnings.Add($"Part \"{pieceLabel}\" failed: {ex.Message}");
+                                    failedParts?.Add($"{pieceLabel}: {ex.Message}");
+                                }
+                            }
+
+                            if (createdPieces > 0) continue;
+                            // Fall through to the normal single-body path so a bad split
+                            // still leaves the part visible instead of losing it.
+                        }
 
                         Element body;
-                        if (CanCreateNativeFlangeExtrusion(part))
+                        if (CanCreateNativePrismExtrusion(
+                                part, out var prismOuter, out var prismHoles, warnings))
+                        {
+                            // A prism whose cuts are holes perpendicular to the extrusion is
+                            // one native Extrusion with inner loops, not a fragile boolean.
+                            try
+                            {
+                                body = CreateNativeMultiHolePrismForm(
+                                    document, part, offset, true, prismOuter, prismHoles);
+                            }
+                            catch
+                            {
+                                body = CreateBooleanBody(document, part, offset, warnings);
+                            }
+                        }
+                        else if (CanCreateNativeFlangeExtrusion(part))
                         {
                             // A cylinder with concentric inner bore and/or parallel bolt hole cuts
                             // is extruded as a SINGLE native Revit Extrusion with 1 outer loop and multiple inner loops!
@@ -72,46 +162,95 @@ namespace FamilyAgent.Addin
                             body = body ?? CreateForm(document, part.Solid, offset, true);
                         }
 
-                        if (body == null)
-                        {
-                            warnings.Add($"Part \"{part.Id}\" produced no solid");
-                            continue;
-                        }
-
-                        try
-                        {
-                            body.Name = part.ArrayCount > 1 ? $"{part.Name} {index + 1}" : part.Name;
-                        }
-                        catch
-                        {
-                            // Forms do not always accept a name.
-                        }
-
-                        AssignMaterial(
-                            document,
-                            body,
-                            MaterialName(part, materials),
-                            MaterialColor(part, materials),
-                            warnings,
-                            materialCache);
-
-                        ApplyVisibilitySettings(document, body, part);
-                        forms.Add(body);
-                        if (partByForm != null && body.Id != ElementId.InvalidElementId)
-                        {
-                            // LockGeometry needs to know which part a form belongs to in
-                            // order to honour its anchor.
-                            partByForm[body.Id.Value] = part;
-                        }
+                        AddBody(body, part, displayName, label);
                     }
-                }
-                catch (Exception ex)
-                {
-                    warnings.Add($"Part \"{part.Id}\" failed: {ex.Message}");
+                    catch (Exception ex)
+                    {
+                        warnings.Add($"Part \"{label}\" failed: {ex.Message}");
+                        failedParts?.Add($"{label}: {ex.Message}");
+                    }
                 }
             }
 
             return forms;
+        }
+
+        /// <summary>
+        /// Joining overlapping forms of the same material removes the internal faces that
+        /// separate cast parts would otherwise expose in sections and hidden-line views.
+        /// Different materials are left alone so a brass bolt does not repaint the body.
+        /// Set FAMILY_AGENT_JOIN=0 to keep every form separate.
+        /// </summary>
+        private static readonly bool JoinSameMaterial = !string.Equals(
+            Environment.GetEnvironmentVariable("FAMILY_AGENT_JOIN"),
+            "0",
+            StringComparison.OrdinalIgnoreCase);
+
+        private static int JoinOverlappingForms(
+            Document document,
+            IList<Element> forms,
+            IDictionary<long, ResolvedPart> partByForm,
+            IDictionary<string, MaterialDef> materials,
+            List<string> warnings)
+        {
+            if (!JoinSameMaterial || forms == null || forms.Count < 2 || partByForm == null)
+                return 0;
+
+            // JoinGeometryUtils only works in project documents; a family document throws
+            // "document is not a project document" for every pair. Skip joins there.
+            if (document.IsFamilyDocument) return 0;
+
+            var candidates = new List<(Element Form, string Material, BoundingBoxXYZ Box)>();
+            foreach (var form in forms)
+            {
+                if (form == null || form.Id == ElementId.InvalidElementId) continue;
+                if (!partByForm.TryGetValue(form.Id.Value, out var part)) continue;
+                var material = MaterialName(part, materials) ?? string.Empty;
+                if (material.Length == 0) continue;
+
+                BoundingBoxXYZ box = null;
+                try { box = form.get_BoundingBox(null); } catch { }
+                if (box == null) continue;
+                candidates.Add((form, material, box));
+            }
+
+            var joins = 0;
+            for (var i = 0; i < candidates.Count; i += 1)
+            {
+                for (var j = i + 1; j < candidates.Count; j += 1)
+                {
+                    var a = candidates[i];
+                    var b = candidates[j];
+                    if (!string.Equals(a.Material, b.Material, StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    if (!BoxesOverlap(a.Box, b.Box)) continue;
+
+                    try
+                    {
+                        if (JoinGeometryUtils.AreElementsJoined(document, a.Form, b.Form)) continue;
+                        JoinGeometryUtils.JoinGeometry(document, a.Form, b.Form);
+                        joins += 1;
+                    }
+                    catch (Exception ex)
+                    {
+                        if (warnings.Count < 40) warnings.Add($"Join \"{a.Material}\": {ex.Message}");
+                    }
+                }
+            }
+
+            return joins;
+        }
+
+        private static bool BoxesOverlap(BoundingBoxXYZ a, BoundingBoxXYZ b)
+        {
+            // A small overlap tolerance catches touching cast faces, not distant parts.
+            var tolerance = 0.5 / MmPerFoot;
+            return a.Min.X <= b.Max.X + tolerance &&
+                   a.Max.X >= b.Min.X - tolerance &&
+                   a.Min.Y <= b.Max.Y + tolerance &&
+                   a.Max.Y >= b.Min.Y - tolerance &&
+                   a.Min.Z <= b.Max.Z + tolerance &&
+                   a.Max.Z >= b.Min.Z - tolerance;
         }
 
         private static Vec3d ArrayOffsetMm(ResolvedPart part, int index)
@@ -164,9 +303,13 @@ namespace FamilyAgent.Addin
                 return null;
             }
 
-            try
+            var appliedCuts = 0;
+            var cutsFailed = false;
+
+            foreach (var cut in part.Cuts)
             {
-                foreach (var cut in part.Cuts)
+                Element cutter = null;
+                try
                 {
                     // Extend the cutter solid slightly (+0.5 mm at both ends) to prevent coplanar face
                     // z-fighting and sliver artifacts during Revit BooleanOperationsUtils difference.
@@ -213,30 +356,49 @@ namespace FamilyAgent.Addin
                         };
                     }
 
-                    var cutter = CreateForm(document, extendedCut, offset, true);
-                    if (cutter == null) continue;
+                    cutter = CreateForm(document, extendedCut, offset, true);
+                    if (cutter == null)
+                    {
+                        cutsFailed = true;
+                        warnings.Add($"Cutter for \"{part.Id}\" produced no solid");
+                        continue;
+                    }
 
                     var cutterSolid = SolidOf(cutter);
                     if (cutterSolid == null)
                     {
-                        TryDelete(document, cutter);
+                        cutsFailed = true;
+                        warnings.Add($"Cutter for \"{part.Id}\" has no solid");
                         continue;
                     }
 
                     var result = BooleanOperationsUtils.ExecuteBooleanOperation(
                         solid, cutterSolid, BooleanOperationsType.Difference);
-                    TryDelete(document, cutter);
 
                     if (result == null || result.Volume <= 1e-9)
                     {
-                        warnings.Add($"Cut on \"{part.Id}\" removed the whole part");
-                        TryDelete(document, body);
-                        return null;
+                        cutsFailed = true;
+                        warnings.Add($"Cut on \"{part.Id}\" removed the whole part; kept the previous solid");
+                        continue;
                     }
-                    solid = result;
-                }
 
-                if (part.Solid.Kind == "cylinder" && part.Solid.InnerRadius > 0)
+                    solid = result;
+                    appliedCuts += 1;
+                }
+                catch (Exception ex)
+                {
+                    cutsFailed = true;
+                    warnings.Add($"Boolean cut on \"{part.Id}\" failed: {ex.Message}");
+                }
+                finally
+                {
+                    TryDelete(document, cutter);
+                }
+            }
+
+            if (part.Solid.Kind == "cylinder" && part.Solid.InnerRadius > 0)
+            {
+                try
                 {
                     var bore = CreateCylinderForm(
                         document, part.Solid, offset, part.Solid.InnerRadius, true, true);
@@ -252,13 +414,28 @@ namespace FamilyAgent.Addin
                         TryDelete(document, bore);
                     }
                 }
+                catch (Exception ex)
+                {
+                    warnings.Add($"Bore on \"{part.Id}\" failed: {ex.Message}");
+                }
+            }
 
+            // A failed cut must never delete the whole part. Keeping the uncut native body
+            // is better than a missing web/flange in the .rfa; the warning names the part.
+            if (appliedCuts == 0 && cutsFailed)
+            {
+                warnings.Add($"Part \"{part.Id}\": cuts failed, kept the uncut native body.");
+                return body;
+            }
+
+            try
+            {
                 var freeform = FreeFormElement.Create(document, solid);
                 if (freeform == null)
                 {
-                    warnings.Add($"Boolean result for \"{part.Id}\" was rejected by Revit");
-                    TryDelete(document, body);
-                    return null;
+                    warnings.Add(
+                        $"Boolean result for \"{part.Id}\" was rejected by Revit; kept the uncut native body.");
+                    return body;
                 }
 
                 TryDelete(document, body);
@@ -266,9 +443,9 @@ namespace FamilyAgent.Addin
             }
             catch (Exception ex)
             {
-                warnings.Add($"Boolean cut on \"{part.Id}\" failed: {ex.Message}");
-                TryDelete(document, body);
-                return null;
+                warnings.Add(
+                    $"Boolean result for \"{part.Id}\" failed: {ex.Message}; kept the uncut native body.");
+                return body;
             }
         }
 
@@ -294,6 +471,8 @@ namespace FamilyAgent.Addin
                 case "bend": return CreateBendForm(document, solid, offset, isSolid);
                 case "prism": return CreatePrismForm(document, solid, offset, isSolid);
                 case "loft": return CreateLoftForm(document, solid, offset, isSolid);
+                case "revolve": return CreateRevolutionForm(document, solid, offset, isSolid);
+                case "tube": return CreateTubeForm(document, solid, offset, isSolid);
                 default: return null;
             }
         }
@@ -603,6 +782,719 @@ namespace FamilyAgent.Addin
         }
 
         private static double Distance2D(double a, double b) => Math.Sqrt(a * a + b * b);
+
+        /// <summary>
+        /// A prism whose cuts are circular holes perpendicular to its extrusion can be a
+        /// single native Extrusion with inner loops. This is what keeps thin cable-ladder
+        /// webs/flanges/hem parts alive: the generic boolean path is fragile on 2 mm plates.
+        /// </summary>
+        private static bool CanCreateNativePrismExtrusion(
+            ResolvedPart part,
+            out List<Vec2d> outerPoints,
+            out List<List<Vec2d>> cutHoles,
+            List<string> warnings)
+        {
+            outerPoints = new List<Vec2d>();
+            cutHoles = new List<List<Vec2d>>();
+            if (part.Solid.Kind != "prism" || part.Cuts.Count == 0) return false;
+            var plane = part.Solid.Plane;
+            if (plane != "xy" && plane != "xz" && plane != "yz") return false;
+            if (part.Solid.Points == null || part.Solid.Points.Count < 3) return false;
+
+            var points = new List<Vec2d>(part.Solid.Points);
+            var normalAxis = plane == "xy" ? "z" : plane == "xz" ? "y" : "x";
+            var low = Math.Min(part.Solid.From, part.Solid.To);
+            var high = Math.Max(part.Solid.From, part.Solid.To);
+            var circles = new List<(double A, double B, double R)>();
+            var rectangles = new List<(double AMin, double AMax, double BMin, double BMax)>();
+            var bakedNotches = 0;
+
+            void Skip(int index, string reason)
+            {
+                warnings.Add(
+                    $"Prism \"{part.Id}\": cut {index + 1} {reason}; kept the part native and skipped this cut.");
+            }
+
+            for (var index = 0; index < part.Cuts.Count; index += 1)
+            {
+                var cut = part.Cuts[index];
+                if (cut.Kind == "cylinder")
+                {
+                    if (cut.Axis != normalAxis || cut.Radius <= 0)
+                    {
+                        Skip(index, "is not a perpendicular circular hole");
+                        continue;
+                    }
+
+                    var normal = PlaneNormalCoord(plane, cut.Base);
+                    var normalEnd = normal + cut.Height;
+                    var cutLow = Math.Min(normal, normalEnd);
+                    var cutHigh = Math.Max(normal, normalEnd);
+                    if (cutLow > low + 0.5 || cutHigh < high - 0.5)
+                    {
+                        Skip(index, "does not pass through the prism thickness");
+                        continue;
+                    }
+
+                    var a = PlaneA(plane, cut.Base);
+                    var b = PlaneB(plane, cut.Base);
+                    if (!PointInPolygon(a, b, points))
+                    {
+                        Skip(index, "is outside the outer profile");
+                        continue;
+                    }
+
+                    var tooClose = false;
+                    for (var edge = 0; edge < points.Count; edge += 1)
+                    {
+                        var start = points[edge];
+                        var end = points[(edge + 1) % points.Count];
+                        if (DistanceToSegment(a, b, start, end) < cut.Radius + 0.8)
+                        {
+                            tooClose = true;
+                            break;
+                        }
+                    }
+                    if (tooClose)
+                    {
+                        Skip(index, "is closer than 0.8 mm to the outer profile");
+                        continue;
+                    }
+
+                    var overlaps = false;
+                    foreach (var other in circles)
+                    {
+                        var distance = Math.Sqrt(
+                            (a - other.A) * (a - other.A) + (b - other.B) * (b - other.B));
+                        if (distance < cut.Radius + other.R + 0.8)
+                        {
+                            overlaps = true;
+                            break;
+                        }
+                    }
+                    if (overlaps)
+                    {
+                        Skip(index, "overlaps another hole");
+                        continue;
+                    }
+
+                    circles.Add((a, b, cut.Radius));
+                    continue;
+                }
+
+                if (cut.Kind != "box") return false;
+                if (Math.Abs(cut.RotationZ) > 1e-6)
+                {
+                    Skip(index, "is rotated");
+                    continue;
+                }
+
+                double normalLow;
+                double normalHigh;
+                double aMin;
+                double aMax;
+                double bMin;
+                double bMax;
+                switch (plane)
+                {
+                    case "xy":
+                        normalLow = cut.Origin.Z;
+                        normalHigh = cut.Origin.Z + cut.Size.Z;
+                        aMin = cut.Origin.X - Math.Abs(cut.Size.X) / 2;
+                        aMax = cut.Origin.X + Math.Abs(cut.Size.X) / 2;
+                        bMin = cut.Origin.Y - Math.Abs(cut.Size.Y) / 2;
+                        bMax = cut.Origin.Y + Math.Abs(cut.Size.Y) / 2;
+                        break;
+                    case "xz":
+                        normalLow = cut.Origin.Y - Math.Abs(cut.Size.Y) / 2;
+                        normalHigh = cut.Origin.Y + Math.Abs(cut.Size.Y) / 2;
+                        aMin = cut.Origin.X - Math.Abs(cut.Size.X) / 2;
+                        aMax = cut.Origin.X + Math.Abs(cut.Size.X) / 2;
+                        bMin = cut.Origin.Z;
+                        bMax = cut.Origin.Z + cut.Size.Z;
+                        break;
+                    default:
+                        normalLow = cut.Origin.X - Math.Abs(cut.Size.X) / 2;
+                        normalHigh = cut.Origin.X + Math.Abs(cut.Size.X) / 2;
+                        aMin = cut.Origin.Y - Math.Abs(cut.Size.Y) / 2;
+                        aMax = cut.Origin.Y + Math.Abs(cut.Size.Y) / 2;
+                        bMin = cut.Origin.Z;
+                        bMax = cut.Origin.Z + cut.Size.Z;
+                        break;
+                }
+
+                if (Math.Min(normalLow, normalHigh) > low + 0.5 ||
+                    Math.Max(normalLow, normalHigh) < high - 0.5)
+                {
+                    Skip(index, "does not pass through the prism thickness");
+                    continue;
+                }
+
+                if (bMax < bMin)
+                {
+                    (bMin, bMax) = (bMax, bMin);
+                }
+
+                var corners = new[]
+                {
+                    new Vec2d(aMin, bMin),
+                    new Vec2d(aMax, bMin),
+                    new Vec2d(aMax, bMax),
+                    new Vec2d(aMin, bMax),
+                };
+
+                var inside = PointInPolygon(corners[0].A, corners[0].B, points) &&
+                             PointInPolygon(corners[1].A, corners[1].B, points) &&
+                             PointInPolygon(corners[2].A, corners[2].B, points) &&
+                             PointInPolygon(corners[3].A, corners[3].B, points);
+
+                var crosses = false;
+                if (inside)
+                {
+                    for (var edge = 0; edge < points.Count && !crosses; edge += 1)
+                    {
+                        var start = points[edge];
+                        var end = points[(edge + 1) % points.Count];
+                        for (var corner = 0; corner < 4; corner += 1)
+                        {
+                            if (DistanceToSegment(
+                                    corners[corner].A,
+                                    corners[corner].B,
+                                    start,
+                                    end) < 0.2)
+                            {
+                                crosses = true;
+                                break;
+                            }
+                            if (SegmentsIntersect(
+                                    corners[corner],
+                                    corners[(corner + 1) % 4],
+                                    start,
+                                    end))
+                            {
+                                crosses = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                if (!inside || crosses)
+                {
+                    // A notch that crosses the outer boundary cannot be an inner loop.
+                    // Bake it into the outer polygon so the part stays one native Extrusion.
+                    if (TryBakeNotch(points, aMin, aMax, bMin, bMax, out var baked))
+                    {
+                        points = baked;
+                        bakedNotches += 1;
+                        continue;
+                    }
+
+                    Skip(index, "crosses the outer profile and could not be baked into the prism");
+                    continue;
+                }
+
+                var overlapsRectangle = false;
+                foreach (var other in rectangles)
+                {
+                    if (aMin < other.AMax - 0.8 && aMax > other.AMin + 0.8 &&
+                        bMin < other.BMax - 0.8 && bMax > other.BMin + 0.8)
+                    {
+                        overlapsRectangle = true;
+                        break;
+                    }
+                }
+                if (overlapsRectangle)
+                {
+                    Skip(index, "overlaps another hole");
+                    continue;
+                }
+
+                rectangles.Add((aMin, aMax, bMin, bMax));
+            }
+
+            foreach (var circle in circles)
+            {
+                var segments = 32;
+                var loop = new List<Vec2d>();
+                for (var index = segments - 1; index >= 0; index -= 1)
+                {
+                    var angle = 2 * Math.PI * index / segments;
+                    loop.Add(new Vec2d(
+                        circle.A + circle.R * Math.Cos(angle),
+                        circle.B + circle.R * Math.Sin(angle)));
+                }
+                cutHoles.Add(loop);
+            }
+
+            foreach (var rectangle in rectangles)
+            {
+                cutHoles.Add(new List<Vec2d>
+                {
+                    new Vec2d(rectangle.AMin, rectangle.BMin),
+                    new Vec2d(rectangle.AMin, rectangle.BMax),
+                    new Vec2d(rectangle.AMax, rectangle.BMax),
+                    new Vec2d(rectangle.AMax, rectangle.BMin),
+                });
+            }
+
+            outerPoints = points;
+            return cutHoles.Count > 0 || bakedNotches > 0;
+        }
+
+        private static bool TryBakeNotch(
+            IList<Vec2d> polygon,
+            double aMin,
+            double aMax,
+            double bMin,
+            double bMax,
+            out List<Vec2d> result)
+        {
+            result = null;
+            if (polygon == null || polygon.Count < 3) return false;
+
+            var corners = new[]
+            {
+                new Vec2d(aMin, bMin),
+                new Vec2d(aMax, bMin),
+                new Vec2d(aMax, bMax),
+                new Vec2d(aMin, bMax),
+            };
+
+            var inside = new List<Vec2d>();
+            foreach (var corner in corners)
+            {
+                if (PointInPolygon(corner.A, corner.B, polygon)) inside.Add(corner);
+            }
+            if (inside.Count != 2) return false;
+
+            var hits = new List<(int Edge, double T, Vec2d Point)>();
+            for (var edge = 0; edge < polygon.Count; edge += 1)
+            {
+                var p0 = polygon[edge];
+                var p1 = polygon[(edge + 1) % polygon.Count];
+                for (var side = 0; side < 4; side += 1)
+                {
+                    if (!TrySegmentIntersection(
+                            p0, p1, corners[side], corners[(side + 1) % 4],
+                            out var t, out _, out var point))
+                    {
+                        continue;
+                    }
+
+                    if (t <= 1e-7 || t >= 1 - 1e-7) continue;
+
+                    var duplicate = false;
+                    foreach (var hit in hits)
+                    {
+                        if (hit.Edge == edge && Math.Abs(hit.T - t) < 1e-6)
+                        {
+                            duplicate = true;
+                            break;
+                        }
+                    }
+                    if (!duplicate) hits.Add((edge, t, point));
+                }
+            }
+
+            if (hits.Count != 2 || hits[0].Edge != hits[1].Edge) return false;
+
+            var edgeIndex = hits[0].Edge;
+            var first = hits[0].T <= hits[1].T ? hits[0] : hits[1];
+            var second = hits[0].T <= hits[1].T ? hits[1] : hits[0];
+            var startPoint = polygon[edgeIndex];
+            var endPoint = polygon[(edgeIndex + 1) % polygon.Count];
+            var dx = endPoint.A - startPoint.A;
+            var dy = endPoint.B - startPoint.B;
+
+            var ordered = inside
+                .OrderBy(corner => (corner.A - startPoint.A) * dx + (corner.B - startPoint.B) * dy)
+                .ToList();
+            if (ordered.Count != 2) return false;
+
+            var orders = new[]
+            {
+                ordered,
+                new List<Vec2d> { ordered[1], ordered[0] },
+            };
+
+            foreach (var order in orders)
+            {
+                var candidate = new List<Vec2d>(polygon.Count + 4);
+                for (var index = 0; index < polygon.Count; index += 1)
+                {
+                    candidate.Add(polygon[index]);
+                    if (index == edgeIndex)
+                    {
+                        candidate.Add(first.Point);
+                        candidate.Add(order[0]);
+                        candidate.Add(order[1]);
+                        candidate.Add(second.Point);
+                    }
+                }
+
+                if (IsSimplePolygon(candidate))
+                {
+                    result = candidate;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TrySegmentIntersection(
+            Vec2d p0,
+            Vec2d p1,
+            Vec2d q0,
+            Vec2d q1,
+            out double t,
+            out double u,
+            out Vec2d point)
+        {
+            t = 0;
+            u = 0;
+            point = default;
+            var rx = p1.A - p0.A;
+            var ry = p1.B - p0.B;
+            var sx = q1.A - q0.A;
+            var sy = q1.B - q0.B;
+            var denominator = rx * sy - ry * sx;
+            if (Math.Abs(denominator) < 1e-9) return false;
+
+            var qpx = q0.A - p0.A;
+            var qpy = q0.B - p0.B;
+            t = (qpx * sy - qpy * sx) / denominator;
+            u = (qpx * ry - qpy * rx) / denominator;
+            if (t < -1e-7 || t > 1 + 1e-7 || u < -1e-7 || u > 1 + 1e-7) return false;
+
+            point = new Vec2d(p0.A + rx * t, p0.B + ry * t);
+            return true;
+        }
+
+        private static bool IsSimplePolygon(IList<Vec2d> polygon)
+        {
+            if (polygon == null || polygon.Count < 3) return false;
+
+            for (var index = 0; index < polygon.Count; index += 1)
+            {
+                var a = polygon[index];
+                var b = polygon[(index + 1) % polygon.Count];
+                if (Math.Abs(a.A - b.A) < 1e-6 && Math.Abs(a.B - b.B) < 1e-6) return false;
+
+                for (var other = index + 1; other < polygon.Count; other += 1)
+                {
+                    if (other == index ||
+                        (other + 1) % polygon.Count == index ||
+                        (index + 1) % polygon.Count == other)
+                    {
+                        continue;
+                    }
+
+                    if (SegmentsIntersect(
+                            a, b, polygon[other], polygon[(other + 1) % polygon.Count]))
+                    {
+                        return false;
+                    }
+                }
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// A box cut through the full thickness of a thin strip (the miter relief on a
+        /// cable-ladder flange) splits the profile into separate pieces. Revit cannot
+        /// boolean that on a 2 mm prism, so build each piece as its own native prism.
+        /// </summary>
+        private static bool TrySplitPrismByThroughCuts(
+            ResolvedPart part,
+            out List<List<Vec2d>> pieces)
+        {
+            pieces = null;
+            if (part.Solid.Kind != "prism" ||
+                part.Solid.Points == null ||
+                part.Solid.Points.Count < 3 ||
+                part.Solid.Holes.Count > 0)
+            {
+                return false;
+            }
+
+            var plane = part.Solid.Plane;
+            if (plane != "xy" && plane != "xz" && plane != "yz") return false;
+            var low = Math.Min(part.Solid.From, part.Solid.To);
+            var high = Math.Max(part.Solid.From, part.Solid.To);
+            var current = new List<List<Vec2d>> { new List<Vec2d>(part.Solid.Points) };
+            var splitCount = 0;
+
+            foreach (var cut in part.Cuts)
+            {
+                if (cut.Kind != "box" || Math.Abs(cut.RotationZ) > 1e-6) return false;
+
+                BoxCutRanges(
+                    plane, cut, out var normalLow, out var normalHigh,
+                    out var aMin, out var aMax, out var bMin, out var bMax);
+                if (Math.Min(normalLow, normalHigh) > low + 0.5 ||
+                    Math.Max(normalLow, normalHigh) < high - 0.5)
+                {
+                    return false;
+                }
+
+                var next = new List<List<Vec2d>>();
+                var removedAny = false;
+
+                foreach (var piece in current)
+                {
+                    var middle = ClipHalfPlane(
+                        ClipHalfPlane(piece, true, aMin), false, aMax);
+                    if (middle.Count < 3 || Math.Abs(PolygonArea(middle)) < 1e-6)
+                    {
+                        next.Add(piece);
+                        continue;
+                    }
+
+                    var minB = middle.Min(point => point.B);
+                    var maxB = middle.Max(point => point.B);
+                    if (bMin > minB + 0.5 || bMax < maxB - 0.5) return false;
+
+                    var left = ClipHalfPlane(piece, false, aMin);
+                    var right = ClipHalfPlane(piece, true, aMax);
+                    if (left.Count < 3 && right.Count < 3) return false;
+
+                    if (left.Count >= 3 && Math.Abs(PolygonArea(left)) > 1e-6)
+                    {
+                        next.Add(CleanPolygon(left));
+                    }
+                    if (right.Count >= 3 && Math.Abs(PolygonArea(right)) > 1e-6)
+                    {
+                        next.Add(CleanPolygon(right));
+                    }
+                    removedAny = true;
+                }
+
+                if (!removedAny) return false;
+                current = next;
+                splitCount += 1;
+            }
+
+            if (splitCount == 0 || current.Count <= 1) return false;
+
+            pieces = current;
+            return true;
+        }
+
+        private static void BoxCutRanges(
+            string plane,
+            ResolvedSolid cut,
+            out double normalLow,
+            out double normalHigh,
+            out double aMin,
+            out double aMax,
+            out double bMin,
+            out double bMax)
+        {
+            switch (plane)
+            {
+                case "xy":
+                    normalLow = cut.Origin.Z;
+                    normalHigh = cut.Origin.Z + cut.Size.Z;
+                    aMin = cut.Origin.X - Math.Abs(cut.Size.X) / 2;
+                    aMax = cut.Origin.X + Math.Abs(cut.Size.X) / 2;
+                    bMin = cut.Origin.Y - Math.Abs(cut.Size.Y) / 2;
+                    bMax = cut.Origin.Y + Math.Abs(cut.Size.Y) / 2;
+                    break;
+                case "xz":
+                    normalLow = cut.Origin.Y - Math.Abs(cut.Size.Y) / 2;
+                    normalHigh = cut.Origin.Y + Math.Abs(cut.Size.Y) / 2;
+                    aMin = cut.Origin.X - Math.Abs(cut.Size.X) / 2;
+                    aMax = cut.Origin.X + Math.Abs(cut.Size.X) / 2;
+                    bMin = cut.Origin.Z;
+                    bMax = cut.Origin.Z + cut.Size.Z;
+                    break;
+                default:
+                    normalLow = cut.Origin.X - Math.Abs(cut.Size.X) / 2;
+                    normalHigh = cut.Origin.X + Math.Abs(cut.Size.X) / 2;
+                    aMin = cut.Origin.Y - Math.Abs(cut.Size.Y) / 2;
+                    aMax = cut.Origin.Y + Math.Abs(cut.Size.Y) / 2;
+                    bMin = cut.Origin.Z;
+                    bMax = cut.Origin.Z + cut.Size.Z;
+                    break;
+            }
+
+            if (bMax < bMin)
+            {
+                (bMin, bMax) = (bMax, bMin);
+            }
+        }
+
+        private static List<Vec2d> ClipHalfPlane(
+            IList<Vec2d> polygon,
+            bool keepGreater,
+            double limit)
+        {
+            var result = new List<Vec2d>();
+            if (polygon == null || polygon.Count < 3) return result;
+
+            for (var index = 0; index < polygon.Count; index += 1)
+            {
+                var current = polygon[index];
+                var next = polygon[(index + 1) % polygon.Count];
+                var currentInside = keepGreater
+                    ? current.A >= limit - 1e-7
+                    : current.A <= limit + 1e-7;
+                var nextInside = keepGreater
+                    ? next.A >= limit - 1e-7
+                    : next.A <= limit + 1e-7;
+
+                if (currentInside) result.Add(current);
+                if (currentInside == nextInside) continue;
+
+                var delta = next.A - current.A;
+                if (Math.Abs(delta) < 1e-12) continue;
+                var t = (limit - current.A) / delta;
+                if (t > 1e-7 && t < 1 - 1e-7)
+                {
+                    result.Add(new Vec2d(limit, current.B + (next.B - current.B) * t));
+                }
+            }
+
+            return result;
+        }
+
+        private static List<Vec2d> CleanPolygon(IList<Vec2d> polygon)
+        {
+            var result = new List<Vec2d>();
+            foreach (var point in polygon)
+            {
+                if (result.Count > 0)
+                {
+                    var last = result[result.Count - 1];
+                    if (Math.Abs(last.A - point.A) < 1e-6 &&
+                        Math.Abs(last.B - point.B) < 1e-6)
+                    {
+                        continue;
+                    }
+                }
+                result.Add(point);
+            }
+
+            if (result.Count > 1)
+            {
+                var first = result[0];
+                var last = result[result.Count - 1];
+                if (Math.Abs(first.A - last.A) < 1e-6 &&
+                    Math.Abs(first.B - last.B) < 1e-6)
+                {
+                    result.RemoveAt(result.Count - 1);
+                }
+            }
+
+            return result;
+        }
+
+        private static double PolygonArea(IList<Vec2d> polygon)
+        {
+            if (polygon == null || polygon.Count < 3) return 0;
+            var area = 0.0;
+            for (var index = 0; index < polygon.Count; index += 1)
+            {
+                var a = polygon[index];
+                var b = polygon[(index + 1) % polygon.Count];
+                area += a.A * b.B - b.A * a.B;
+            }
+            return area / 2;
+        }
+
+        private static Element CreateNativeMultiHolePrismForm(
+            Document document,
+            ResolvedPart part,
+            Vec3d offset,
+            bool isSolid,
+            IList<Vec2d> outerPoints,
+            IList<List<Vec2d>> cutHoles)
+        {
+            var plane = part.Solid.Plane;
+            var holes = new List<List<Vec2d>>();
+            foreach (var hole in part.Solid.Holes)
+            {
+                holes.Add(hole);
+            }
+            foreach (var hole in cutHoles)
+            {
+                holes.Add(hole);
+            }
+
+            var synthetic = new ResolvedSolid
+            {
+                Kind = "prism",
+                Plane = plane,
+                Points = new List<Vec2d>(outerPoints),
+                Holes = holes,
+                From = part.Solid.From,
+                To = part.Solid.To,
+            };
+
+            return CreatePrismForm(document, synthetic, offset, isSolid);
+        }
+
+        private static bool SegmentsIntersect(Vec2d a, Vec2d b, Vec2d c, Vec2d d)
+        {
+            double Cross(Vec2d p, Vec2d q, Vec2d r) =>
+                (q.A - p.A) * (r.B - p.B) - (q.B - p.B) * (r.A - p.A);
+
+            var d1 = Cross(a, b, c);
+            var d2 = Cross(a, b, d);
+            var d3 = Cross(c, d, a);
+            var d4 = Cross(c, d, b);
+            return ((d1 > 1e-9 && d2 < -1e-9) || (d1 < -1e-9 && d2 > 1e-9)) &&
+                   ((d3 > 1e-9 && d4 < -1e-9) || (d3 < -1e-9 && d4 > 1e-9));
+        }
+
+        private static double PlaneA(string plane, Vec3d point)
+        {
+            return plane == "xy" || plane == "xz" ? point.X : point.Y;
+        }
+
+        private static double PlaneB(string plane, Vec3d point)
+        {
+            return plane == "xy" ? point.Y : point.Z;
+        }
+
+        private static double PlaneNormalCoord(string plane, Vec3d point)
+        {
+            return plane == "xy" ? point.Z : plane == "xz" ? point.Y : point.X;
+        }
+
+        private static bool PointInPolygon(double a, double b, IList<Vec2d> polygon)
+        {
+            var inside = false;
+            for (int i = 0, j = polygon.Count - 1; i < polygon.Count; j = i, i += 1)
+            {
+                var pi = polygon[i];
+                var pj = polygon[j];
+                var crosses = (pi.B > b) != (pj.B > b) &&
+                              a < (pj.A - pi.A) * (b - pi.B) /
+                                  ((pj.B - pi.B) == 0 ? 1e-12 : (pj.B - pi.B)) + pi.A;
+                if (crosses) inside = !inside;
+            }
+            return inside;
+        }
+
+        private static double DistanceToSegment(double a, double b, Vec2d start, Vec2d end)
+        {
+            var dx = end.A - start.A;
+            var dy = end.B - start.B;
+            var lengthSquared = dx * dx + dy * dy;
+            if (lengthSquared <= 1e-12)
+            {
+                return Math.Sqrt((a - start.A) * (a - start.A) + (b - start.B) * (b - start.B));
+            }
+
+            var t = Math.Min(1, Math.Max(0, ((a - start.A) * dx + (b - start.B) * dy) / lengthSquared));
+            var px = start.A + dx * t;
+            var py = start.B + dy * t;
+            return Math.Sqrt((a - px) * (a - px) + (b - py) * (b - py));
+        }
 
         private static bool CanCreateNativeFlangeExtrusion(ResolvedPart part)
         {
@@ -975,26 +1867,55 @@ namespace FamilyAgent.Addin
             }
 
             Curve pathCurve;
+            var pathArray = new CurveArray();
+            var arcPlane = Plane.CreateByOriginAndBasis(center, u, v);
+            var pathSketchPlane = SketchPlane.Create(document, arcPlane);
+
             if (Math.Abs(solid.Angle) >= 359.9)
             {
-                var arcPlane = Plane.CreateByOriginAndBasis(center, u, v);
                 pathCurve = Arc.Create(arcPlane, radius, 0, 2 * Math.PI);
+                var arc1 = Arc.Create(arcPlane, radius, 0, Math.PI);
+                var arc2 = Arc.Create(arcPlane, radius, Math.PI, 2 * Math.PI);
+                pathArray.Append(arc1);
+                pathArray.Append(arc2);
             }
             else
             {
                 pathCurve = Arc.Create(PointOnArc(start), PointOnArc(end), PointOnArc(mid));
+                pathArray.Append(pathCurve);
             }
 
-            var pathLoop = new CurveLoop();
-            pathLoop.Append(pathCurve);
+            // 1. Attempt native Revit Sweep first: native forms flex with parameters and keep true geometry
+            try
+            {
+                var profileArray = new CurveArray();
+                foreach (var c in loop) profileArray.Append(c);
+                var profileArrArr = new CurveArrArray();
+                profileArrArr.Append(profileArray);
+                var sweepProfile = document.Application.Create.NewCurveLoopsProfile(profileArrArr);
 
-            var sweptSolid = GeometryCreationUtilities.CreateSweptGeometry(
-                pathLoop,
-                0,
-                pathCurve.GetEndParameter(0),
-                new List<CurveLoop> { loop });
+                return document.FamilyCreate.NewSweep(
+                    isSolid,
+                    pathArray,
+                    pathSketchPlane,
+                    sweepProfile,
+                    0,
+                    ProfilePlaneLocation.Start);
+            }
+            catch
+            {
+                // 2. Fallback to FreeFormElement if Revit native sweep rejects the sketch/path
+                var pathLoop = new CurveLoop();
+                pathLoop.Append(pathCurve);
 
-            return FreeFormElement.Create(document, sweptSolid);
+                var sweptSolid = GeometryCreationUtilities.CreateSweptGeometry(
+                    pathLoop,
+                    0,
+                    pathCurve.GetEndParameter(0),
+                    new List<CurveLoop> { loop });
+
+                return FreeFormElement.Create(document, sweptSolid);
+            }
         }
 
         private static Extrusion CreatePrismForm(Document document, ResolvedSolid solid, Vec3d offset, bool isSolid)
@@ -1096,9 +2017,14 @@ namespace FamilyAgent.Addin
             if (solid.Sections == null || solid.Sections.Count < 2)
                 throw new InvalidOperationException("loft needs at least two profiles");
 
-            // A family SweptBlend takes exactly two profiles. For longer lofts the studio
-            // preview keeps every section; the .rfa keeps the two end sections and the
-            // validator reports that the middle ones were skipped.
+            // Native SweptBlend only takes two profiles and its profile orientation is
+            // reliable on Z. For X/Y or more than two sections, keep every section as a
+            // FreeFormElement instead of silently dropping the middle/rotating the profile.
+            if (solid.Axis != "z" || solid.Sections.Count > 2)
+            {
+                return CreateLoftFreeForm(document, solid, offset);
+            }
+
             var first = solid.Sections[0];
             var last = solid.Sections[solid.Sections.Count - 1];
             var bottom = CreateLoftProfile(document, first.Points);
@@ -1127,7 +2053,274 @@ namespace FamilyAgent.Addin
                 document,
                 Plane.CreateByOriginAndBasis(pathStart, along, across));
 
-            return document.FamilyCreate.NewSweptBlend(isSolid, path, pathPlane, bottom, top);
+            try
+            {
+                return document.FamilyCreate.NewSweptBlend(isSolid, path, pathPlane, bottom, top);
+            }
+            catch
+            {
+                // Revit can reject a SweptBlend on some profile/path combinations. A
+                // FreeForm loft keeps the part in the family instead of losing it.
+                return CreateLoftFreeForm(document, solid, offset);
+            }
+        }
+
+        /// <summary>
+        /// Lofts every resolved section through GeometryCreationUtilities, then stores the
+        /// result as a FreeFormElement. Used for X/Y lofts, longer lofts and as a fallback
+        /// when a native SweptBlend is rejected: the part stays visible, but loses the
+        /// native form/constraint (Rebuild from spec is the update path).
+        /// </summary>
+        private static Element CreateLoftFreeForm(
+            Document document,
+            ResolvedSolid solid,
+            Vec3d offset)
+        {
+            var loops = new List<CurveLoop>();
+            foreach (var section in solid.Sections)
+            {
+                if (section.Points == null || section.Points.Count < 3) continue;
+
+                var loop = new CurveLoop();
+                for (var index = 0; index < section.Points.Count; index += 1)
+                {
+                    var start = section.Points[index];
+                    var end = section.Points[(index + 1) % section.Points.Count];
+                    loop.Append(Line.CreateBound(
+                        LoftSectionPoint(solid.Axis, section.At, start, offset),
+                        LoftSectionPoint(solid.Axis, section.At, end, offset)));
+                }
+                loops.Add(loop);
+            }
+
+            if (loops.Count < 2)
+                throw new InvalidOperationException("loft needs at least two usable profiles");
+
+            var geometry = GeometryCreationUtilities.CreateLoftGeometry(
+                loops,
+                new SolidOptions(ElementId.InvalidElementId, ElementId.InvalidElementId));
+
+            return FreeFormElement.Create(document, geometry);
+        }
+
+        private static XYZ LoftSectionPoint(
+            string axis,
+            double at,
+            Vec2d point,
+            Vec3d offset)
+        {
+            switch (axis)
+            {
+                case "x":
+                    return new XYZ(
+                        Ft(at + offset.X),
+                        Ft(point.A + offset.Y),
+                        Ft(point.B + offset.Z));
+                case "y":
+                    return new XYZ(
+                        Ft(point.A + offset.X),
+                        Ft(at + offset.Y),
+                        Ft(point.B + offset.Z));
+                default:
+                    return new XYZ(
+                        Ft(point.A + offset.X),
+                        Ft(point.B + offset.Y),
+                        Ft(at + offset.Z));
+            }
+        }
+
+        /// <summary>
+        /// A straight round tube between two arbitrary points. Native Sweep first, then a
+        /// swept-solid FreeFormElement if Revit rejects the sketch. This is the primitive
+        /// for inclined branches, oriented flanges and sloped pipe work.
+        /// </summary>
+        private static Element CreateTubeForm(
+            Document document,
+            ResolvedSolid solid,
+            Vec3d offset,
+            bool isSolid)
+        {
+            var start = new XYZ(
+                Ft(solid.Start.X + offset.X),
+                Ft(solid.Start.Y + offset.Y),
+                Ft(solid.Start.Z + offset.Z));
+            var end = new XYZ(
+                Ft(solid.End.X + offset.X),
+                Ft(solid.End.Y + offset.Y),
+                Ft(solid.End.Z + offset.Z));
+
+            var vector = end - start;
+            var length = vector.GetLength();
+            if (length <= 1e-9) throw new InvalidOperationException("tube start and end must differ");
+            if (solid.Radius <= 0) throw new InvalidOperationException("tube has a zero radius");
+
+            var direction = vector.Normalize();
+            var radius = Ft(solid.Radius);
+            var inner = Ft(solid.InnerRadius);
+
+            var pathArray = new CurveArray();
+            pathArray.Append(Line.CreateBound(start, end));
+
+            var helper = Math.Abs(direction.Z) < 0.9 ? XYZ.BasisZ : XYZ.BasisX;
+            var across = direction.CrossProduct(helper).Normalize();
+            var pathPlane = SketchPlane.Create(
+                document,
+                Plane.CreateByOriginAndBasis(start, direction, across));
+
+            var profilePlane = PlaneAt(start, direction);
+            var profileLoops = new CurveArrArray();
+            profileLoops.Append(CircleLoop(profilePlane, radius));
+            if (solid.InnerRadius > 0) profileLoops.Append(CircleLoop(profilePlane, inner));
+            var sweepProfile = document.Application.Create.NewCurveLoopsProfile(profileLoops);
+
+            try
+            {
+                return document.FamilyCreate.NewSweep(
+                    isSolid,
+                    pathArray,
+                    pathPlane,
+                    sweepProfile,
+                    0,
+                    ProfilePlaneLocation.Start);
+            }
+            catch
+            {
+                var outer = SweptTubeSolid(start, end, radius);
+                if (outer == null) throw new InvalidOperationException("tube sweep failed");
+
+                var result = outer;
+                if (solid.InnerRadius > 0)
+                {
+                    var overshoot = direction * Ft(0.5);
+                    var cutter = SweptTubeSolid(start - overshoot, end + overshoot, inner);
+                    if (cutter != null)
+                    {
+                        try
+                        {
+                            var diff = BooleanOperationsUtils.ExecuteBooleanOperation(
+                                outer,
+                                cutter,
+                                BooleanOperationsType.Difference);
+                            if (diff != null && diff.Volume > 1e-9) result = diff;
+                        }
+                        catch
+                        {
+                            // Keep the outer tube rather than dropping the part.
+                        }
+                    }
+                }
+
+                return FreeFormElement.Create(document, result);
+            }
+        }
+
+        private static CurveArray CircleLoop(Plane plane, double radius)
+        {
+            var loop = new CurveArray();
+            loop.Append(Arc.Create(plane, radius, 0, Math.PI));
+            loop.Append(Arc.Create(plane, radius, Math.PI, 2 * Math.PI));
+            return loop;
+        }
+
+        private static Solid SweptTubeSolid(XYZ start, XYZ end, double radius)
+        {
+            var vector = end - start;
+            var length = vector.GetLength();
+            if (length <= 1e-9 || radius <= 0) return null;
+
+            var direction = vector.Normalize();
+            var line = Line.CreateBound(start, end);
+            var path = new CurveLoop();
+            path.Append(line);
+
+            var profilePlane = PlaneAt(start, direction);
+            var profile = new CurveLoop();
+            profile.Append(Arc.Create(profilePlane, radius, 0, Math.PI));
+            profile.Append(Arc.Create(profilePlane, radius, Math.PI, 2 * Math.PI));
+
+            try
+            {
+                return GeometryCreationUtilities.CreateSweptGeometry(
+                    path,
+                    0,
+                    line.GetEndParameter(0),
+                    new List<CurveLoop> { profile });
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// A native revolution of a 2D profile around an axis line (X, Y, or Z).
+        /// Revolve produces true cylindrical/spherical surfaces that keep parametric dimensions.
+        /// </summary>
+        private static Element CreateRevolutionForm(
+            Document document,
+            ResolvedSolid solid,
+            Vec3d offset,
+            bool isSolid)
+        {
+            if (solid.Points == null || solid.Points.Count < 3)
+                throw new InvalidOperationException("revolve needs at least 3 profile points");
+
+            var origin = new XYZ(
+                Ft(solid.Origin.X + offset.X),
+                Ft(solid.Origin.Y + offset.Y),
+                Ft(solid.Origin.Z + offset.Z));
+
+            XYZ u, v, axisDir;
+            switch (solid.Axis)
+            {
+                case "x":
+                    axisDir = XYZ.BasisX;
+                    u = XYZ.BasisY;
+                    v = XYZ.BasisX;
+                    break;
+                case "y":
+                    axisDir = XYZ.BasisY;
+                    u = XYZ.BasisX;
+                    v = XYZ.BasisY;
+                    break;
+                default:
+                    axisDir = XYZ.BasisZ;
+                    u = XYZ.BasisX;
+                    v = XYZ.BasisZ;
+                    break;
+            }
+
+            var plane = Plane.CreateByOriginAndBasis(origin, u, v);
+            var sketchPlane = SketchPlane.Create(document, plane);
+            var axisLine = Line.CreateUnbound(origin, axisDir);
+
+            var loop = new CurveArray();
+            for (var i = 0; i < solid.Points.Count; i += 1)
+            {
+                var start = solid.Points[i];
+                var end = solid.Points[(i + 1) % solid.Points.Count];
+                var p1 = origin + u * Ft(start.A) + v * Ft(start.B);
+                var p2 = origin + u * Ft(end.A) + v * Ft(end.B);
+                if (p1.DistanceTo(p2) > 0.0026) // > ~0.8mm short-curve tolerance
+                {
+                    loop.Append(Line.CreateBound(p1, p2));
+                }
+            }
+
+            var loops = new CurveArrArray();
+            loops.Append(loop);
+
+            var startRad = solid.StartAngle * DegToRad;
+            var angleRad = Math.Abs(solid.Angle) > 1e-6 ? solid.Angle * DegToRad : 2 * Math.PI;
+            var endRad = startRad + angleRad;
+
+            return document.FamilyCreate.NewRevolution(
+                isSolid,
+                loops,
+                sketchPlane,
+                axisLine,
+                startRad,
+                endRad);
         }
 
         private static int CreateConnectors(

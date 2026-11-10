@@ -36,7 +36,7 @@ interface Props {
   canRedo?: boolean;
   onOpenLibrary?: () => void;
   onNewModel?: () => void;
-  onLoadDemo?: (key: "fcu" | "pump" | "elbow") => void;
+  onLoadDemo?: (key: "fcu" | "pump" | "elbow" | "ystrainer" | "ystrainer-tube") => void;
 }
 
 const LOD_OPTIONS: { value: Lod; label: string; hint: string }[] = [
@@ -191,6 +191,24 @@ export function TopBar({
                   }}
                 >
                   ⚡ Bơm ly tâm thẳng hàng DN80
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onLoadDemo("ystrainer");
+                    setDemoOpen(false);
+                  }}
+                >
+                  🔵 Y lọc bích DN80 PN16, nhánh 45°
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onLoadDemo("ystrainer-tube");
+                    setDemoOpen(false);
+                  }}
+                >
+                  🧪 Y lọc nhánh tube 45° (primitive mới)
                 </button>
                 <button
                   type="button"

@@ -5,6 +5,12 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+$runningRevit = Get-Process -Name Revit -ErrorAction SilentlyContinue
+if ($runningRevit) {
+    $pids = ($runningRevit | Select-Object -ExpandProperty Id) -join ", "
+    throw "Revit is running (PID $pids) and locks the add-in DLL. Close Revit, run 'npm run addin:install', then reopen Revit."
+}
+
 $here = $PSScriptRoot
 $project = Join-Path $here "FamilyAgent.Addin\FamilyAgent.Addin.csproj"
 $revitDir = "C:\Program Files\Autodesk\Revit $RevitVersion"

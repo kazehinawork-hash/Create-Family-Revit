@@ -7,6 +7,7 @@ import {
   type FamilyParameter,
   type FamilySpec,
   type ParameterType,
+  type PartBuildStatus,
   type ResolvedParameter,
 } from "@family/spec-core";
 import { parameterDisplay, parameterUnit, type Units } from "../lib/format";
@@ -48,6 +49,18 @@ const GROUP_ORDER = [
 ];
 
 const PARAM_TYPES: ParameterType[] = ["Length", "Angle", "Number", "Integer", "Text", "YesNo"];
+
+const PARITY_LABELS: Record<PartBuildStatus, string> = {
+  native: "Native",
+  "native-multi-hole": "Native holes",
+  "native-bore": "Native bore",
+  "native-revolve": "Revolve",
+  "swept-blend": "SweptBlend",
+  sweep: "Sweep",
+  blend: "Blend",
+  freeform: "FreeForm",
+  "multi-section": "Multi-section",
+};
 
 function ParameterRow({
   param,
@@ -222,6 +235,8 @@ export function ParameterPanel({
   const [adding, setAdding] = useState(false);
   const [draftName, setDraftName] = useState("");
   const [draftType, setDraftType] = useState<ParameterType>("Length");
+  const [onlyRisks, setOnlyRisks] = useState(false);
+  const [showInfo, setShowInfo] = useState(false);
 
   const toggleGroup = (group: string) => {
     setCollapsedGroups((prev) => ({
@@ -267,6 +282,18 @@ export function ParameterPanel({
 
     return map;
   }, [spec]);
+
+  const parityById = useMemo(
+    () => new Map(analysis.partParity.map((part) => [part.partId, part])),
+    [analysis.partParity],
+  );
+
+  const paritySummary = useMemo(() => {
+    const total = analysis.partParity.length;
+    const risky = analysis.partParity.filter((part) => part.risks.length > 0).length;
+    const native = analysis.partParity.filter((part) => part.native).length;
+    return { total, risky, native };
+  }, [analysis.partParity]);
 
   const selectedPart = selectedPartId
     ? spec.parts.find((part) => part.id === selectedPartId) ?? null
@@ -485,12 +512,30 @@ export function ParameterPanel({
               placeholder="Filter parts"
               aria-label="Filter parts"
             />
+            <label className="parity-filter" title="Chỉ hiện part sẽ khác preview hoặc mất native form">
+              <input
+                type="checkbox"
+                checked={onlyRisks}
+                onChange={(event) => setOnlyRisks(event.target.checked)}
+              />
+              <span>Rủi ro</span>
+            </label>
+            <label className="parity-filter" title="Hiện gợi ý info: mặt khít nhau, part bị chôn">
+              <input
+                type="checkbox"
+                checked={showInfo}
+                onChange={(event) => setShowInfo(event.target.checked)}
+              />
+              <span>Info</span>
+            </label>
           </div>
 
           <div className="param-scroll">
             <div className="parts-list">
             {spec.parts
               .filter((part) => {
+                const parity = parityById.get(part.id);
+                if (onlyRisks && (!parity || parity.risks.length === 0)) return false;
                 const query = partFilter.trim().toLowerCase();
                 if (!query) return true;
                 return (
@@ -501,10 +546,21 @@ export function ParameterPanel({
                 const isSelected = part.id === selectedPartId;
                 const isHidden = hiddenPartIds.includes(part.id);
                 const isTransparent = transparentPartIds.includes(part.id);
-                const partIssues = analysis.issues.filter(
-                  (issue) => issue.path === `logic.geometry.${part.id}` || issue.path.startsWith(`logic.geometry.${part.id}.`)
-                );
-                const hasIssue = partIssues.length > 0 || issuePartIds.includes(part.id);
+                const parity = parityById.get(part.id);
+                const partIssues = analysis.issues.filter((issue) => {
+                  const isLogic =
+                    issue.path === `logic.geometry.${part.id}` ||
+                    issue.path.startsWith(`logic.geometry.${part.id}.`);
+                  if (isLogic) return true;
+                  if (!showInfo) return false;
+                  return (
+                    issue.path === `info.geometry.${part.id}` ||
+                    issue.path.startsWith(`info.geometry.${part.id}.`)
+                  );
+                });
+                const hasIssue =
+                  partIssues.some((issue) => issue.severity !== "info") ||
+                  issuePartIds.includes(part.id);
                 return (
                   <div
                     key={part.id}
@@ -517,6 +573,18 @@ export function ParameterPanel({
                     >
                       <span className="swatch" style={{ background: part.color || materialColor(part.material) }} />
                       <span className="name">{part.name}</span>
+                      {parity && (
+                        <span
+                          className={`part-parity-badge ${parity.status}`}
+                          title={
+                            parity.risks.length > 0
+                              ? parity.risks.map((risk) => risk.message).join("\n")
+                              : "Part giữ native form trong Revit"
+                          }
+                        >
+                          {PARITY_LABELS[parity.status]}
+                        </span>
+                      )}
                       {hasIssue && <span className="part-issue-dot" title="Cảnh báo bố trí" />}
                       <span className="id">{part.id}</span>
                       <div className="part-actions" onClick={(e) => e.stopPropagation()}>
@@ -574,12 +642,32 @@ export function ParameterPanel({
                       ))}
                     </div>
                   )}
+                  {parity && parity.risks.length > 0 && (
+                    <div className="part-issues-list parity">
+                      {parity.risks.map((risk, idx) => (
+                        <div key={`${risk.code}-${idx}`} className={`part-issue-item ${risk.severity}`}>
+                          <span className="issue-icon">⚠</span>
+                          <span className="issue-msg">
+                            {risk.message}
+                            {risk.hint ? ` — ${risk.hint}` : ""}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 );
               })}
           </div>
+          {paritySummary.risky > 0 && (
+            <div className="banner warn">
+              {paritySummary.risky}/{paritySummary.total} part sẽ khác preview hoặc mất native form trong .rfa.
+              Bật “Rủi ro” để lọc.
+            </div>
+          )}
           <div className="banner info">
-            {analysis.model.instances} solids in the model · {spec.materials?.length ?? 0} materials
+            {analysis.model.instances} solids · {paritySummary.native}/{paritySummary.total} native ·{" "}
+            {spec.materials?.length ?? 0} materials
           </div>
         </div>
         </>

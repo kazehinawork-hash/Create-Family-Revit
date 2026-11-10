@@ -9,15 +9,14 @@ namespace FamilyAgent.Addin
     {
         private static bool IsProfileFrustum(ResolvedSolid solid)
         {
-            return string.Equals(solid.Axis, "z", StringComparison.OrdinalIgnoreCase) &&
-                   solid.Height > 1e-9 &&
-                   solid.RadiusBottom > 1e-9;
+            return Math.Abs(solid.Height) > 1e-9 &&
+                   (solid.RadiusBottom > 1e-9 || solid.RadiusTop > 1e-9);
         }
 
         /// <summary>
-        /// Builds a Z-axis frustum as a native Revolution of its trapezoid profile. A
-        /// Revolution keeps true circular edges (a Blend is fully tessellated), so the later
-        /// face and radial dimension passes can still label its height and radii.
+        /// Builds a frustum on any axis as a native Revolution of its trapezoid profile.
+        /// A Revolution keeps true circular edges (a Blend is fully tessellated), so the
+        /// form stays native and the height can still take a face dimension.
         ///
         /// The profile touches the axis, which Revit's NewRevolveForms refuses, so the
         /// curve-array overload is the only viable native form here. Radii are therefore
@@ -31,10 +30,10 @@ namespace FamilyAgent.Addin
         {
             if (!IsProfileFrustum(solid)) return null;
 
-            var height = Ft(solid.Height);
-            var bottom = Ft(solid.RadiusBottom);
-            var top = Ft(solid.RadiusTop);
-            if (height <= 1e-9 || bottom <= 1e-9) return null;
+            var height = Ft(Math.Abs(solid.Height));
+            var bottom = Ft(solid.Height >= 0 ? solid.RadiusBottom : solid.RadiusTop);
+            var top = Ft(solid.Height >= 0 ? solid.RadiusTop : solid.RadiusBottom);
+            if (height <= 1e-9 || (bottom <= 1e-9 && top <= 1e-9)) return null;
 
             try
             {
@@ -43,26 +42,48 @@ namespace FamilyAgent.Addin
                     Ft(solid.Base.Y + offset.Y),
                     Ft(solid.Base.Z + offset.Z));
 
-                var u = XYZ.BasisX;
-                var v = XYZ.BasisZ;
-                XYZ At(double du, double dv) => origin + u * du + v * dv;
+                XYZ axisUnit;
+                XYZ radial;
+                switch (solid.Axis)
+                {
+                    case "x":
+                        axisUnit = XYZ.BasisX;
+                        radial = XYZ.BasisY;
+                        break;
+                    case "y":
+                        axisUnit = XYZ.BasisY;
+                        radial = XYZ.BasisZ;
+                        break;
+                    default:
+                        axisUnit = XYZ.BasisZ;
+                        radial = XYZ.BasisX;
+                        break;
+                }
+
+                // Negative height runs the frustum backwards along the axis; the radii
+                // are already swapped above so the profile still starts at the base.
+                var direction = axisUnit * (solid.Height >= 0 ? 1 : -1);
+                XYZ At(double along, double radius) => origin + direction * along + radial * radius;
 
                 var profile = new CurveArray();
-                profile.Append(Line.CreateBound(At(0, 0), At(bottom, 0)));
-                profile.Append(Line.CreateBound(At(bottom, 0), At(top, height)));
-                if (top > 1e-6)
+                if (bottom > 1e-9)
                 {
-                    profile.Append(Line.CreateBound(At(top, height), At(0, height)));
+                    profile.Append(Line.CreateBound(At(0, 0), At(0, bottom)));
                 }
-                profile.Append(Line.CreateBound(At(0, height), At(0, 0)));
+                profile.Append(Line.CreateBound(At(0, bottom), At(height, top)));
+                if (top > 1e-9)
+                {
+                    profile.Append(Line.CreateBound(At(height, top), At(height, 0)));
+                }
+                profile.Append(Line.CreateBound(At(height, 0), At(0, 0)));
 
                 var loops = new CurveArrArray();
                 loops.Append(profile);
 
                 var sketch = SketchPlane.Create(
                     document,
-                    Plane.CreateByOriginAndBasis(origin, u, v));
-                var axis = Line.CreateUnbound(origin, XYZ.BasisZ);
+                    Plane.CreateByOriginAndBasis(origin, direction, radial));
+                var axis = Line.CreateUnbound(origin, direction);
 
                 return document.FamilyCreate.NewRevolution(
                     true,

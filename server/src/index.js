@@ -5,7 +5,8 @@ import express from "express";
 import { analyzeSpec } from "@family/spec-core";
 import { config, ROOT } from "./config.js";
 import { design } from "./designer.js";
-import { buildFamily } from "./bridge.js";
+import { buildFamily, getBuildOutputRoots } from "./bridge.js";
+import { auditBuild } from "./build-qa.js";
 import { agentStatus, detectAgentBackends, getCmdcModels } from "./agents.js";
 import { bridgeAlive, ensureBridge, findRevitExe } from "./revit.js";
 import { createPortablePackage } from "./portable.js";
@@ -491,6 +492,13 @@ app.post("/api/build", async (req, res) => {
     }
 
     const result = await buildFamily(analysis.spec);
+    if (result.ok) {
+      const qa = auditBuild(analysis, result);
+      result.qa = qa;
+      if (qa.warnings.length > 0) {
+        result.warnings = [...(result.warnings ?? []), ...qa.warnings];
+      }
+    }
     res.json(result);
   } catch (error) {
     res.status(500).json({ ok: false, error: error?.message || String(error) });
@@ -530,7 +538,10 @@ app.get("/api/download-rfa", (req, res) => {
     res.status(400).send("Path is required");
     return;
   }
-  const resolved = safeDownloadPath(filePath, DOWNLOAD_ROOTS);
+  const resolved = safeDownloadPath(filePath, [
+    ...DOWNLOAD_ROOTS,
+    ...getBuildOutputRoots(),
+  ]);
   if (!resolved) {
     res.status(403).send("File is outside the allowed folders");
     return;
