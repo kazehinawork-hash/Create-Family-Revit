@@ -17,6 +17,22 @@ export function slugify(name) {
   );
 }
 
+const knownBuildOutputRoots = new Set();
+
+/**
+ * The add-in writes to Environment.SpecialFolder.MyDocuments, which OneDrive often
+ * redirects outside the server's default ~/Documents. Remember the exact folder a
+ * build wrote to so /api/download-rfa can serve the file the studio just produced.
+ */
+export function rememberBuildOutput(filePath) {
+  if (typeof filePath !== "string" || filePath.trim().length === 0) return;
+  knownBuildOutputRoots.add(path.dirname(path.resolve(filePath)));
+}
+
+export function getBuildOutputRoots() {
+  return [...knownBuildOutputRoots];
+}
+
 export function queueFile(spec) {
   fs.mkdirSync(config.dirs.queue, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
@@ -56,6 +72,7 @@ export async function buildFamily(spec) {
   }
 
   const payload = await response.json().catch(() => ({}));
+  if (response.ok && payload.ok !== false) rememberBuildOutput(payload.path);
 
   if (!response.ok || payload.ok === false) {
     if (response.status === 409) {

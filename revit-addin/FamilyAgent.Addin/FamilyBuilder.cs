@@ -197,6 +197,8 @@ namespace FamilyAgent.Addin
                 PlaneSkeleton skeleton = null;
                 List<Element> forms;
                 var partByForm = new Dictionary<long, ResolvedPart>();
+                var joins = 0;
+                var failedParts = new List<string>();
 
                 stage = "building the family";
                 using (var transaction = SilentTransaction(document, "Family Agent — build family", buildFailures))
@@ -210,7 +212,10 @@ namespace FamilyAgent.Addin
                     {
                         skeleton = CreateReferencePlanes(document, manager, parameters, model, result.Warnings);
                     }
-                    forms = CreateGeometry(document, model, materials, result.Warnings, partByForm);
+                    forms = CreateGeometry(
+                        document, model, materials, result.Warnings, partByForm, failedParts);
+                    joins = JoinOverlappingForms(
+                        document, forms, partByForm, materials, result.Warnings);
 
                     var status = transaction.Commit();
                     if (status != TransactionStatus.Committed)
@@ -264,6 +269,12 @@ namespace FamilyAgent.Addin
                     }
                 }
 
+                if (failedParts.Count > 0)
+                {
+                    result.Warnings.Add(
+                        $"{failedParts.Count} part/copy không dựng được: {string.Join("; ", failedParts.Take(8))}");
+                }
+
                 stage = "creating MEP connectors";
                 var connectors = CreateConnectors(document, spec, parameters, forms, result.Warnings);
 
@@ -279,6 +290,10 @@ namespace FamilyAgent.Addin
                     refPlanes = skeleton?.Created ?? 0,
                     refDimensions,
                     locks,
+                    joins,
+                    totalForms = forms.Count,
+                    missingForms = Math.Max(0, model.Instances - forms.Count),
+                    failedParts,
                     lod = spec.Lod,
                     driving = skeleton?.Driving ?? new List<string>(),
                     unlabelled = skeleton?.Unlabelled ?? new List<string>(),
@@ -376,7 +391,20 @@ namespace FamilyAgent.Addin
             {
                 var spec = SpecLoader.Load(json);
                 var overrides = CurrentValues(document);
-                var parameters = ParameterResolver.Resolve(spec, overrides);
+
+                // Only driver parameters should override the spec. If a formula parameter is
+                // also overridden, the resolver pins it to the current Revit value instead of
+                // recomputing it from the edited driver, so parts look stale after a change.
+                var formulaKeys = new HashSet<string>(
+                    spec.Parameters
+                        .Where(parameter => parameter != null && !string.IsNullOrWhiteSpace(parameter.Formula))
+                        .Select(parameter => (parameter.Name ?? string.Empty).Trim().ToLowerInvariant()),
+                    StringComparer.Ordinal);
+                var driverOverrides = overrides
+                    .Where(entry => !formulaKeys.Contains(entry.Key.Trim().ToLowerInvariant()))
+                    .ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.OrdinalIgnoreCase);
+
+                var parameters = ParameterResolver.Resolve(spec, driverOverrides);
                 var model = GeometryResolver.Resolve(spec, parameters);
                 var materials = MaterialLookup(spec);
                 result.Warnings.AddRange(model.Warnings);
@@ -393,6 +421,8 @@ namespace FamilyAgent.Addin
                 PlaneSkeleton skeleton = null;
                 List<Element> forms;
                 var partByForm = new Dictionary<long, ResolvedPart>();
+                var joins = 0;
+                var failedParts = new List<string>();
 
                 stage = "rebuilding the family";
                 using (var transaction = SilentTransaction(document, "Family Agent — rebuild family", buildFailures))
@@ -410,7 +440,10 @@ namespace FamilyAgent.Addin
                     {
                         skeleton = CreateReferencePlanes(document, manager, parameters, model, result.Warnings);
                     }
-                    forms = CreateGeometry(document, model, materials, result.Warnings, partByForm);
+                    forms = CreateGeometry(
+                        document, model, materials, result.Warnings, partByForm, failedParts);
+                    joins = JoinOverlappingForms(
+                        document, forms, partByForm, materials, result.Warnings);
 
                     var status = transaction.Commit();
                     if (status != TransactionStatus.Committed)
@@ -464,6 +497,12 @@ namespace FamilyAgent.Addin
                     }
                 }
 
+                if (failedParts.Count > 0)
+                {
+                    result.Warnings.Add(
+                        $"{failedParts.Count} part/copy không dựng được: {string.Join("; ", failedParts.Take(8))}");
+                }
+
                 stage = "creating MEP connectors";
                 var connectors = CreateConnectors(document, spec, parameters, forms, result.Warnings);
 
@@ -479,6 +518,10 @@ namespace FamilyAgent.Addin
                     refPlanes = skeleton?.Created ?? 0,
                     refDimensions,
                     locks,
+                    joins,
+                    totalForms = forms.Count,
+                    missingForms = Math.Max(0, model.Instances - forms.Count),
+                    failedParts,
                     lod = spec.Lod,
                     driving = skeleton?.Driving ?? new List<string>(),
                     unlabelled = skeleton?.Unlabelled ?? new List<string>(),

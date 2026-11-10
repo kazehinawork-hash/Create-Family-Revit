@@ -91,6 +91,11 @@ Mức LOD được gửi kèm mỗi yêu cầu, ghi vào spec (`lod`) và vào `
 `Detail Level` của view 3D trong Revit tương ứng Coarse / Medium / Fine. Đổi LOD rồi gửi
 một yêu cầu chỉnh sửa là mô hình được dựng lại ở mức chi tiết mới.
 
+Toolbar khung 3D có nút **HD** (mặc định bật) tăng mật độ lưới preview (chord ~4 mm,
+tối đa 192 segment) cho cylinder/frustum/bend/tube và bo góc; tắt để về **Standard**
+(chord ~10 mm, tối đa 96) khi máy yếu. Nút **Iso / Front / Top / Right** cạnh **Fit** đổi
+góc nhìn nhanh.
+
 ### Dựng theo datasheet PDF
 
 Bấm **biểu tượng kẹp giấy** cạnh ô chat để đính kèm `pdf`, ảnh chụp bản vẽ, `docx`, `xlsx`,
@@ -139,24 +144,44 @@ Sau đó mở Revit 2024:
 
 Tắt bridge tự động: đặt biến môi trường `FAMILY_AGENT_BRIDGE=0` trước khi mở Revit.
 
-### Build mặc định là snapshot
+### Build mặc định: native form + reference plane, không hard-lock
 
-Mặc định builder chỉ tạo **geometry + parameter + material + connector**, không tạo
-reference plane/dimension/lock/self-check. File `.rfa` nhẹ và build nhanh hơn, đúng với
-workflow studio → RFA → QA.
+Mặc định builder tạo **geometry + parameter + material + connector**, đồng thời tạo
+**reference plane và dimension** cho các tham số chính (`IncludeConstraints = true`).
+Các mặt hình học **không bị hard-lock**, nên đổi tham số không gây lỗi
+"Constraints are not satisfied": add-in tự rebuild hình từ spec đã nhúng khi parameter
+hoặc family type thay đổi, dùng **giá trị driver hiện tại** trong Revit. Parameter
+formula được tính lại từ driver (không bị override), nên hình cập nhật giống localhost.
+Nếu rebuild lỗi hoặc thiếu part, xem log tại
+`Documents\FamilyAgent\logs\autosync.log`.
 
-Muốn tạo lại skeleton constraint để có thể chỉnh trong Revit (file nặng hơn), đặt
-`FAMILY_AGENT_PARAMETRIC=1` trước khi mở Revit.
+Muốn bật hard face locking (file nặng hơn, có thể gặp constraint solver), đặt
+`FAMILY_AGENT_LOCK_GEOMETRY=1` trước khi mở Revit. `FAMILY_AGENT_PARAMETRIC` không còn
+được dùng.
+
+### Build parity & QA
+
+Studio hiển thị badge **native / blend / sweptblend / freeform** cho từng part và cảnh
+báo trước khi build nếu preview sẽ khác `.rfa`: loft > 2 section, frustum trục X/Y,
+bend có bán kính baked, cut biến part thành FreeFormElement. Toggle **Info** trong tab
+Parts hiện advisory không chặn build: mặt khít nhau (z-fighting) và part lớn bị chôn
+trong part khác. Sau khi build, server so số part/instance/connector/bounds/parameter
+thực tế với spec và trả `qa` trong kết quả; stats còn có `totalForms` (form thực tế),
+`missingForms` và `failedParts` để UI báo chính xác part/copy nào không dựng được.
+Part FreeForm hoặc ràng buộc chưa compile được đánh dấu **cần Rebuild from spec**.
+Loft chạy trục X/Y hoặc >2 section được dựng bằng **FreeForm loft fallback** để không
+mất part; auto-heal vẫn tách loft trục Z >2 section thành các part 2-section native.
 
 ### Quy trình khuyến nghị: localhost → RFA → QA
 
-Studio là nơi **thiết kế và chỉnh tham số**; file `.rfa` là **bản build snapshot** để dùng/kiểm tra trong Revit.
+Studio là nơi **thiết kế và chỉnh tham số**; file `.rfa` là bản build để dùng/kiểm tra trong Revit.
 
 1. Dựng và chỉnh mô hình trên studio đến khi ưng ý.
-2. Bấm tải/build RFA.
-3. Mở `.rfa` trong Revit để QA: số part, kích thước bao, connector, vật liệu, vị trí.
-4. Nếu cần đổi kích thước, quay lại studio sửa rồi build/tải RFA mới.
-5. Trong Revit có thể dùng **Rebuild from spec** để cập nhật nhanh theo giá trị tham số hiện tại, nhưng đây là tiện ích thủ công, không phải parametric native.
+2. Xem badge/cảnh báo parity trong tab **Parts**; sửa các part sẽ thành FreeForm nếu cần parametric.
+3. Bấm tải/build RFA.
+4. Mở `.rfa` trong Revit để QA: số part, kích thước bao, connector, vật liệu, vị trí.
+5. Nếu cần đổi kích thước, quay lại studio sửa rồi build/tải RFA mới.
+6. Trong Revit có thể dùng **Rebuild from spec** để cập nhật nhanh theo giá trị tham số hiện tại, nhưng đây là tiện ích thủ công, không phải parametric native.
 
 Family tải ra **không tự co giãn array/CSG/loft** như studio. Đây là chủ ý: generator không cố tạo native array (Revit API không có `NewArray`). Chỉ nên làm template native thủ công cho một dòng sản phẩm cố định nếu cần gửi người khác chỉnh parameter.
 
@@ -199,7 +224,11 @@ chạy ngược trục, `innerRadius` để làm ống), `frustum` (côn/cụt n
 `bend` (cút tròn: tiết diện tròn `tubeRadius` quay quanh trục ở khoảng cách `radius`,
 `angle` mặc định 90°; `plane` chọn mặt phẳng), `prism` (polygon 2D extruded, có
 `holes` để cắt lỗ ngay trong cùng form native), `loft` (2+ profile xếp theo `axis` tại
-các mốc `at` tăng dần — dùng cho chuyển tiết diện chữ nhật ↔ tròn, reducer).
+các mốc `at` tăng dần — dùng cho chuyển tiết diện chữ nhật ↔ tròn, reducer; `.rfa` chỉ
+dựng 2 section, loft dài được auto-heal tách thành các đoạn 2-section), `revolve`
+(profile 2D `[radial, height]` quay quanh trục — dùng cho thân van, bầu lọc, bánh
+tay, mặt bích tiện tròn), `tube` (`start`–`end` + `radius`, tùy chọn `innerRadius` —
+ống/nhánh theo trục bất kỳ, bích và nắp có hướng).
 `cuts` trừ khối, `array` nhân bản theo trục, `anchor` ghim mặt nào bị điều khiển mỗi trục
 (`{"x":"min","y":"max"}`). Parameter `Length` có thể khai báo `axis: "x|y|z"` để chỉ
 định trục dimension thay vì đoán theo tên.
@@ -212,8 +241,12 @@ Revit kiểm tra đơn vị trong formula nên hằng số cộng/trừ phải c
 chứ không phải `- 140`.
 
 Schema đầy đủ: [`spec/family-spec.schema.json`](spec/family-spec.schema.json) ·
-Ví dụ: [`spec/examples/fcu-080.json`](spec/examples/fcu-080.json) (viết tay) và
-[`spec/examples/pump-dn80.json`](spec/examples/pump-dn80.json) (do agent sinh bằng DeepSeek V4 Pro).
+Ví dụ: [`spec/examples/fcu-080.json`](spec/examples/fcu-080.json) (viết tay),
+[`spec/examples/pump-dn80.json`](spec/examples/pump-dn80.json) (do agent sinh bằng DeepSeek V4 Pro) và
+[`spec/examples/ystrainer-dn80.json`](spec/examples/ystrainer-dn80.json) (Y lọc DN80, preset thử
+nghiệm hình học bo cong: thân frustum, nhánh 45° loft lệch tâm, bích/nắp prism có lỗ khoan) và
+[`spec/examples/ystrainer-tube.json`](spec/examples/ystrainer-tube.json) (Y lọc dùng `tube`
+trục bất kỳ cho nhánh, bích và nắp vuông góc trục nhánh).
 
 ## 6. Cấu trúc
 
@@ -228,16 +261,18 @@ revit-addin/
   FamilyAgent.Addin/  add-in Revit 2024: ribbon, bridge HTTP, dựng family
   FamilyAgent.SelfTest/ console test cho Core
 spec/                 JSON Schema + spec mẫu
-scripts/              dev runner, thử design qua HTTP
+scripts/              dev runner, parity TS↔C#, thử design qua HTTP
 ```
 
-Add-in và studio hiểu **cùng một spec**; resolver TS và C# được test song song để ra cùng
-kích thước (ví dụ FCU mẫu: 1970 × 1720 × 596 mm, 17 parts).
+Add-in và studio hiểu **cùng một spec**; resolver TS và C# được so khớp tự động bằng
+`npm run parity` trên mọi file trong `spec/examples` (parts, instances, parameters, bounds
+và bounds từng part, tolerance 0.01 mm).
 
 ## 7. Test
 
 ```bash
-npm test          # spec-core (vitest) + server + web (vitest) + self-test C#
+npm test          # spec-core + server + web + self-test C# + parity TS↔C#
+npm run parity    # chỉ chạy so khớp resolver TS và C#
 npm run test:e2e  # Playwright: studio shell + API validation
 npm run lint      # ESLint
 npm run addin:test
@@ -261,34 +296,40 @@ node scripts/try-design.mjs "Horizontal fan coil 080, 1910 x 1600 x 560 casing"
 
 ## 8. Giới hạn hiện tại
 
-- **Hình học dùng form native** (Extrusion / Void / Blend / Revolution / SweptBlend) và được
-  lock vào reference plane ở **một mặt mỗi trục**, với dimension mặt–mặt cùng solid. Part có
-  `cuts` hoặc `innerRadius` được **boolean + `FreeFormElement`** để cut chỉ tác dụng trong
-  part đó; các part này không còn native form/constraint, đổi tham số phải dùng
-  **Rebuild from spec**. Với các trường hợp solver chưa compile được, dùng
-  **Rebuild from spec** để dựng lại chính xác như studio.
-- **Frustum** dựng bằng `Revolution` (native form). Chiều cao drive được nhờ dimension
-  mặt–mặt; bán kính có radial dimension nhưng Revit coi đó là **reference dimension** nên
-  không co giãn. `NewRevolveForms` (profile line + dimension) bị Revit từ chối khi profile
+- **Hình học dùng form native** (Extrusion / Void / Blend / Revolution / SweptBlend / Sweep)
+  và được lock vào reference plane ở **một mặt mỗi trục**, với dimension mặt–mặt cùng solid.
+  Part có `cuts` hoặc `innerRadius` thường được **boolean + `FreeFormElement`** để cut chỉ
+  tác dụng trong part đó; các part này không còn native form/constraint, đổi tham số phải
+  dùng **Rebuild from spec**. Cylinder/box có lỗ song song đúng trục được giữ thành một
+  native extrusion nhiều lỗ; tube rỗng thử ring profile native trước khi fallback.
+- **Frustum** dựng bằng `Revolution` native cho **mọi trục X/Y/Z** (kể cả height âm).
+  Chiều cao drive được nhờ dimension mặt–mặt; bán kính vẫn là **reference dimension** nên
+  chưa co giãn. `NewRevolveForms` (profile line + dimension) bị Revit từ chối khi profile
   chạm trục ("operation is not permitted in this type of family"), nên muốn bán kính drive
-  cần nested family hoặc một sketch profile khác. Build trả `flex` trong stats để thấy
-  tham số nào còn "still".
-- **Bend**: dựng bằng `Revolution` (native form) nên hình đúng, nhưng profile đang "nung"
-  tại lúc build: `radius`/`tubeRadius` chưa có dimension nên chưa drive. `anchor` hiện chỉ
-  chọn mặt bị lock mỗi trục (vẫn một mặt/trục), chưa phải ràng buộc hai chiều đầy đủ.
-- **Loft**: Revit dựng bằng `SweptBlend` native (`NewSweptBlend`) với **đúng 2 section**;
-  profile được resample về cùng số điểm nên chuyển được chữ nhật ↔ tròn. Spec có >2 section
-  vẫn preview được trong studio nhưng `.rfa` chỉ dựng section đầu/cuối (có warning); muốn
-  nhiều đoạn thì tách thành nhiều part. Loft chưa có dimension/constraint nên đổi tham số
-  phải dùng **Rebuild from spec**.
-- **Cut trong Revit**: part có `cuts`/`innerRadius` được boolean ngay trong builder và lưu
-  bằng `FreeFormElement`, nên void không còn cắt part khác. Đổi lại part đó mất native
-  form/constraint; `Rebuild from spec` là đường cập nhật. Part không có cut vẫn native.
+  cần nested family hoặc sketch profile khác. Build trả `flex` trong stats để thấy tham số
+  nào còn "still".
+- **Bend**: dựng bằng native `Sweep` (fallback `FreeFormElement` nếu Revit từ chối sketch);
+  `radius`/`tubeRadius` chưa có dimension nên chưa drive. `anchor` hiện chỉ chọn mặt bị lock
+  mỗi trục (vẫn một mặt/trục), chưa phải ràng buộc hai chiều đầy đủ.
+- **Tube**: `tube` nối `start`–`end` theo **trục bất kỳ**, dựng bằng native `Sweep`; đây là
+  primitive cho nhánh 45°, bích/nắp có hướng và ống xiên. `innerRadius` tạo ống rỗng.
+  Chưa có sweep theo polyline (nhiều đoạn cong liên tiếp).
+- **Loft**: loft trục Z đúng 2 section dùng `SweptBlend` native; profile được resample về
+  cùng số điểm nên chuyển được chữ nhật ↔ tròn. Auto-heal tự tách loft Z >2 section thành
+  chuỗi part 2-section. Loft trục X/Y hoặc >2 section (spec thủ công) dùng **FreeForm
+  loft fallback** để giữ đủ hình, nhưng mất native form/constraint. Loft chưa có
+  dimension nên đổi tham số phải dùng **Rebuild from spec**.
+- **Cut trong Revit**: part có `cuts`/`innerRadius` thường được boolean ngay trong builder
+  và lưu bằng `FreeFormElement`, nên void không còn cắt part khác. Đổi lại part đó mất
+  native form/constraint; `Rebuild from spec` là đường cập nhật. Part không có cut vẫn native.
+- **Join hình học**: form chồng nhau **cùng vật liệu** được `JoinGeometryUtils.JoinGeometry`
+  sau khi dựng, để section/hidden-line không lộ mặt trong của khối đúc. Khác vật liệu thì
+  giữ rời (tránh bulong đồng thau đổi màu thân). Tắt bằng `FAMILY_AGENT_JOIN=0`.
 - **MEP connector**: đã tạo `ConnectorElement` cho duct/pipe/electrical theo `origin` +
   `directionVector` trỏ vào một face của form. Flow/pressure trong spec hiện chưa ghi vào
   connector; chỉ hình học kết nối và system type được tạo.
-- **Chưa có sweep theo polyline và transform xoay tự do**: hình học hiện chỉ có trục X/Y/Z
-  hoặc `plane` cố định; ống/thanh xiên cần thêm primitive mới.
+- **Chưa có transform xoay tự do cho part**: đã có `tube` trục bất kỳ; các primitive còn lại
+  vẫn theo trục X/Y/Z hoặc `plane` cố định.
 - Formula nào Revit từ chối (sai đơn vị, tham chiếu vòng) sẽ được thay bằng giá trị đã tính,
   kèm cảnh báo trong kết quả build.
 - Chưa tạo nhiều type, chưa có tag/schedule/annotation.

@@ -95,7 +95,16 @@ function sanitizeId(value: string, fallback: string): string {
   return cleaned || fallback;
 }
 
-const SOLID_KINDS = ["box", "cylinder", "frustum", "bend", "prism", "loft"];
+const SOLID_KINDS = [
+  "box",
+  "cylinder",
+  "frustum",
+  "bend",
+  "prism",
+  "loft",
+  "revolve",
+  "tube",
+];
 
 function checkSolid(raw: unknown, path: string, issues: Issue[]): void {
   if (!isObject(raw)) {
@@ -258,15 +267,6 @@ function checkSolid(raw: unknown, path: string, issues: Issue[]): void {
     }
     if (height !== null && Math.abs(height) < 1e-9) {
       issues.push({ severity: "error", path: `${path}.height`, message: "height must not be zero" });
-    }
-    const axis = text(raw.axis) || "z";
-    if (axis !== "z" || (height !== null && height < 0) || (radiusBottom !== null && radiusBottom <= 0)) {
-      issues.push({
-        severity: "warning",
-        path,
-        message:
-          "This frustum uses a tessellated Blend; its radii stay baked. Only a Z-axis, positive-height frustum with radiusBottom > 0 becomes a Revolution.",
-      });
     }
   } else if (kind === "bend") {
     requireVec("center");
@@ -520,6 +520,111 @@ function checkSolid(raw: unknown, path: string, issues: Issue[]): void {
             "The Revit family builder currently lofts exactly two sections; extra sections preview in the studio but are skipped in the .rfa.",
         });
       }
+    }
+  } else if (kind === "revolve") {
+    if (raw.axis !== undefined && !["x", "y", "z"].includes(text(raw.axis))) {
+      issues.push({ severity: "error", path: `${path}.axis`, message: "axis must be x, y or z" });
+    }
+    if (raw.origin !== undefined) {
+      requireVec("origin");
+    }
+    if (!Array.isArray(raw.points) || raw.points.length < 3) {
+      issues.push({
+        severity: "error",
+        path: `${path}.points`,
+        message: "points must be an array of at least 3 [radial, height] pairs",
+      });
+    }
+    const angle = literalNumber(raw.angle);
+    if (angle !== null && (angle <= 0 || angle > 360)) {
+      issues.push({
+        severity: "error",
+        path: `${path}.angle`,
+        message: "angle must be greater than zero and at most 360 degrees",
+      });
+    }
+    if (Array.isArray(raw.points)) {
+      raw.points.forEach((pt, ptIndex) => {
+        if (!Array.isArray(pt) || pt.length < 2) {
+          issues.push({
+            severity: "error",
+            path: `${path}.points[${ptIndex}]`,
+            message: "each point must be an [r, h] pair",
+          });
+        } else {
+          const r = literalNumber(pt[0]);
+          if (r !== null && r < 0) {
+            issues.push({
+              severity: "error",
+              path: `${path}.points[${ptIndex}][0]`,
+              message: "radial distance must be zero or greater",
+            });
+          }
+        }
+      });
+    }
+  } else if (kind === "tube") {
+    requireVec("start");
+    requireVec("end");
+    if (raw.radius === undefined) {
+      issues.push({ severity: "error", path: `${path}.radius`, message: "radius is required" });
+    }
+    const radius = literalNumber(raw.radius);
+    const innerRadius = literalNumber(raw.innerRadius);
+    if (radius !== null && radius <= 0) {
+      issues.push({
+        severity: "error",
+        path: `${path}.radius`,
+        message: "radius must be greater than zero",
+      });
+    }
+    if (innerRadius !== null && innerRadius < 0) {
+      issues.push({
+        severity: "error",
+        path: `${path}.innerRadius`,
+        message: "innerRadius must be zero or greater",
+      });
+    }
+    if (innerRadius !== null && radius !== null && innerRadius >= radius) {
+      issues.push({
+        severity: "error",
+        path: `${path}.innerRadius`,
+        message: "innerRadius must be smaller than radius",
+      });
+    }
+
+    if (isObject(raw.start) && isObject(raw.end)) {
+      const coords = [
+        literalNumber(raw.start.x),
+        literalNumber(raw.start.y),
+        literalNumber(raw.start.z),
+        literalNumber(raw.end.x),
+        literalNumber(raw.end.y),
+        literalNumber(raw.end.z),
+      ];
+      if (coords.every((value): value is number => value !== null)) {
+        const length = Math.hypot(
+          coords[3] - coords[0],
+          coords[4] - coords[1],
+          coords[5] - coords[2],
+        );
+        if (length < 1e-9) {
+          issues.push({
+            severity: "error",
+            path,
+            message: "start and end must differ",
+          });
+        }
+      }
+    }
+
+    const segments = literalNumber(raw.segments);
+    if (segments !== null && (segments < 12 || segments > 96)) {
+      issues.push({
+        severity: "error",
+        path: `${path}.segments`,
+        message: "segments must be between 12 and 96",
+      });
     }
   }
 }

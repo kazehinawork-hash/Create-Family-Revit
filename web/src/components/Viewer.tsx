@@ -9,6 +9,7 @@ import {
   instanceEdgeGeometry,
   partColor,
   partMaterialProps,
+  type PreviewQuality,
 } from "../lib/three-build";
 import { buildPartGeometryAsync, type BuiltPartGeometry } from "../lib/geometry-pool";
 
@@ -245,6 +246,8 @@ export function Viewer({
 
   const [animatingPartName, setAnimatingPartName] = useState<string | null>(null);
   const [detailLevel, setDetailLevel] = useState<"coarse" | "medium" | "fine">("fine");
+  const [viewPreset, setViewPreset] = useState<"iso" | "front" | "top" | "right">("iso");
+  const [previewQuality, setPreviewQuality] = useState<PreviewQuality>("high");
   const [showClearance, setShowClearance] = useState<boolean>(true);
   const [turntableActive, setTurntableActive] = useState<boolean>(false);
   const turntableRef = useRef<boolean>(false);
@@ -1965,7 +1968,7 @@ export function Viewer({
 
       // Geometry only depends on the resolved shape. Name/material/colour changes
       // are style-only and must not cut the solid again.
-      const geometryKey = shapeKey;
+      const geometryKey = `${shapeKey}|${previewQuality}`;
       const style = styleOf(part);
       const styleKey = [
         part.name,
@@ -2026,7 +2029,7 @@ export function Viewer({
         cursor += 1;
         inFlight += 1;
 
-        void buildPartGeometryAsync(part)
+        void buildPartGeometryAsync(part, previewQuality)
           .then((built) => {
             if (cancelled) {
               built.geometry.dispose();
@@ -2058,7 +2061,7 @@ export function Viewer({
     return () => {
       cancelled = true;
     };
-  }, [model, materials, selectedPartId, hiddenPartIds, transparentPartIds, issuePartIds, highlightPartIds, visiblePartCount, animatingPartName, detailLevel, showClearance]);
+  }, [model, materials, selectedPartId, hiddenPartIds, transparentPartIds, issuePartIds, highlightPartIds, visiblePartCount, animatingPartName, detailLevel, showClearance, previewQuality]);
 
   // Zoom the camera to a part when an issue is clicked in the chat.
   useEffect(() => {
@@ -2913,6 +2916,22 @@ export function Viewer({
           </svg>
           <span className="tool-label">Fit</span>
         </button>
+        <select
+          className="select view-select"
+          value={viewPreset}
+          onChange={(event) => {
+            const next = event.target.value as "iso" | "front" | "top" | "right";
+            setViewPreset(next);
+            setView(next);
+          }}
+          title="Góc nhìn nhanh (Iso / Front / Top / Right)"
+          aria-label="View preset"
+        >
+          <option value="iso">Iso</option>
+          <option value="front">Front</option>
+          <option value="top">Top</option>
+          <option value="right">Right</option>
+        </select>
         <button
           type="button"
           className={`tool ${showGrid ? "active" : ""}`}
@@ -2992,6 +3011,23 @@ export function Viewer({
             <path d="M3 9h18M9 21V9" />
           </svg>
           <span className="tool-label">{detailLevel === "coarse" ? "Coarse" : "Fine"}</span>
+        </button>
+        <button
+          type="button"
+          className={`tool ${previewQuality === "high" ? "active" : ""}`}
+          onClick={() =>
+            setPreviewQuality((current) => (current === "high" ? "standard" : "high"))
+          }
+          title={
+            previewQuality === "high"
+              ? "Preview HD: mặt cong mượt hơn (nhiều triangle hơn). Bấm để chuyển Standard."
+              : "Preview Standard: nhẹ hơn. Bấm để chuyển HD."
+          }
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <path d="M4 18 10 6l4 8 3-5 3 9" />
+          </svg>
+          <span className="tool-label">HD</span>
         </button>
         <button
           type="button"

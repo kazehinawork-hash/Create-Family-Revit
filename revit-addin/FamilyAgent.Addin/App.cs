@@ -103,7 +103,11 @@ namespace FamilyAgent.Addin
             try
             {
                 var currentSig = FamilyBuilder.ParameterSignature(doc);
-                if (string.IsNullOrEmpty(currentSig)) return;
+                if (string.IsNullOrEmpty(currentSig))
+                {
+                    LogAutoSync("Auto-sync skipped: no Family Agent spec or no readable parameter values.");
+                    return;
+                }
 
                 if (!_lastSignatures.TryGetValue(docHash, out var previousSig))
                 {
@@ -122,6 +126,16 @@ namespace FamilyAgent.Addin
                     if (result.Ok)
                     {
                         _lastSignatures[docHash] = FamilyBuilder.ParameterSignature(doc);
+                        if (result.Warnings.Count > 0)
+                        {
+                            LogAutoSync(
+                                $"Rebuild OK with {result.Warnings.Count} warning(s): " +
+                                string.Join("; ", result.Warnings.GetRange(0, Math.Min(6, result.Warnings.Count))));
+                        }
+                    }
+                    else
+                    {
+                        LogAutoSync($"Rebuild failed: {result.Error}");
                     }
                 }
                 finally
@@ -129,9 +143,34 @@ namespace FamilyAgent.Addin
                     _rebuilding = false;
                 }
             }
-            catch
+            catch (Exception ex)
             {
                 _rebuilding = false;
+                LogAutoSync("Auto-sync exception: " + ex);
+            }
+        }
+
+        /// <summary>
+        /// Append-only log for parameter auto-sync, so a family that does not react to a
+        /// parameter change has a concrete reason on disk. Path:
+        /// Documents\FamilyAgent\logs\autosync.log
+        /// </summary>
+        private static void LogAutoSync(string message)
+        {
+            try
+            {
+                var directory = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                    "FamilyAgent",
+                    "logs");
+                Directory.CreateDirectory(directory);
+                File.AppendAllText(
+                    Path.Combine(directory, "autosync.log"),
+                    $"{DateTime.Now:O} {message}{Environment.NewLine}");
+            }
+            catch
+            {
+                // Logging must never break Revit's idling loop.
             }
         }
 

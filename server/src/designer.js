@@ -35,6 +35,70 @@ const DEFAULT_MATERIAL_PALETTE = {
 };
 
 /**
+ * Revit's family SweptBlend takes exactly two profiles. The studio preview keeps
+ * every loft section, so a longer loft would build differently in the .rfa.
+ * Split it into chained two-section lofts instead of silently losing the middle.
+ */
+function splitLongLofts(spec) {
+  if (!Array.isArray(spec.parts)) return;
+
+  const usedIds = new Set(
+    spec.parts.map((part) => (part && typeof part.id === "string" ? part.id : "")).filter(Boolean),
+  );
+  const next = [];
+  const notes = [];
+
+  for (const part of spec.parts) {
+    const sections = part?.solid?.kind === "loft" ? part.solid.sections : null;
+    if (!Array.isArray(sections) || sections.length <= 2) {
+      next.push(part);
+      continue;
+    }
+
+    // A cut or array would only belong to one segment, so leave those alone and
+    // let the parity preflight report the risk.
+    if ((Array.isArray(part.cuts) && part.cuts.length > 0) || part.array) {
+      next.push(part);
+      continue;
+    }
+
+    const count = sections.length - 1;
+    const baseId = part.id || "loft";
+    const baseName = part.name || "Loft";
+
+    for (let index = 0; index < count; index += 1) {
+      let id = `${baseId}-seg${index + 1}`;
+      let suffix = 2;
+      while (usedIds.has(id)) {
+        id = `${baseId}-seg${index + 1}-${suffix}`;
+        suffix += 1;
+      }
+      usedIds.add(id);
+
+      next.push({
+        ...part,
+        id,
+        name: `${baseName} ${index + 1}/${count}`,
+        solid: {
+          ...part.solid,
+          sections: [sections[index], sections[index + 1]],
+        },
+      });
+    }
+
+    notes.push(
+      `Đã tách loft "${baseName}" thành ${count} đoạn 2-section để studio và .rfa khớp nhau.`,
+    );
+  }
+
+  spec.parts = next;
+  if (notes.length > 0) {
+    if (!Array.isArray(spec.notes)) spec.notes = [];
+    spec.notes.push(...notes);
+  }
+}
+
+/**
  * Deterministic Auto-Healer / Sanitizer.
  * Corrects trivial or deterministic spec errors before running analyzeSpec or calling LLM retry.
  */
@@ -174,6 +238,10 @@ export function autoHealSpec(spec) {
         }
       }
     }
+
+    // 4b. Keep the studio and Revit in sync: a family SweptBlend only takes two
+    // profiles, so longer lofts are split into chained two-section parts.
+    splitLongLofts(spec);
   }
 
   // 5. Connectors normalization
@@ -542,7 +610,7 @@ export async function design({ prompt, currentSpec, lod, emit, model, customApiC
         emit({
           type: "stage",
           stage: "repairing",
-          message: `Fixing ${layoutIssues.length} layout problem${layoutIssues.length === 1 ? "" : "s"}`,
+          message: `Fixing ${layoutIssues.length} geometry problem${layoutIssues.length === 1 ? "" : "s"}`,
           issues: layoutIssues.slice(0, 12),
         });
         messages.push({ role: "assistant", content: compactSpec(result) });

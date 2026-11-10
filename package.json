@@ -13,7 +13,8 @@
     "build:core": "npm run build -w @family/spec-core",
     "build": "npm run build:core && npm run build -w web",
     "start": "node server/src/index.js",
-    "test": "npm run build:core && npm run test -w @family/spec-core && npm run test -w server && npm run test -w web && npm run addin:test",
+    "test": "npm run build:core && npm run test -w @family/spec-core && npm run test -w server && npm run test -w web && npm run addin:test && node scripts/parity.mjs --no-build",
+    "parity": "npm run build:core && node scripts/parity.mjs",
     "eval": "npm run build:core && node scripts/eval.mjs",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -22,7 +23,7 @@
     "test:server": "npm run test -w server",
     "test:web": "npm run test -w web",
     "test:e2e": "playwright test",
-    "addin": "dotnet build revit-addin/FamilyAgent.Addin/FamilyAgent.Addin.csproj -c Release",
+    "addin": "dotnet build revit-addin/FamilyAgent.Addin/FamilyAgent.Addin.csproj -c Release --no-incremental",
     "addin:install": "powershell -NoProfile -ExecutionPolicy Bypass -File revit-addin/install.ps1",
     "addin:test": "dotnet run --project revit-addin/FamilyAgent.SelfTest/FamilyAgent.SelfTest.csproj -c Release"
   },

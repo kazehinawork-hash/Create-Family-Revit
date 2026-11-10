@@ -6,6 +6,7 @@ import { analyzeSpec } from "@family/spec-core";
 import { config, ROOT } from "../config.js";
 import { bridgeAlive, findRevitExe } from "../revit.js";
 import { buildFamily } from "../bridge.js";
+import { auditBuild } from "../build-qa.js";
 import {
   computeSpecHash,
   savePreview,
@@ -168,6 +169,12 @@ v1Router.post("/spec/validate", (req, res) => {
         errors: [],
         warnings: analysis.warnings || [],
       },
+      parity_risks: analysis.parity || [],
+      readiness: {
+        parts: analysis.partParity?.length || 0,
+        native_parts: (analysis.partParity || []).filter((part) => part.native).length,
+        risk_parts: (analysis.partParity || []).filter((part) => part.risks.length > 0).length,
+      },
       geometry_summary: {
         bounds: analysis.model?.bounds || null,
         parts_count: analysis.model?.parts?.length || 0,
@@ -219,6 +226,12 @@ v1Router.post("/spec/preview", (req, res) => {
       spec_hash: preview.spec_hash,
       geometry_summary: preview.geometry_summary,
       warnings: preview.warnings,
+      parity_risks: analysis.parity || [],
+      readiness: {
+        parts: analysis.partParity?.length || 0,
+        native_parts: (analysis.partParity || []).filter((part) => part.native).length,
+        risk_parts: (analysis.partParity || []).filter((part) => part.risks.length > 0).length,
+      },
       created_at: preview.created_at,
     }),
   );
@@ -329,7 +342,7 @@ v1Router.post("/build", async (req, res) => {
   }
 
   // Start background / async build
-  executeJobAsync(job, analysis.spec);
+  executeJobAsync(job, analysis);
 
   // Return accepted response with job_id
   res.status(202).json(
@@ -387,7 +400,8 @@ v1Router.get("/jobs", (req, res) => {
 /**
  * Background Executor for Jobs
  */
-async function executeJobAsync(job, spec) {
+async function executeJobAsync(job, analysis) {
+  const spec = analysis.spec;
   try {
     updateJob(job.job_id, {
       status: "running",
@@ -419,6 +433,7 @@ async function executeJobAsync(job, spec) {
     const result = await buildFamily(spec);
 
     if (result.ok) {
+      const qa = auditBuild(analysis, result);
       updateJob(job.job_id, {
         status: "succeeded",
         progress: 100,
@@ -427,9 +442,10 @@ async function executeJobAsync(job, spec) {
           path: result.path,
           revit_version: result.revitVersion,
           stats: result.stats,
+          qa,
           elapsed_ms: result.elapsedMs,
         },
-        diagnostics: result.warnings || [],
+        diagnostics: [...(result.warnings || []), ...(qa.warnings || [])],
       });
     } else {
       const isBusy = result.busy || result.mode === "queue";

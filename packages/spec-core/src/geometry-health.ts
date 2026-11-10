@@ -125,6 +125,54 @@ function solidIssues(solid: ResolvedSolid, path: string): Issue[] {
         }
       }
       break;
+
+    case "revolve":
+      if (!finite(solid.origin.x, solid.origin.y, solid.origin.z)) error("revolve origin is not finite");
+      if (solid.points.length < 3) error("revolve needs at least 3 points");
+      for (const [r, h] of solid.points) {
+        if (!finite(r, h)) error("revolve profile points must be finite");
+        if (r < 0) error("revolve radial coordinate cannot be negative");
+      }
+      break;
+
+    case "tube":
+      if (
+        !finite(
+          solid.start.x,
+          solid.start.y,
+          solid.start.z,
+          solid.end.x,
+          solid.end.y,
+          solid.end.z,
+        )
+      ) {
+        error("tube endpoints are not finite");
+      }
+      if (!finite(solid.radius, solid.length) || solid.radius <= 0) {
+        error("tube radius must be positive");
+      }
+      if (solid.length <= EPSILON) error("tube start and end must differ");
+      if (!finite(solid.innerRadius) || solid.innerRadius < 0) {
+        error("tube innerRadius must be non-negative");
+      } else if (solid.innerRadius >= solid.radius) {
+        error("tube innerRadius must be smaller than radius");
+      } else if (
+        solid.innerRadius > 0 &&
+        solid.radius - solid.innerRadius < REVIT_SHORT_CURVE_TOLERANCE_MM
+      ) {
+        warning(
+          `tube wall thickness (${(solid.radius - solid.innerRadius).toFixed(2)}mm) is below Revit tolerance (${REVIT_SHORT_CURVE_TOLERANCE_MM}mm)`,
+        );
+      }
+      if (solid.radius > 0 && solid.radius < REVIT_SHORT_CURVE_TOLERANCE_MM) {
+        warning(`tube radius is smaller than Revit tolerance (${REVIT_SHORT_CURVE_TOLERANCE_MM}mm)`);
+      }
+      if (solid.length > EPSILON && solid.length < REVIT_SHORT_CURVE_TOLERANCE_MM) {
+        warning(
+          `tube length is smaller than Revit tolerance (${REVIT_SHORT_CURVE_TOLERANCE_MM}mm)`,
+        );
+      }
+      break;
   }
 
   return issues;
