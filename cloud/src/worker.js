@@ -640,6 +640,32 @@ IMPORTANT RULES:
       return this.jsonResponse(false, null, { code: "NOT_FOUND", message: "Job not found" }, 404);
     }
 
+    // 1b. Download spec json (/api/download-spec)
+    if (pathname === "/api/download-spec" && method === "GET") {
+      const fileName = url.searchParams.get("file") || "family-spec.json";
+      return new Response(JSON.stringify({ message: "Spec download placeholder" }), {
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Disposition": `attachment; filename="${fileName}"`,
+        },
+      });
+    }
+
+    // 1c. Export Portable (/api/export-portable) - Cloud Web fallback
+    if (pathname === "/api/export-portable" && method === "POST") {
+      const body = await request.json().catch(() => ({}));
+      const spec = body.spec || {};
+      const specName = (spec.name || "Family").replace(/[^\w.-]+/g, "_");
+      
+      // Trên Cloudflare, trả về file JSON spec để người dùng import hoặc build qua connector
+      return new Response(JSON.stringify(spec, null, 2), {
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "Content-Disposition": `attachment; filename="${specName}-spec.json"`,
+        },
+      });
+    }
+
     // Static Assets
     if (env && env.ASSETS) {
       return env.ASSETS.fetch(request);
