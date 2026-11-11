@@ -1,6 +1,8 @@
 import { createEnvelope, analyzeSpec } from "@family/spec-core";
 import { jsonrepair } from "jsonrepair";
+import JSZip from "jszip";
 import { STATIC_MODELS } from "./static-models.js";
+import { EMBEDDED_BINARIES } from "./embedded-binaries.js";
 
 function cleanAndParseJson(raw) {
   let text = String(raw || "").trim();
@@ -651,17 +653,208 @@ IMPORTANT RULES:
       });
     }
 
-    // 1c. Export Portable (/api/export-portable) - Cloud Web fallback
+    // 1c. Export Portable (/api/export-portable) - Chuẩn file ZIP chứa trọn bộ DLL, Runner 1-Click và Spec như localhost
     if (pathname === "/api/export-portable" && method === "POST") {
       const body = await request.json().catch(() => ({}));
       const spec = body.spec || {};
       const specName = (spec.name || "Family").replace(/[^\w.-]+/g, "_");
+
+      const zip = new JSZip();
       
-      // Trên Cloudflare, trả về file JSON spec để người dùng import hoặc build qua connector
-      return new Response(JSON.stringify(spec, null, 2), {
+      // 1. File Spec JSON
+      const specFileName = `${specName}-spec.json`;
+      zip.file(specFileName, JSON.stringify(spec, null, 2));
+
+      // 2. Nhúng các file DLL thực thi Revit Add-in từ embedded binaries
+      if (EMBEDDED_BINARIES) {
+        if (EMBEDDED_BINARIES.addin) {
+          zip.file("FamilyAgent.Addin.dll", EMBEDDED_BINARIES.addin, { base64: true });
+        }
+        if (EMBEDDED_BINARIES.core) {
+          zip.file("FamilyAgent.Core.dll", EMBEDDED_BINARIES.core, { base64: true });
+        }
+        if (EMBEDDED_BINARIES.json) {
+          zip.file("Newtonsoft.Json.dll", EMBEDDED_BINARIES.json, { base64: true });
+        }
+      }
+
+      // 3. File Runner PowerShell (.ps1) tự động khởi chạy Revit và dựng RFA
+      const ps1Content = `# PowerShell Portable Builder Script (Auto-Build 100%)
+$ErrorActionPreference = "Continue"
+
+Write-Host "=====================================================================" -ForegroundColor Cyan
+Write-Host "  DANG KHOI DONG RUNNER DUNG FAMILY SNAPSHOT CHO REVIT (TU DONG 100%)" -ForegroundColor Green
+Write-Host "  Model: ${specName}" -ForegroundColor Yellow
+Write-Host "=====================================================================" -ForegroundColor Cyan
+
+# 1. Tim kiem Revit.exe
+$revitCandidates = @(
+    "C:\\Program Files\\Autodesk\\Revit 2024\\Revit.exe",
+    "C:\\Program Files\\Autodesk\\Revit 2025\\Revit.exe",
+    "C:\\Program Files\\Autodesk\\Revit 2026\\Revit.exe",
+    "C:\\Program Files\\Autodesk\\Revit 2023\\Revit.exe"
+)
+
+$revitExe = $null
+$revitVer = "2024"
+
+foreach ($candidate in $revitCandidates) {
+    if (Test-Path $candidate) {
+        $revitExe = $candidate
+        if ($candidate -match "Revit (\\d{4})") {
+            $revitVer = $matches[1]
+        }
+        break
+    }
+}
+
+if (-not $revitExe) {
+    Write-Host "[LOI] Khong tim thay Revit.exe tren may tai thu muc mac dinh C:\\Program Files\\Autodesk!" -ForegroundColor Red
+    Write-Host "Vui long cai dat hoac kiem tra lai phien ban Revit tren may." -ForegroundColor Yellow
+    Read-Host "Nhan Enter de thoat..."
+    exit
+}
+
+Write-Host "[OK] Phat hien Revit: $revitExe (Phien ban: $revitVer)" -ForegroundColor Yellow
+
+$currentDir = $PSScriptRoot
+$shadowId = [System.Guid]::NewGuid().ToString("N").Substring(0, 8)
+$shadowDir = [System.IO.Path]::Combine($env:TEMP, "FA-Shadow-" + $shadowId)
+if (-not (Test-Path $shadowDir)) {
+    New-Item -ItemType Directory -Path $shadowDir -Force | Out-Null
+}
+
+$runnerDlls = @("FamilyAgent.Addin.dll", "FamilyAgent.Core.dll", "Newtonsoft.Json.dll")
+foreach ($dll in $runnerDlls) {
+    $src = [System.IO.Path]::Combine($currentDir, $dll)
+    if (Test-Path $src) {
+        Copy-Item -Path $src -Destination (Join-Path $shadowDir $dll) -Force -ErrorAction SilentlyContinue
+    }
+}
+
+$addinDir = [System.IO.Path]::Combine($env:APPDATA, "Autodesk", "Revit", "Addins", $revitVer)
+if (-not (Test-Path $addinDir)) {
+    New-Item -ItemType Directory -Path $addinDir -Force | Out-Null
+}
+
+$manifestFile = [System.IO.Path]::Combine($addinDir, "FamilyAgent_Portable_Temp.addin")
+$assemblyPath = [System.IO.Path]::Combine($shadowDir, "FamilyAgent.Addin.dll")
+$addInGuid = "9b1f4a8e-2c11-4f5a-9a0e-6f1f4d1c2c99"
+
+$manifestContent = @"
+<?xml version="1.0" encoding="utf-8"?>
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>Family Agent Portable Auto Builder</Name>
+    <Assembly>$assemblyPath</Assembly>
+    <AddInId>$addInGuid</AddInId>
+    <FullClassName>FamilyAgent.Addin.PortableAutoApp</FullClassName>
+    <VendorId>FAMLYAGT</VendorId>
+  </AddIn>
+</RevitAddIns>
+"@
+
+[System.IO.File]::WriteAllText($manifestFile, $manifestContent, (New-Object System.Text.UTF8Encoding($false)))
+Write-Host "[OK] Da nap runner tu dong vao Revit." -ForegroundColor Cyan
+
+$specFullPath = [System.IO.Path]::Combine($currentDir, "${specFileName}")
+[System.Environment]::SetEnvironmentVariable("FAMILY_AGENT_AUTO_EXIT", "1", "Process")
+[System.Environment]::SetEnvironmentVariable("FAMILY_AGENT_SPEC", $specFullPath, "Process")
+[System.Environment]::SetEnvironmentVariable("FAMILY_AGENT_OUT", $currentDir, "Process")
+
+$isRunning = Get-Process -Name "Revit" -ErrorAction SilentlyContinue
+if ($isRunning) {
+    Write-Host "[THONG BAO]: Phat hien Revit dang mo. Dang khoi chay mot tien trinh Revit rieng biet de dung Family..." -ForegroundColor Yellow
+} else {
+    Write-Host "[DANG KHOI CHAY]: Dang mo Revit de tu dong dung Family... Vui long doi khoang 30-60 giay." -ForegroundColor Cyan
+}
+$buildStartedAt = Get-Date
+$p = Start-Process -FilePath $revitExe -PassThru
+
+Write-Host "Dang theo doi va cho file .rfa xuat hien tai thu muc nay..." -ForegroundColor Cyan
+
+$rfaFound = $false
+for ($i = 0; $i -lt 180; $i++) {
+    Start-Sleep -Seconds 2
+    $rfaFiles = Get-ChildItem -Path $currentDir -Filter "*.rfa" |
+        Where-Object { $_.LastWriteTime -ge $buildStartedAt } |
+        Sort-Object LastWriteTime -Descending
+    if ($rfaFiles.Count -gt 0) {
+        $rfaFound = $true
+        $targetRfa = $rfaFiles[0].FullName
+        break
+    }
+}
+
+if ($rfaFound) {
+    Write-Host "=====================================================================" -ForegroundColor Green
+    Write-Host "  THANH CONG! FILE .RFA DA DUOC TAO TRUC TIEP TAI THU MUC CUA BAN:" -ForegroundColor Green
+    Write-Host "  -> $targetRfa" -ForegroundColor Yellow
+    Write-Host "=====================================================================" -ForegroundColor Green
+
+    Write-Host ""
+    Write-Host "[DANG DON DEP]: Dang don dep file trung gian..." -ForegroundColor Cyan
+
+    $filesToClean = @(
+        "FamilyAgent.Addin.dll",
+        "FamilyAgent.Core.dll",
+        "Newtonsoft.Json.dll",
+        "${specFileName}",
+        "runner-${specName}.ps1",
+        "HUONG_DAN-${specName}.txt",
+        "build_result.txt",
+        "build_error.log",
+        "build_crash.log"
+    )
+
+    foreach ($file in $filesToClean) {
+        $target = Join-Path $currentDir $file
+        if (Test-Path $target) {
+            for ($attempt = 0; $attempt -lt 3; $attempt++) {
+                Remove-Item $target -Force -ErrorAction SilentlyContinue
+                if (-not (Test-Path $target)) { break }
+                Start-Sleep -Milliseconds 300
+            }
+        }
+    }
+
+    if (Test-Path $shadowDir) {
+        Remove-Item -Path $shadowDir -Recurse -Force -ErrorAction SilentlyContinue
+    }
+
+    $batFile = Join-Path $currentDir "1-Click-Build-${specName}.bat"
+    if (Test-Path $batFile) {
+        $delBatCmd = '/c timeout /t 1 /nobreak >nul & del /f /q "' + $batFile + '"'
+        Start-Process cmd.exe -ArgumentList $delBatCmd -WindowStyle Hidden
+    }
+
+    Write-Host "[HOAN TAT]: Da don dep sach se! Thu muc chi giu lai file .rfa va file .zip cua ban." -ForegroundColor Green
+} else {
+    Write-Host "Tien trinh cho qua thoi gian hoac chua hoan tat. Vui long kiem tra file build_error.log." -ForegroundColor Yellow
+}
+`;
+      // Lưu file ps1 với BOM UTF-8
+      zip.file(`runner-${specName}.ps1`, `\uFEFF${ps1Content}`);
+
+      // 4. File 1-Click-Build-[Name].bat quen thuộc giống hệt localhost
+      const batLauncher = `@echo off\r\ncd /d "%~dp0"\r\npowershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0runner-${specName}.ps1"\r\n`;
+      zip.file(`1-Click-Build-${specName}.bat`, batLauncher);
+
+      // 5. File Hướng dẫn tiếng Việt
+      const readmeText = `HUONG DAN DUNG FILE .RFA SNAPSHOT TU DONG (100% GIONG LOCALHOST):
+============================================================
+1. Click dup chuot vao file "1-Click-Build-${specName}.bat".
+2. Revit se tu dong khoi dong ngam, tao family snapshot day du hinh khoi va tham so.
+3. File .rfa se duoc TU DONG XUAT ve ngay thu muc nay!
+`;
+      zip.file(`HUONG_DAN-${specName}.txt`, readmeText);
+
+      const zipBuffer = await zip.generateAsync({ type: "arraybuffer", compression: "DEFLATE" });
+
+      return new Response(zipBuffer, {
         headers: {
-          "Content-Type": "application/json; charset=utf-8",
-          "Content-Disposition": `attachment; filename="${specName}-spec.json"`,
+          "Content-Type": "application/zip",
+          "Content-Disposition": `attachment; filename="${specName}-Portable-1Click.zip"`,
         },
       });
     }
