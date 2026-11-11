@@ -1,0 +1,15 @@
+{
+  "name": "@family/connector",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@family/spec-core": "^0.1.0"
+  }
+}
+

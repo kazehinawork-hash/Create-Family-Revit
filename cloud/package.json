@@ -1,0 +1,15 @@
+{
+  "name": "@family/cloud",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "src/worker.js",
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@family/spec-core": "^0.1.0",
+    "jsonrepair": "^3.15.0",
+    "jszip": "^3.10.2"
+  }
+}

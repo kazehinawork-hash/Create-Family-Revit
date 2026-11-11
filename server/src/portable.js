@@ -237,16 +237,13 @@ $specFullPath = [System.IO.Path]::Combine($currentDir, "${specFileName}")
 [System.Environment]::SetEnvironmentVariable("FAMILY_AGENT_SPEC", $specFullPath, "Process")
 [System.Environment]::SetEnvironmentVariable("FAMILY_AGENT_OUT", $currentDir, "Process")
 
-# 3. Kiem tra va khoi chay Revit tu dong
+# 3. Kiem tra va khoi chay tien trinh Revit moi (chay song song)
 $isRunning = Get-Process -Name "Revit" -ErrorAction SilentlyContinue
 
 Write-Host ""
 Write-Host "---------------------------------------------------------------------" -ForegroundColor Gray
 if ($isRunning) {
-    Write-Host "[LOI]: Revit dang chay. Revit chi nap add-in mot lan khi khoi dong, nen phien dang mo co the van dung DLL cu." -ForegroundColor Red
-    Write-Host "Hay DONG HOAN TOAN tat ca cua so Revit roi chay lai file .bat nay." -ForegroundColor Yellow
-    Read-Host "Nhan Enter de thoat..."
-    exit 1
+    Write-Host "[THONG BAO]: Phat hien Revit dang mo tren may. Dang khoi chay mot tien trinh Revit rieng biet de dung Family..." -ForegroundColor Yellow
 } else {
     Write-Host "[THONG BAO]: Dang khoi dong Revit de tu dong dung Native Family..." -ForegroundColor Green
 }
