@@ -2980,9 +2980,33 @@ a.modal-close {
 
 .connector-meta-row {
   display: flex;
+  align-items: center;
+  gap: 6px;
   justify-content: space-between;
   font-size: 10.5px;
   color: var(--muted);
+}
+
+.connector-host-toggle {
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  color: var(--muted);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.connector-host-toggle.ref {
+  border-color: #8ab4f8;
+  color: #0969da;
+  background: #eef5ff;
+}
+
+.connector-host-toggle:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 
 .connector-flow-row {

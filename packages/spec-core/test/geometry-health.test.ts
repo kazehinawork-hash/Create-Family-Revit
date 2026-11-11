@@ -175,4 +175,42 @@ describe("geometry health checks", () => {
       ),
     ).toBe(true);
   });
+
+  it("does not warn when the connector is explicitly hosted on a reference plane", () => {
+    const spec = base({
+      parts: [
+        {
+          id: "body",
+          name: "Body",
+          solid: {
+            kind: "box",
+            origin: { x: 0, y: 0, z: 0 },
+            size: { x: 100, y: 100, z: 100 },
+          },
+        },
+      ],
+      connectors: [
+        {
+          id: "c1",
+          name: "Inlet",
+          systemType: "hydronicsupply",
+          shape: "round",
+          host: "reference-plane",
+          origin: { x: 500, y: 500, z: 500 },
+          directionVector: { x: 0, y: 0, z: 1 },
+          diameter: 50,
+        },
+      ],
+    });
+
+    const analysis = analyzeSpec(spec);
+    expect(analysis.ok).toBe(true);
+    expect(
+      analysis.issues.some(
+        (issue) =>
+          issue.path === "logic.geometry.connector.c1" &&
+          issue.message.includes("orphaned"),
+      ),
+    ).toBe(false);
+  });
 });

@@ -166,6 +166,7 @@ namespace FamilyAgent.Core
         public string SystemType { get; set; }
         public string Shape { get; set; }
         public string Direction { get; set; }
+        public string Host { get; set; }
         public Vec3 Origin { get; set; }
         public Vec3 DirectionVector { get; set; }
         public Num? Width { get; set; }

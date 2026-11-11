@@ -2323,6 +2323,89 @@ namespace FamilyAgent.Addin
                 endRad);
         }
 
+        /// <summary>
+        /// A family connector must be hosted by a planar reference. A cable-ladder
+        /// opening is hollow, so there is no solid face at its centre. Create an
+        /// invisible reference plane through the connector origin with the connector
+        /// direction as normal; no visible "host tab" solid is needed.
+        /// </summary>
+        private static ReferencePlane CreateConnectorHostPlane(
+            Document document,
+            XYZ origin,
+            XYZ direction,
+            out string diagnosis)
+        {
+            diagnosis = string.Empty;
+            var view = document.ActiveView
+                ?? new FilteredElementCollector(document)
+                    .OfClass(typeof(View3D))
+                    .Cast<View3D>()
+                    .FirstOrDefault(candidate => !candidate.IsTemplate)
+                ?? new FilteredElementCollector(document)
+                    .OfClass(typeof(View))
+                    .Cast<View>()
+                    .FirstOrDefault(candidate => !candidate.IsTemplate);
+
+            if (view == null)
+            {
+                diagnosis = "no view available for a reference plane";
+                return null;
+            }
+
+            var helper = Math.Abs(direction.Z) < 0.9 ? XYZ.BasisZ : XYZ.BasisX;
+            var lineDir = direction.CrossProduct(helper);
+            if (lineDir.GetLength() < 1e-9) lineDir = direction.CrossProduct(XYZ.BasisY);
+            if (lineDir.GetLength() < 1e-9) lineDir = direction.CrossProduct(XYZ.BasisX);
+            lineDir = lineDir.Normalize();
+            var freeEnd = origin + lineDir * (300.0 / MmPerFoot);
+
+            var candidates = new[]
+            {
+                direction.CrossProduct(lineDir),
+                lineDir.CrossProduct(direction),
+                direction,
+                -direction,
+            };
+
+            foreach (var candidate in candidates)
+            {
+                if (candidate.GetLength() < 1e-9) continue;
+
+                ReferencePlane plane = null;
+                try
+                {
+                    plane = document.FamilyCreate.NewReferencePlane(
+                        origin, freeEnd, candidate.Normalize(), view);
+                }
+                catch (Exception ex)
+                {
+                    diagnosis = "NewReferencePlane: " + ex.Message;
+                    continue;
+                }
+
+                var normal = plane.Normal;
+                if (normal == null || normal.GetLength() < 1e-9)
+                {
+                    TryDelete(document, plane);
+                    diagnosis = "reference plane has no normal";
+                    continue;
+                }
+
+                var dot = normal.Normalize().DotProduct(direction);
+                if (dot > 0.95)
+                {
+                    try { plane.Name = "Family Agent Connector Host"; } catch { }
+                    diagnosis = $"plane normal dot={Math.Round(dot, 3)}";
+                    return plane;
+                }
+
+                TryDelete(document, plane);
+            }
+
+            diagnosis = "no reference plane normal aligned with the connector direction";
+            return null;
+        }
+
         private static int CreateConnectors(
             Document document,
             FamilySpec spec,
@@ -2364,13 +2447,28 @@ namespace FamilyAgent.Addin
                         if (direction.GetLength() < 1e-9) direction = new XYZ(0, 0, -1);
                         direction = direction.Normalize();
 
-                        Element host;
                         string diagnosis;
-                        var face = FindConnectorFace(forms, origin, direction, out host, out diagnosis);
-                        if (face == null)
+                        var hostPlane = CreateConnectorHostPlane(
+                            document, origin, direction, out diagnosis);
+
+                        Reference reference = hostPlane?.GetReference();
+                        PlanarFace face = null;
+                        var usedFaceFallback = false;
+                        if (reference == null)
+                        {
+                            face = FindConnectorFace(
+                                forms, origin, direction, out _, out var faceDiagnosis);
+                            diagnosis = string.IsNullOrEmpty(diagnosis)
+                                ? faceDiagnosis
+                                : diagnosis + "; " + faceDiagnosis;
+                            reference = face?.Reference;
+                            usedFaceFallback = reference != null;
+                        }
+
+                        if (reference == null)
                         {
                             warnings.Add(
-                                $"Connector \"{connector.Id ?? connector.Name}\" found no face at its origin ({diagnosis})");
+                                $"Connector \"{connector.Id ?? connector.Name}\" found no host at its origin ({diagnosis})");
                             continue;
                         }
 
@@ -2380,11 +2478,37 @@ namespace FamilyAgent.Addin
                             : ConnectorProfileType.Round;
 
                         var element = CreateConnectorElement(
-                            document, connector.SystemType, shape, face.Reference);
+                            document, connector.SystemType, shape, reference);
+
+                        if (element == null && hostPlane != null)
+                        {
+                            // Revit rejected the reference plane; fall back to a real face
+                            // (for example an explicit host tab) rather than losing the port.
+                            face = FindConnectorFace(
+                                forms, origin, direction, out _, out var faceDiagnosis);
+                            diagnosis = string.IsNullOrEmpty(diagnosis)
+                                ? faceDiagnosis
+                                : diagnosis + "; " + faceDiagnosis;
+                            if (face != null)
+                            {
+                                element = CreateConnectorElement(
+                                    document, connector.SystemType, shape, face.Reference);
+                                usedFaceFallback = element != null;
+                            }
+                            TryDelete(document, hostPlane);
+                        }
+
                         if (element == null)
                         {
-                            warnings.Add($"Connector \"{connector.Id ?? connector.Name}\" was rejected by Revit");
+                            warnings.Add(
+                                $"Connector \"{connector.Id ?? connector.Name}\" was rejected by Revit ({diagnosis})");
                             continue;
+                        }
+
+                        if (usedFaceFallback)
+                        {
+                            warnings.Add(
+                                $"Connector \"{connector.Id ?? connector.Name}\" used a solid face because a reference plane was unavailable/rejected ({diagnosis})");
                         }
 
                         // Associate connector dimensions and MEP properties to Family Parameters

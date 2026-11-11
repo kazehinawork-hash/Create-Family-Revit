@@ -590,6 +590,21 @@ export function App() {
     setNative(false);
   };
 
+  const handleUpdateConnectorHost = (
+    connectorId: string,
+    host: "solid" | "reference-plane",
+  ) => {
+    const current = specRef.current;
+    if (!current) return;
+    applySpec({
+      ...current,
+      connectors: (current.connectors ?? []).map((connector) =>
+        connector.id === connectorId ? { ...connector, host } : connector,
+      ),
+    });
+    setNative(false);
+  };
+
   const handleAddParameter = (draft: { name: string; type: ParameterType; value: number | string }) => {
     const current = specRef.current;
     if (!current) return;
@@ -1220,6 +1235,7 @@ export function App() {
             onUpdateParameter={handleUpdateParameter}
             onAddParameter={handleAddParameter}
             onHighlightParts={setHighlightPartIds}
+            onUpdateConnectorHost={handleUpdateConnectorHost}
           />
         ) : (
           <section className="pane right">

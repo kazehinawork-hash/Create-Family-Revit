@@ -231,6 +231,8 @@ export interface MepConnector {
     | "Fire Protection Other";
   shape: "round" | "rectangular";
   direction: "in" | "out" | "bidirectional";
+  /** solid = host on a real face; reference-plane = host on an invisible datum plane. */
+  host?: "solid" | "reference-plane";
   origin: Vec3;
   directionVector?: Vec3;
   width?: Numeric;

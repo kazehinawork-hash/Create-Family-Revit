@@ -121,6 +121,7 @@ export interface ResolvedConnector {
   systemType: string;
   shape: "round" | "rectangular";
   direction: "in" | "out" | "bidirectional";
+  host?: "solid" | "reference-plane";
   origin: Vec3n;
   directionVector: Vec3n;
   width?: number;
@@ -839,6 +840,7 @@ export function resolveModel(
           systemType: conn.systemType,
           shape: conn.shape,
           direction: conn.direction,
+          host: conn.host,
           origin,
           directionVector,
           width: conn.width !== undefined ? num(conn.width, `${path}.width`, 0) : undefined,
