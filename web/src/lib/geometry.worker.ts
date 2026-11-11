@@ -1,11 +1,12 @@
 import * as THREE from "three";
 import type { ResolvedPart } from "@family/spec-core";
 import { geometryTransferables, serializeGeometry } from "./geometry-transfer";
-import { buildPartGeometry, csgEdgeGeometry } from "./three-build";
+import { buildPartGeometry, csgEdgeGeometry, type PreviewQuality } from "./three-build";
 
 interface BuildRequest {
   id: number;
   part: ResolvedPart;
+  quality?: PreviewQuality;
 }
 
 const scope = self as unknown as {
@@ -13,10 +14,10 @@ const scope = self as unknown as {
 };
 
 self.onmessage = (event: MessageEvent<BuildRequest>) => {
-  const { id, part } = event.data;
+  const { id, part, quality } = event.data;
 
   try {
-    const { geometry, hasCuts, cutFailed } = buildPartGeometry(part);
+    const { geometry, hasCuts, cutFailed } = buildPartGeometry(part, quality);
     const edges = hasCuts
       ? csgEdgeGeometry(geometry, 24)
       : new THREE.EdgesGeometry(geometry, 24);

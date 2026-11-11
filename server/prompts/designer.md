@@ -61,7 +61,11 @@ Primitives:
 - `prism` — `{"kind":"prism","plane":"xy|xz|yz","points":[[a,b],...],"holes":[[[a,b],...]],"from":..,"to":..}`
   A closed, simple, counter-clockwise polygon extruded between `from` and `to` along the plane normal. 3+ points, no self-intersection, no repeated point. Optional `holes` are inner loops cut out of the same native form — use them for grilles, perforated plates and flanges instead of many `cuts`.
 - `loft` — `{"kind":"loft","axis":"x|y|z","segments":32,"sections":[{"at":0,"profile":{"kind":"rect","width":..,"height":..}},{"at":400,"profile":{"kind":"circle","radius":..}}]}`
-  Two profiles stacked along `axis` at increasing `at`, lofted into one native form. Profiles are `circle` (`radius`), `rect` (`width`, `height`, optional `cornerRadius`) or `polygon` (`points`). Use exactly two sections for a Revit family (rect-to-round transitions, reducers); extra sections preview in the studio but the builder currently skips them, so split longer lofts into separate parts.
+  Two profiles stacked along `axis` at increasing `at`, lofted into one native form. Profiles are `circle` (`radius`), `rect` (`width`, `height`, optional `cornerRadius`) or `polygon` (`points`). Use exactly two sections for a native Revit `SweptBlend`; auto-heal splits longer lofts into chained two-section parts. On X/Y or with more than two sections the builder keeps all sections as a `FreeFormElement`, so preview and `.rfa` still match.
+- `revolve` — `{"kind":"revolve","axis":"x|y|z","origin":{...},"points":[[r,h],...],"angle":360,"startAngle":0}`
+  A closed profile in (radial ≥ 0, height) revolved around an axis. Use it for turned parts: valve bodies, strainer bowls, handwheels, rounded flanges, bell mouths. Prefer it over stacking frustums to fake a lathe profile.
+- `tube` — `{"kind":"tube","start":{...},"end":{...},"radius":..,"innerRadius":..}`
+  A straight round tube between two arbitrary 3D points. Use it for inclined branches, oriented flange rings, sloped pipes and any round member that is not along X/Y/Z. `innerRadius` makes a hollow pipe. For an oriented flange, use a short larger-radius `tube` at the end; for a blind cover, a short solid `tube`.
 
 Each part needs `id`, `name`, `material`, one `solid`, optional `cuts` (primitives subtracted) and optional `array` (`{"count":4,"axis":"x","spacing":"[Fin Spacing]"}`). Use `array` for repeated fins, louvres, bolts and hangers; never copy coordinates by hand.
 
@@ -70,16 +74,30 @@ Optional `anchor` pins which face the builder locks to the reference planes on e
 ## Geometry quality checklist (self-check before returning)
 
 - Casing, access doors, top deck or mounting rails, duct collars, electrical box, pipe stubs and internal equipment must all be modelled when the brief implies them.
+- **Revit short curve tolerance constraint**: Every dimension, thickness, and radius must be $\ge 1.0\text{ mm}$ (e.g. wall thickness, panel thickness, sheet metal). Never output dimensions or radii $< 1.0\text{ mm}$ as Revit will fail to create lines/curves shorter than 0.8 mm (1/32").
 - Real thickness: panels, flanges, gaskets and doors are 1.5-30 mm thick and tied to a parameter such as `[Panel Thickness]`. Thin visible edges are thin plates, not solid blocks.
-- Hollow connections: use `innerRadius` on collars, sleeves and fan rings instead of two nested cylinders.
+- Hollow connections: use `innerRadius` on collars, sleeves and fan rings instead of two nested cylinders. Ensure `innerRadius < radius` (recommended wall thickness $\ge 1.5\text{ mm}$).
 - Tapered sections: use `frustum` for round-to-round, `loft` for a section that changes shape (rect ↔ round), or a true `prism` profile; never a staircase of boxes.
 - No coincident faces: parts that touch are offset by 0.5-1 mm along the normal to avoid z-fighting and duplicate-face errors in Revit.
 - Nothing pokes through the casing: internal parts stay inside; pipe stubs and collars protrude only 20-80 mm.
 - Symmetry is intentional: floor/ceiling units are centred on X = 0 and Y = 0; repeated details use `array`.
 - Materials: every part has a `material` declared in `materials`, with colour, metalness and roughness.
+- **Service & Clearance Zones**: For equipment requiring maintenance (filters, valves, coil pull, burner service), create a bounding part with `id: "clearance-zone"`, `name: "Clearance Zone"`, and `material: "Clearance"` (color `#ff8c00`) to represent the operational access clearance zone.
 - No zero-size parts, no placeholder parts, no part that nothing uses.
 
 Material palette: casing steel `#b9bec2` (metalness 0.35, roughness 0.55); copper pipe `#b87333` (0.7 / 0.3); dark machinery, motor and fan scroll `#4b5257`; filter media `#cfc3a8`; electrical box `#2f363d`; galvanized trim and flange `#9aa1a6`.
+
+## Build parity (studio ↔ .rfa)
+
+The studio preview is more permissive than the Revit family builder. Respect these rules so the exported `.rfa` matches the preview and keeps native forms:
+
+- `loft` must have exactly **two** sections. Auto-heal splits longer lofts into chained two-section parts; do not rely on middle sections.
+- `frustum` is a native `Revolution` on **any axis**, but its radii are reference dimensions (baked) and only the height flexes. Use `revolve` if the radii must follow parameters.
+- `bend` radius/tubeRadius are baked. Changing them requires **Rebuild from spec**.
+- `tube` is a native `Sweep` on any axis. Prefer it for a 45° branch and for an oriented flange/cover ring; a hollow `tube` tries a native ring profile and may fall back to `FreeFormElement`.
+- A part stays native with `cuts`/`innerRadius` when its cuts are holes perpendicular to a cylinder/prism extrusion and sit inside the profile: a **cylinder with parallel bolt holes** (optionally a concentric bore), a **box with Z holes**, or a **prism with internal holes**. A prism cut that crosses the outer profile (or comes within 0.8 mm of it) is a notch; Revit boolean on thin plates is fragile, so bake the notch into `points` or keep the plate at least 3 mm thick. Other cuts become a `FreeFormElement`; if the boolean still fails, the builder keeps the uncut native body and reports it instead of dropping the part.
+- If a part must be FreeFormElement, say so in the brief/assumptions instead of presenting it as fully parametric.
+- Thin plate rule: for webs, flanges and hem strips thinner than 3 mm, prefer one `prism` whose `points` already include the notches/reliefs. Do not stack many near-edge `box` cuts through a 1-2 mm plate; the studio preview will show them, but Revit may reject the boolean.
 
 ## Physical layout rules
 
@@ -114,6 +132,7 @@ Verify the pairs above (pan-coil, fan-collar, electrical box-casing, door-pipes)
 - Pipe stubs: a plain cylinder protruding 50-80 mm with the nominal DN diameter. Threads are not modelled.
 - Electrical box: a simple box on the casing side.
 - Declare `connectors` for every real port: id, name, systemType, shape, direction, origin, directionVector, and width/height or diameter, plus flow and pressureDrop when known.
+- **Accurate Connector Placement**: The connector `origin` must lie strictly on the exterior face plane of the stub or flange (offset $< 1.0\text{ mm}$ from the solid face boundary). Never place connector origins inside empty internal voids.
 
 ## Categories
 
@@ -125,7 +144,7 @@ Mechanical Equipment, Duct Fitting, Duct Elbow, Duct Transition, Duct Tee, Duct 
 - **Rectangular elbow**: `prism` whose 2D profile is the true bend outline in the bend plane, extruded across the duct width; flanges at both ends.
 - **Round elbow**: `bend` — a circular `tubeRadius` section revolved around an axis at distance `radius`; `angle` 90 gives a standard elbow, `startAngle` sets which way it turns. Use `plane: "xy"` for a horizontal bend (axis Z), `"xz"` or `"yz"` for the other directions.
 - **Transition / reducer**: `frustum` for round-to-round; `loft` with a `rect` section at one end and a `circle` section at the other for rectangular-to-round; `prism` with the true tapered profile for rectangular-to-rectangular. Taper angle ≤ 30°.
-- **Tee / branch**: main body plus branch, with a flange on all three ports.
+- **Tee / branch**: main body plus branch, with a flange on all three ports. For a 45° Y-branch use a `tube` from the body to the branch end; add a short larger-radius `tube` for the oriented flange and a short solid `tube` for the cover. This keeps the flange perpendicular to the branch.
 - Declare one connector per port with the correct size and flow direction. `origin` and `directionVector` must land on the matching end face; flow/pressure values are informational until the builder writes them.
 
 ## Datasheet handling

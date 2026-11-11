@@ -346,7 +346,72 @@ namespace FamilyAgent.Core
                     };
                 }
 
-                throw new ExpressionException($"{path}.kind must be box, cylinder, frustum, bend, prism or loft");
+                if (kind == "revolve")
+                {
+                    var axis = (raw.Axis ?? "z").Trim().ToLowerInvariant();
+                    if (axis != "x" && axis != "y" && axis != "z")
+                        throw new ExpressionException($"{path}.axis must be x, y or z");
+                    if (raw.Points == null || raw.Points.Count < 3)
+                        throw new ExpressionException($"{path}.points needs at least 3 [radial, height] pairs");
+
+                    var origin = new Vec3d(
+                        Num(raw.Origin.X, $"{path}.origin.x", 0),
+                        Num(raw.Origin.Y, $"{path}.origin.y", 0),
+                        Num(raw.Origin.Z, $"{path}.origin.z", 0));
+                    var angle = Num(raw.Angle, $"{path}.angle", 360);
+                    var startAngle = Num(raw.StartAngle, $"{path}.startAngle", 0);
+                    var points = new List<Vec2d>();
+                    for (var i = 0; i < raw.Points.Count; i += 1)
+                    {
+                        var pair = raw.Points[i];
+                        if (pair == null || pair.Count < 2)
+                            throw new ExpressionException($"{path}.points[{i}] must be an [r, h] pair");
+                        points.Add(new Vec2d(
+                            Num(pair[0], $"{path}.points[{i}][0]"),
+                            Num(pair[1], $"{path}.points[{i}][1]")));
+                    }
+
+                    return new ResolvedSolid
+                    {
+                        Kind = "revolve",
+                        Axis = axis,
+                        Origin = origin,
+                        Angle = angle,
+                        StartAngle = startAngle,
+                        Points = points,
+                        Segments = Math.Min(96, Math.Max(12, raw.Segments ?? 48))
+                    };
+                }
+
+                if (kind == "tube")
+                {
+                    var start = Vec(raw.Start, $"{path}.start");
+                    var end = Vec(raw.End, $"{path}.end");
+                    var radius = Num(raw.Radius, $"{path}.radius");
+                    var inner = Num(raw.InnerRadius, $"{path}.innerRadius", 0);
+
+                    var dx = end.X - start.X;
+                    var dy = end.Y - start.Y;
+                    var dz = end.Z - start.Z;
+                    var length = Math.Sqrt(dx * dx + dy * dy + dz * dz);
+
+                    if (!(radius > 0)) throw new ExpressionException($"{path}.radius must be greater than zero");
+                    if (length < 1e-9) throw new ExpressionException($"{path}.start and {path}.end must differ");
+                    if (inner < 0 || inner >= radius)
+                        throw new ExpressionException($"{path}.innerRadius must be between 0 and radius");
+
+                    return new ResolvedSolid
+                    {
+                        Kind = "tube",
+                        Start = start,
+                        End = end,
+                        Radius = radius,
+                        InnerRadius = inner,
+                        Segments = Math.Min(96, Math.Max(12, raw.Segments ?? 48)),
+                    };
+                }
+
+                throw new ExpressionException($"{path}.kind must be box, cylinder, frustum, bend, prism, loft, revolve or tube");
             }
 
             for (var index = 0; index < spec.Parts.Count; index += 1)
@@ -607,6 +672,63 @@ namespace FamilyAgent.Core
                     {
                         bounds.Grow(LoftPoint(solid.Axis, section.At, point.A, point.B));
                     }
+                }
+                return bounds;
+            }
+
+            if (solid.Kind == "revolve")
+            {
+                var maxR = 0.0;
+                var minH = double.PositiveInfinity;
+                var maxH = double.NegativeInfinity;
+                foreach (var pt in solid.Points)
+                {
+                    maxR = Math.Max(maxR, Math.Abs(pt.A));
+                    minH = Math.Min(minH, pt.B);
+                    maxH = Math.Max(maxH, pt.B);
+                }
+                if (double.IsInfinity(minH)) { minH = 0; maxH = 0; }
+                var o = solid.Origin;
+                if (solid.Axis == "x")
+                {
+                    bounds.Grow(new Vec3d(o.X + minH, o.Y - maxR, o.Z - maxR));
+                    bounds.Grow(new Vec3d(o.X + maxH, o.Y + maxR, o.Z + maxR));
+                }
+                else if (solid.Axis == "y")
+                {
+                    bounds.Grow(new Vec3d(o.X - maxR, o.Y + minH, o.Z - maxR));
+                    bounds.Grow(new Vec3d(o.X + maxR, o.Y + maxH, o.Z + maxR));
+                }
+                else
+                {
+                    bounds.Grow(new Vec3d(o.X - maxR, o.Y - maxR, o.Z + minH));
+                    bounds.Grow(new Vec3d(o.X + maxR, o.Y + maxR, o.Z + maxH));
+                }
+                return bounds;
+            }
+
+            if (solid.Kind == "tube")
+            {
+                var dx = solid.End.X - solid.Start.X;
+                var dy = solid.End.Y - solid.Start.Y;
+                var dz = solid.End.Z - solid.Start.Z;
+                var length = Math.Sqrt(dx * dx + dy * dy + dz * dz);
+                if (length > 1e-9)
+                {
+                    var ux = dx / length;
+                    var uy = dy / length;
+                    var uz = dz / length;
+                    var ex = solid.Radius * Math.Sqrt(Math.Max(0, 1 - ux * ux));
+                    var ey = solid.Radius * Math.Sqrt(Math.Max(0, 1 - uy * uy));
+                    var ez = solid.Radius * Math.Sqrt(Math.Max(0, 1 - uz * uz));
+                    bounds.Grow(new Vec3d(
+                        Math.Min(solid.Start.X, solid.End.X) - ex,
+                        Math.Min(solid.Start.Y, solid.End.Y) - ey,
+                        Math.Min(solid.Start.Z, solid.End.Z) - ez));
+                    bounds.Grow(new Vec3d(
+                        Math.Max(solid.Start.X, solid.End.X) + ex,
+                        Math.Max(solid.Start.Y, solid.End.Y) + ey,
+                        Math.Max(solid.Start.Z, solid.End.Z) + ez));
                 }
                 return bounds;
             }

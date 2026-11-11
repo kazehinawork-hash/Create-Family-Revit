@@ -67,6 +67,8 @@ namespace FamilyAgent.Core
         public Vec3d Size;
         public Vec3d Base;
         public Vec3d Center;
+        public Vec3d Start;
+        public Vec3d End;
         public double Radius;
         public double RadiusBottom;
         public double RadiusTop;

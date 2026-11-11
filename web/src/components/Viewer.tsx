@@ -9,6 +9,7 @@ import {
   instanceEdgeGeometry,
   partColor,
   partMaterialProps,
+  type PreviewQuality,
 } from "../lib/three-build";
 import { buildPartGeometryAsync, type BuiltPartGeometry } from "../lib/geometry-pool";
 
@@ -169,7 +170,7 @@ interface SceneState {
   connectorsGroup: THREE.Group;
   key: THREE.DirectionalLight;
   shadowPlane: THREE.Mesh;
-  disposables: (THREE.BufferGeometry | THREE.Material)[];
+  disposables: { dispose: () => void }[];
 }
 
 export function Viewer({
@@ -244,6 +245,10 @@ export function Viewer({
   const shapeKeysRef = useRef(new WeakMap<ResolvedPart, string>());
 
   const [animatingPartName, setAnimatingPartName] = useState<string | null>(null);
+  const [detailLevel, setDetailLevel] = useState<"coarse" | "medium" | "fine">("fine");
+  const [viewPreset, setViewPreset] = useState<"iso" | "front" | "top" | "right">("iso");
+  const [previewQuality, setPreviewQuality] = useState<PreviewQuality>("high");
+  const [showClearance, setShowClearance] = useState<boolean>(true);
   const [turntableActive, setTurntableActive] = useState<boolean>(false);
   const turntableRef = useRef<boolean>(false);
   turntableRef.current = turntableActive;
@@ -1945,6 +1950,14 @@ export function Viewer({
     for (const part of partsToRender) {
       if (hiddenPartIds.includes(part.id)) continue;
 
+      const isClearance =
+        part.id.toLowerCase().includes("clearance") || part.name.toLowerCase().includes("clearance");
+
+      // In Coarse mode, hide clearance zones and small fasteners/bolts to preview Revit Coarse behavior
+      const isSmallDetail = /(bolt|nut|screw|washer|pin|label|tag|indicator|hole)/i.test(part.name || "");
+      if (detailLevel === "coarse" && (isClearance || isSmallDetail)) continue;
+      if (!showClearance && isClearance) continue;
+
       wanted.add(part.id);
 
       let shapeKey = shapeKeys.get(part);
@@ -1955,7 +1968,7 @@ export function Viewer({
 
       // Geometry only depends on the resolved shape. Name/material/colour changes
       // are style-only and must not cut the solid again.
-      const geometryKey = shapeKey;
+      const geometryKey = `${shapeKey}|${previewQuality}`;
       const style = styleOf(part);
       const styleKey = [
         part.name,
@@ -2016,7 +2029,7 @@ export function Viewer({
         cursor += 1;
         inFlight += 1;
 
-        void buildPartGeometryAsync(part)
+        void buildPartGeometryAsync(part, previewQuality)
           .then((built) => {
             if (cancelled) {
               built.geometry.dispose();
@@ -2048,7 +2061,7 @@ export function Viewer({
     return () => {
       cancelled = true;
     };
-  }, [model, materials, selectedPartId, hiddenPartIds, transparentPartIds, issuePartIds, highlightPartIds, visiblePartCount, animatingPartName]);
+  }, [model, materials, selectedPartId, hiddenPartIds, transparentPartIds, issuePartIds, highlightPartIds, visiblePartCount, animatingPartName, detailLevel, showClearance, previewQuality]);
 
   // Zoom the camera to a part when an issue is clicked in the chat.
   useEffect(() => {
@@ -2795,7 +2808,7 @@ export function Viewer({
         }
 
         // Flow Arrow helper
-        const arrowLength = 70;
+        const arrowLength = 75;
         const arrowHelper = new THREE.ArrowHelper(
           arrowDir,
           new THREE.Vector3(0, 0, 0),
@@ -2805,6 +2818,46 @@ export function Viewer({
           16
         );
         connGroup.add(arrowHelper);
+
+        // 3D Flow Label: IN / OUT badge with size (e.g. "IN · Ø50" or "OUT · 300×200")
+        try {
+          const dir = (conn.direction ?? "bidirectional").toLowerCase();
+          const dirLabel = dir === "in" ? "IN" : dir === "out" ? "OUT" : "BIDI";
+          const isRound = conn.shape !== "rectangular";
+          const sizeStr = isRound ? `Ø${conn.diameter ?? 50}` : `${conn.width ?? 200}×${conn.height ?? 200}`;
+          const badgeText = `${dirLabel} · ${sizeStr}`;
+
+          const canvas = document.createElement("canvas");
+          canvas.width = 256;
+          canvas.height = 64;
+          const ctx = canvas.getContext("2d");
+          if (ctx) {
+            ctx.clearRect(0, 0, 256, 64);
+            ctx.beginPath();
+            ctx.roundRect(4, 4, 248, 56, 14);
+            ctx.fillStyle = dir === "in" ? "rgba(31, 136, 61, 0.92)" : dir === "out" ? "rgba(207, 34, 46, 0.92)" : "rgba(9, 105, 218, 0.92)";
+            ctx.fill();
+            ctx.strokeStyle = "#ffffff";
+            ctx.lineWidth = 2.5;
+            ctx.stroke();
+
+            ctx.fillStyle = "#ffffff";
+            ctx.font = "bold 26px 'Segoe UI', Arial, sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(badgeText, 128, 32);
+          }
+
+          const texture = new THREE.CanvasTexture(canvas);
+          texture.anisotropy = 4;
+          const spriteMat = new THREE.SpriteMaterial({ map: texture, depthTest: false, transparent: true });
+          state.disposables.push(texture, spriteMat);
+          const sprite = new THREE.Sprite(spriteMat);
+          sprite.scale.set(65, 16.25, 1);
+          sprite.position.copy(arrowDir).multiplyScalar(arrowLength + 22);
+          sprite.renderOrder = 999;
+          connGroup.add(sprite);
+        } catch { }
 
         state.connectorsGroup.add(connGroup);
       }
@@ -2863,6 +2916,22 @@ export function Viewer({
           </svg>
           <span className="tool-label">Fit</span>
         </button>
+        <select
+          className="select view-select"
+          value={viewPreset}
+          onChange={(event) => {
+            const next = event.target.value as "iso" | "front" | "top" | "right";
+            setViewPreset(next);
+            setView(next);
+          }}
+          title="Góc nhìn nhanh (Iso / Front / Top / Right)"
+          aria-label="View preset"
+        >
+          <option value="iso">Iso</option>
+          <option value="front">Front</option>
+          <option value="top">Top</option>
+          <option value="right">Right</option>
+        </select>
         <button
           type="button"
           className={`tool ${showGrid ? "active" : ""}`}
@@ -2930,6 +2999,46 @@ export function Viewer({
             <path d="M7 11l2 2M10 8l2 2M13 5l2 2" />
           </svg>
           <span className="tool-label">Measure</span>
+        </button>
+        <button
+          type="button"
+          className={`tool ${detailLevel === "coarse" ? "active" : ""}`}
+          onClick={() => setDetailLevel((cur) => (cur === "coarse" ? "fine" : "coarse"))}
+          title={detailLevel === "coarse" ? "Chuyển sang chế độ Fine (Hiện mọi chi tiết bu lông, ốc vít)" : "Chuyển sang chế độ Coarse (Ẩn chi tiết nhỏ & vùng clearance như bản vẽ Revit 2D)"}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <path d="M3 9h18M9 21V9" />
+          </svg>
+          <span className="tool-label">{detailLevel === "coarse" ? "Coarse" : "Fine"}</span>
+        </button>
+        <button
+          type="button"
+          className={`tool ${previewQuality === "high" ? "active" : ""}`}
+          onClick={() =>
+            setPreviewQuality((current) => (current === "high" ? "standard" : "high"))
+          }
+          title={
+            previewQuality === "high"
+              ? "Preview HD: mặt cong mượt hơn (nhiều triangle hơn). Bấm để chuyển Standard."
+              : "Preview Standard: nhẹ hơn. Bấm để chuyển HD."
+          }
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <path d="M4 18 10 6l4 8 3-5 3 9" />
+          </svg>
+          <span className="tool-label">HD</span>
+        </button>
+        <button
+          type="button"
+          className={`tool ${showClearance ? "active" : ""}`}
+          onClick={() => setShowClearance((cur) => !cur)}
+          title="Bật/Tắt vùng không gian thao tác & bảo trì (Clearance Zone)"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+          </svg>
+          <span className="tool-label">Clearance</span>
         </button>
         {onToggleConnectors && (
           <button

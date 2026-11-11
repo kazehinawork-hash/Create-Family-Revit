@@ -5,5 +5,7 @@ export * from "./dependencies.js";
 export * from "./geometry.js";
 export * from "./geometry-health.js";
 export * from "./logic.js";
+export * from "./parity.js";
+export * from "./topology.js";
 export * from "./validate.js";
 export * from "./analyze.js";

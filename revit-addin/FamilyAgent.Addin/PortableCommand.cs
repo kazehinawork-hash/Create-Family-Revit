@@ -47,7 +47,12 @@ namespace FamilyAgent.Addin
                         File.Copy(result.Path, destination, true);
                     }
 
-                    File.WriteAllText(logPath, $"SUCCESS\nPath: {destination}\nRevitVersion: {result.RevitVersion}");
+                    File.WriteAllText(
+                        logPath,
+                        $"SUCCESS\nPath: {destination}\nRevitVersion: {result.RevitVersion}" +
+                        (result.Warnings.Count > 0
+                            ? "\nWarnings:\n" + string.Join("\n", result.Warnings)
+                            : ""));
                 }
                 else
                 {

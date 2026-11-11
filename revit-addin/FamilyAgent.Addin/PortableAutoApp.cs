@@ -72,7 +72,12 @@ namespace FamilyAgent.Addin
                 if (result.Ok)
                 {
                     var rfaPath = result.Path;
-                    File.WriteAllText(logPath, $"SUCCESS\nPath: {rfaPath}\nRevitVersion: {result.RevitVersion}");
+                    File.WriteAllText(
+                        logPath,
+                        $"SUCCESS\nPath: {rfaPath}\nRevitVersion: {result.RevitVersion}" +
+                        (result.Warnings.Count > 0
+                            ? "\nWarnings:\n" + string.Join("\n", result.Warnings)
+                            : ""));
                 }
                 else
                 {

@@ -15,5 +15,24 @@ export function writeJsonAtomic(file, value, space = 2) {
   );
 
   fs.writeFileSync(temp, JSON.stringify(value, null, space), "utf8");
-  fs.renameSync(temp, file);
+
+  // On Windows/OneDrive, file synchronization locks recently created temp files,
+  // causing fs.renameSync to intermittently throw EPERM / EBUSY.
+  try {
+    fs.renameSync(temp, file);
+  } catch (err) {
+    if (err && (err.code === "EPERM" || err.code === "EBUSY" || err.code === "EACCES")) {
+      try {
+        fs.copyFileSync(temp, file);
+        try { fs.unlinkSync(temp); } catch {}
+        return;
+      } catch {
+        // Fall back to direct write if rename and copy both fail
+        fs.writeFileSync(file, JSON.stringify(value, null, space), "utf8");
+        try { fs.unlinkSync(temp); } catch {}
+        return;
+      }
+    }
+    throw err;
+  }
 }

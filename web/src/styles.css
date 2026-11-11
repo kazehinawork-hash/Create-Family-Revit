@@ -272,6 +272,15 @@ textarea {
   font-variant-numeric: tabular-nums;
 }
 
+.select.view-select {
+  height: 24px;
+  padding: 0 18px 0 6px;
+  border-radius: 5px;
+  font-size: 10.5px;
+  background-position: right 5px center;
+  background-size: 10px 10px;
+}
+
 .select {
   appearance: none;
   -webkit-appearance: none;
@@ -570,7 +579,8 @@ body.resizing {
   color: var(--ink-2);
 }
 
-.api-field input {
+.api-field input,
+.api-field select {
   width: 100%;
   padding: 5px 8px;
   font: inherit;
@@ -586,7 +596,8 @@ body.resizing {
   color: var(--muted);
 }
 
-.api-field input:focus {
+.api-field input:focus,
+.api-field select:focus {
   border-color: var(--accent);
 }
 
@@ -667,6 +678,49 @@ body.resizing {
   border-radius: 9px 9px 3px 9px;
   line-height: 1.5;
   white-space: pre-wrap;
+}
+
+.msg-user-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.msg-user-thumb {
+  width: 180px;
+  height: 130px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  background: #fff;
+  cursor: zoom-in;
+}
+
+.msg-user-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.msg-user-thumb:hover {
+  border-color: var(--accent);
+}
+
+.msg-user-file {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 3px 7px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink-2);
+  font-size: 10.5px;
 }
 
 .msg-agent {
@@ -885,6 +939,81 @@ body.resizing {
   font-size: 15px;
   line-height: 1;
   padding: 0 2px;
+}
+
+.attachment-preview {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(16, 18, 21, 0.72);
+  backdrop-filter: blur(2px);
+}
+
+.attachment-preview-panel {
+  width: min(1100px, 94vw);
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+}
+
+.attachment-preview-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px 8px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel-2);
+}
+
+.attachment-preview-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--ink-2);
+}
+
+.attachment-preview-close {
+  margin-left: auto;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.attachment-preview-close:hover {
+  background: var(--line);
+  color: var(--ink);
+}
+
+.attachment-preview-image {
+  min-height: 0;
+  max-width: 100%;
+  max-height: calc(92vh - 44px);
+  object-fit: contain;
+  background: #111;
+}
+
+.attachment-preview-empty {
+  padding: 30px;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .attach {
@@ -1688,6 +1817,72 @@ body.resizing {
   padding: 6px 0;
 }
 
+/* Parameters of the part picked in the 3D viewer or Parts tab. */
+.selected-part-params {
+  margin: 8px 8px 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.selected-part-params-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  background: var(--accent-soft);
+  color: var(--ink-2);
+  font-size: 11px;
+}
+
+.selected-part-label {
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-size: 9.5px;
+}
+
+.selected-part-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.selected-part-count {
+  margin-left: auto;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.selected-part-clear {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.selected-part-clear:hover {
+  color: var(--ink);
+}
+
+.selected-part-param-list {
+  max-height: 240px;
+  overflow: auto;
+  padding: 4px 0;
+}
+
+.selected-part-empty {
+  padding: 10px 10px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .part-issue-dot {
   width: 6px;
   height: 6px;
@@ -1735,6 +1930,73 @@ body.resizing {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.part-parity-badge {
+  flex: 0 0 auto;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.part-parity-badge.native,
+.part-parity-badge.native-multi-hole,
+.part-parity-badge.native-bore,
+.part-parity-badge.native-revolve {
+  background: #e6f4ec;
+  border-color: #c7e4d4;
+  color: #1d6b45;
+}
+
+.part-parity-badge.swept-blend,
+.part-parity-badge.sweep {
+  background: #eef3fb;
+  border-color: #cfdff5;
+  color: #245a9a;
+}
+
+.part-parity-badge.blend,
+.part-parity-badge.multi-section {
+  background: #fdf3e2;
+  border-color: #efdcc4;
+  color: #8a5219;
+}
+
+.part-parity-badge.freeform {
+  background: #fdeceb;
+  border-color: #efd2cf;
+  color: #8a352c;
+}
+
+.parity-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  font-size: 10px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.parity-filter input {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.part-issues-list.parity {
+  background: rgba(154, 103, 0, 0.05);
+}
+
+.part-issue-item.info {
+  color: #245a9a;
 }
 
 .part-row.hidden-part {
@@ -2561,4 +2823,182 @@ a.modal-close {
     right: 12px;
     bottom: auto;
   }
+}
+
+/* Stepper & Checkbox for ParameterPanel */
+.param-stepper {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--panel-2);
+  margin-right: 4px;
+  overflow: hidden;
+}
+
+.param-stepper .btn-step {
+  padding: 0 5px;
+  height: 20px;
+  line-height: 18px;
+  border: none;
+  background: transparent;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-2);
+  cursor: pointer;
+}
+
+.param-stepper .btn-step:hover {
+  background: var(--line);
+  color: var(--ink);
+}
+
+.param-checkbox-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.param-checkbox {
+  cursor: pointer;
+  accent-color: var(--accent);
+}
+
+.param-checkbox-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* Connectors Tab & Part Issues */
+.part-row-wrap {
+  display: flex;
+  flex-direction: column;
+}
+
+.part-issues-list {
+  padding: 3px 8px 6px 26px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  background: rgba(207, 34, 46, 0.04);
+  border-bottom: 1px solid var(--line);
+}
+
+.part-issue-item {
+  font-size: 10.5px;
+  display: flex;
+  align-items: flex-start;
+  gap: 5px;
+  line-height: 1.35;
+}
+
+.part-issue-item.warning {
+  color: #9a6700;
+}
+
+.part-issue-item.error {
+  color: var(--danger);
+}
+
+.part-issue-item .issue-icon {
+  font-size: 10px;
+}
+
+.connectors-tab-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+}
+
+.connector-card {
+  padding: 8px 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.connector-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.connector-card-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.connector-icon {
+  color: var(--accent);
+  font-weight: bold;
+}
+
+.connector-name {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--ink);
+}
+
+.badge-flow {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  text-transform: uppercase;
+}
+
+.badge-flow.in {
+  background: #dafbe1;
+  color: #1a7f37;
+}
+
+.badge-flow.out {
+  background: #ffebe9;
+  color: #cf222e;
+}
+
+.badge-flow.bidirectional {
+  background: #ddf4ff;
+  color: #0969da;
+}
+
+.connector-size {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.connector-meta-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.connector-flow-row {
+  font-size: 11px;
+  color: var(--ink-2);
+  font-weight: 500;
+  background: var(--panel-2);
+  padding: 3px 6px;
+  border-radius: 4px;
+}
+
+.connector-orphan-warning {
+  margin-top: 2px;
+  font-size: 10.5px;
+  color: var(--danger);
+  background: var(--danger-soft);
+  padding: 3px 6px;
+  border-radius: 4px;
 }

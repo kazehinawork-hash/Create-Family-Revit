@@ -10,6 +10,8 @@ import {
 } from "@family/spec-core";
 import fcuExampleRaw from "../../spec/examples/fcu-080.json";
 import pumpExampleRaw from "../../spec/examples/pump-dn80.json";
+import ystrainerExampleRaw from "../../spec/examples/ystrainer-dn80.json";
+import ystrainerTubeExampleRaw from "../../spec/examples/ystrainer-tube.json";
 import { ChatPanel, type ChatEntry } from "./components/ChatPanel";
 import { ParameterPanel } from "./components/ParameterPanel";
 import { TopBar } from "./components/TopBar";
@@ -427,8 +429,7 @@ export function App() {
     if (running || uploading) return;
     const hadSpec = Boolean(spec);
     const docs = attachments;
-    const names = docs.map((d) => d.name).join(", ");
-    pushEntry({ role: "user", text: docs.length > 0 ? `${text}\n(${names})` : text });
+    pushEntry({ role: "user", text, attachments: docs.length > 0 ? docs : undefined });
     setRunning(true);
     setRunStartedAt(Date.now());
     setNow(Date.now());
@@ -653,29 +654,50 @@ export function App() {
         const driving = result.stats?.driving ?? [];
         const unlabelled = result.stats?.unlabelled ?? [];
         const inert = result.stats?.inert ?? [];
+        const failedParts = result.stats?.failedParts ?? [];
+        const missingForms = result.stats?.missingForms ?? 0;
+        const qa = result.qa;
         const notes = [
           ...(result.warnings ?? []),
+          ...(missingForms > 0
+            ? [`Thiếu ${missingForms} part/copy khi build — xem danh sách bên dưới.`]
+            : []),
+          ...failedParts.slice(0, 5).map((item) => `Part không dựng được: ${item}`),
+          ...(qa?.rebuildRequired
+            ? ["Build QA: có part cần Rebuild from spec khi đổi tham số (FreeFormElement hoặc ràng buộc chưa compile)."]
+            : []),
           ...unlabelled.map((item) => `Chưa dẫn động: ${item}`),
           ...inert.map((name) => `Có nhãn nhưng chưa kéo được hình: ${name}`),
-        ].slice(0, 8);
+        ].slice(0, 14);
 
         pushEntry({
           role: "agent",
           text:
             `Đã xuất ${spec.name}.rfa (Revit ${result.revitVersion ?? revitVersion}).\n` +
             `${driving.length} tham số dẫn động · ${result.stats?.locks ?? 0} ràng buộc hình học` +
-            `${result.stats?.refPlanes ? ` · ${result.stats.refPlanes} reference plane` : ""}`,
+            `${result.stats?.refPlanes ? ` · ${result.stats.refPlanes} reference plane` : ""}` +
+            `${result.stats?.joins ? ` · ${result.stats.joins} join` : ""}` +
+            `${result.stats?.totalForms !== undefined ? ` · ${result.stats.totalForms} form` : ""}` +
+            `${qa ? ` · QA ${qa.ok ? "pass" : `${qa.warnings.length} cảnh báo`}` : ""}`,
           notes: notes.length > 0 ? notes : undefined,
           meta: result.path,
-          tone: driving.length === 0 ? "error" : undefined,
+          tone: driving.length === 0 || missingForms > 0 ? "error" : undefined,
         });
 
         setToast({
-          text: "Revit family built successfully!",
-          sub: driving.length === 0
-            ? "Cảnh báo: chưa có tham số nào được gắn nhãn dimension — đổi thông số sẽ không đổi hình."
-            : `${driving.length} tham số dẫn động hình học · ${result.path}`,
-          tone: driving.length === 0 ? "warn" : "ok",
+          text:
+            missingForms > 0
+              ? `Build xong nhưng thiếu ${missingForms} part/copy`
+              : qa?.rebuildRequired
+                ? "Build xong — cần Rebuild from spec khi đổi tham số"
+                : "Revit family built successfully!",
+          sub:
+            missingForms > 0
+              ? "Xem notes hoặc Documents\\FamilyAgent\\logs\\autosync.log để biết part nào lỗi."
+              : driving.length === 0
+                ? "Cảnh báo: chưa có tham số nào được gắn nhãn dimension — đổi thông số sẽ không đổi hình."
+                : `${driving.length} tham số dẫn động hình học · ${result.path}`,
+          tone: driving.length === 0 || missingForms > 0 ? "error" : qa?.rebuildRequired ? "warn" : "ok",
         });
         // Automatically trigger download of the .rfa file
         const link = document.createElement("a");
@@ -861,7 +883,7 @@ export function App() {
     ]);
   };
 
-  const handleLoadDemo = (key: "fcu" | "pump" | "elbow") => {
+  const handleLoadDemo = (key: "fcu" | "pump" | "elbow" | "ystrainer" | "ystrainer-tube") => {
     let demoRaw: any = null;
     let userPromptText = "";
     if (key === "fcu") {
@@ -870,6 +892,12 @@ export function App() {
     } else if (key === "pump") {
       demoRaw = pumpExampleRaw;
       userPromptText = "Dựng bơm ly tâm trục ngang Grundfos NB 50-200 (Demo Preset)";
+    } else if (key === "ystrainer") {
+      demoRaw = ystrainerExampleRaw;
+      userPromptText = "Dựng Y lọc DN80 PN16 bích 8 bulong, nhánh 45 độ, nắp bulong (Demo Preset)";
+    } else if (key === "ystrainer-tube") {
+      demoRaw = ystrainerTubeExampleRaw;
+      userPromptText = "Dựng Y lọc DN80 nhánh tube 45°, bích và nắp vuông góc trục nhánh (Demo Preset)";
     } else if (key === "elbow") {
       userPromptText = "Dựng cút gió 90 độ nối ren DN50 (Demo Preset)";
       demoRaw = {

@@ -1,7 +1,9 @@
 import { resolveModel, type ResolvedModel } from "./geometry.js";
 import { checkGeometryHealth } from "./geometry-health.js";
 import { checkModelLogic } from "./logic.js";
+import { analyzeParity, type ParityRisk, type PartParity } from "./parity.js";
 import { resolveParameters, type ParameterResolution } from "./parameters.js";
+import { checkTopology } from "./topology.js";
 import { validateSpec } from "./validate.js";
 import type { FamilySpec, Issue } from "./types.js";
 
@@ -11,6 +13,10 @@ export interface Analysis {
   model: ResolvedModel;
   issues: Issue[];
   errors: Issue[];
+  /** Preview-vs-RFA risks, kept separate from validation issues. */
+  parity: ParityRisk[];
+  /** One build status per resolved part, used by the studio badges. */
+  partParity: PartParity[];
   ok: boolean;
 }
 
@@ -39,8 +45,10 @@ export function analyzeSpec(
     ...model.issues,
     ...checkModelLogic(model, spec.lod),
     ...checkGeometryHealth(model),
+    ...checkTopology(model),
   ]);
   const errors = all.filter((issue) => issue.severity === "error");
+  const parity = analyzeParity(model);
 
   return {
     spec,
@@ -48,6 +56,8 @@ export function analyzeSpec(
     model,
     issues: all,
     errors,
+    parity: parity.risks,
+    partParity: parity.parts,
     ok: errors.length === 0 && model.parts.length > 0,
   };
 }

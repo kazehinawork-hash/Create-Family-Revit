@@ -36,7 +36,7 @@ interface Props {
   canRedo?: boolean;
   onOpenLibrary?: () => void;
   onNewModel?: () => void;
-  onLoadDemo?: (key: "fcu" | "pump" | "elbow") => void;
+  onLoadDemo?: (key: "fcu" | "pump" | "elbow" | "ystrainer" | "ystrainer-tube") => void;
 }
 
 const LOD_OPTIONS: { value: Lod; label: string; hint: string }[] = [
@@ -79,6 +79,8 @@ export function TopBar({
   onRevitVersion,
   lod,
   onLod,
+  onBuild,
+  building,
   onExportPortable,
   exportingPortable,
   canBuild,
@@ -189,6 +191,24 @@ export function TopBar({
                   }}
                 >
                   ⚡ Bơm ly tâm thẳng hàng DN80
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onLoadDemo("ystrainer");
+                    setDemoOpen(false);
+                  }}
+                >
+                  🔵 Y lọc bích DN80 PN16, nhánh 45°
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onLoadDemo("ystrainer-tube");
+                    setDemoOpen(false);
+                  }}
+                >
+                  🧪 Y lọc nhánh tube 45° (primitive mới)
                 </button>
                 <button
                   type="button"
@@ -319,12 +339,36 @@ export function TopBar({
           <option value="2026">Revit 2026</option>
         </select>
 
+        {onBuild && (
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={onBuild}
+            disabled={!canBuild || building || exportingPortable}
+            title="Đẩy trực tiếp vào phiên bản Revit đang mở qua Revit Add-in Bridge"
+          >
+            {building ? (
+              <>
+                <span className="spinner" style={{ width: 11, height: 11, borderTopColor: "#0969da" }} />
+                Đang dựng...
+              </>
+            ) : (
+              <>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <polygon points="5 3 19 12 5 21 5 3" />
+                </svg>
+                <span>Build in Revit</span>
+              </>
+            )}
+          </button>
+        )}
+
         {onExportPortable && (
           <button
             type="button"
             className="btn-primary"
             onClick={onExportPortable}
-            disabled={!canBuild || exportingPortable}
+            disabled={!canBuild || exportingPortable || building}
             title="Tải gói chạy 1-Click dựng Native Family (không cần cài Add-in)"
           >
             {exportingPortable ? (

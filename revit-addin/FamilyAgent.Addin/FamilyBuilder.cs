@@ -28,13 +28,18 @@ namespace FamilyAgent.Addin
         private const double DegToRad = Math.PI / 180.0;
 
         /// <summary>
-        /// Snapshot is the default: the RFA only needs geometry and parameters, not the
-        /// reference-plane/dimension/lock skeleton. Set FAMILY_AGENT_PARAMETRIC=1 to
-        /// build the editable (heavier) family instead.
+        /// Reference planes and reference dimensions are always created so every parameter
+        /// has a visible, movable reference plane in the RFA.
+        /// Direct face/radial locking on complex solids is disabled by default so changing
+        /// parameters never triggers "Constraints are not satisfied"; instead, the add-in
+        /// automatically rebuilds the 3D geometry from the embedded spec whenever any
+        /// parameter or family type changes (just like Localhost).
+        /// Set FAMILY_AGENT_LOCK_GEOMETRY=1 to opt into hard face locking.
         /// </summary>
-        public static bool IncludeConstraints =
+        public static bool IncludeConstraints = true;
+        public static bool LockFacesToPlanes =
             string.Equals(
-                Environment.GetEnvironmentVariable("FAMILY_AGENT_PARAMETRIC"),
+                Environment.GetEnvironmentVariable("FAMILY_AGENT_LOCK_GEOMETRY"),
                 "1",
                 StringComparison.OrdinalIgnoreCase);
 
@@ -192,6 +197,8 @@ namespace FamilyAgent.Addin
                 PlaneSkeleton skeleton = null;
                 List<Element> forms;
                 var partByForm = new Dictionary<long, ResolvedPart>();
+                var joins = 0;
+                var failedParts = new List<string>();
 
                 stage = "building the family";
                 using (var transaction = SilentTransaction(document, "Family Agent — build family", buildFailures))
@@ -200,12 +207,15 @@ namespace FamilyAgent.Addin
 
                     var manager = document.FamilyManager;
                     CreateFamilyType(manager, spec);
-                    CreateParameters(document, manager, parameters, result.Warnings);
+                    CreateParameters(document, manager, parameters, result.Warnings, populateOtherTypes: true);
                     if (IncludeConstraints)
                     {
                         skeleton = CreateReferencePlanes(document, manager, parameters, model, result.Warnings);
                     }
-                    forms = CreateGeometry(document, model, materials, result.Warnings, partByForm);
+                    forms = CreateGeometry(
+                        document, model, materials, result.Warnings, partByForm, failedParts);
+                    joins = JoinOverlappingForms(
+                        document, forms, partByForm, materials, result.Warnings);
 
                     var status = transaction.Commit();
                     if (status != TransactionStatus.Committed)
@@ -224,36 +234,45 @@ namespace FamilyAgent.Addin
                 var inert = new List<string>();
                 var flex = string.Empty;
 
-                if (IncludeConstraints)
+                if (IncludeConstraints && skeleton != null)
                 {
                     stage = "dimensioning the reference planes";
                     refDimensions = CreateDimensions(document, skeleton.Dimensions, result.Warnings);
 
-                    stage = "locking the geometry to the reference planes";
-                    locks = LockGeometry(
-                        document, skeleton, forms, partByForm, out var lockedFormAxes, result.Warnings);
-
-                    stage = "dimensioning the part faces";
-                    faceDimensions = CreateFaceDimensions(
-                        document, skeleton, forms, parameters, lockedFormAxes, out var solvedFaces, result.Warnings);
-                    radialDimensions = CreateRadialDimensions(
-                        document, skeleton, forms, parameters, solvedFaces, result.Warnings);
-                    inert = skeleton.Inert().Where(name => !solvedFaces.Contains(name)).ToList();
-
-                    stage = "self-checking the parameters";
-                    try
+                    if (LockFacesToPlanes)
                     {
-                        flex = SelfCheck(document, parameters);
-                    }
-                    catch (Exception ex)
-                    {
-                        flex = "error: " + ex.Message;
-                    }
+                        stage = "locking the geometry to the reference planes";
+                        locks = LockGeometry(
+                            document, skeleton, forms, partByForm, out var lockedFormAxes, result.Warnings);
 
-                    if (flex.Contains("still") || flex.Contains("X "))
-                    {
-                        result.Warnings.Add("Flex check: " + flex);
+                        stage = "dimensioning the part faces";
+                        faceDimensions = CreateFaceDimensions(
+                            document, skeleton, forms, parameters, lockedFormAxes, out var solvedFaces, result.Warnings);
+                        radialDimensions = CreateRadialDimensions(
+                            document, skeleton, forms, parameters, solvedFaces, result.Warnings);
+                        inert = skeleton.Inert().Where(name => !solvedFaces.Contains(name)).ToList();
+
+                        stage = "self-checking the parameters";
+                        try
+                        {
+                            flex = SelfCheck(document, parameters);
+                        }
+                        catch (Exception ex)
+                        {
+                            flex = "error: " + ex.Message;
+                        }
+
+                        if (flex.Contains("still") || flex.Contains("X "))
+                        {
+                            result.Warnings.Add("Flex check: " + flex);
+                        }
                     }
+                }
+
+                if (failedParts.Count > 0)
+                {
+                    result.Warnings.Add(
+                        $"{failedParts.Count} part/copy không dựng được: {string.Join("; ", failedParts.Take(8))}");
                 }
 
                 stage = "creating MEP connectors";
@@ -271,6 +290,10 @@ namespace FamilyAgent.Addin
                     refPlanes = skeleton?.Created ?? 0,
                     refDimensions,
                     locks,
+                    joins,
+                    totalForms = forms.Count,
+                    missingForms = Math.Max(0, model.Instances - forms.Count),
+                    failedParts,
                     lod = spec.Lod,
                     driving = skeleton?.Driving ?? new List<string>(),
                     unlabelled = skeleton?.Unlabelled ?? new List<string>(),
@@ -368,7 +391,20 @@ namespace FamilyAgent.Addin
             {
                 var spec = SpecLoader.Load(json);
                 var overrides = CurrentValues(document);
-                var parameters = ParameterResolver.Resolve(spec, overrides);
+
+                // Only driver parameters should override the spec. If a formula parameter is
+                // also overridden, the resolver pins it to the current Revit value instead of
+                // recomputing it from the edited driver, so parts look stale after a change.
+                var formulaKeys = new HashSet<string>(
+                    spec.Parameters
+                        .Where(parameter => parameter != null && !string.IsNullOrWhiteSpace(parameter.Formula))
+                        .Select(parameter => (parameter.Name ?? string.Empty).Trim().ToLowerInvariant()),
+                    StringComparer.Ordinal);
+                var driverOverrides = overrides
+                    .Where(entry => !formulaKeys.Contains(entry.Key.Trim().ToLowerInvariant()))
+                    .ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.OrdinalIgnoreCase);
+
+                var parameters = ParameterResolver.Resolve(spec, driverOverrides);
                 var model = GeometryResolver.Resolve(spec, parameters);
                 var materials = MaterialLookup(spec);
                 result.Warnings.AddRange(model.Warnings);
@@ -385,6 +421,8 @@ namespace FamilyAgent.Addin
                 PlaneSkeleton skeleton = null;
                 List<Element> forms;
                 var partByForm = new Dictionary<long, ResolvedPart>();
+                var joins = 0;
+                var failedParts = new List<string>();
 
                 stage = "rebuilding the family";
                 using (var transaction = SilentTransaction(document, "Family Agent — rebuild family", buildFailures))
@@ -392,13 +430,20 @@ namespace FamilyAgent.Addin
                     transaction.Start();
 
                     var manager = document.FamilyManager;
-                    CreateFamilyType(manager, spec);
-                    CreateParameters(document, manager, parameters, result.Warnings);
+                    var activeUserType = manager.CurrentType;
+                    if (activeUserType == null)
+                    {
+                        CreateFamilyType(manager, spec);
+                    }
+                    CreateParameters(document, manager, parameters, result.Warnings, populateOtherTypes: false);
                     if (IncludeConstraints)
                     {
                         skeleton = CreateReferencePlanes(document, manager, parameters, model, result.Warnings);
                     }
-                    forms = CreateGeometry(document, model, materials, result.Warnings, partByForm);
+                    forms = CreateGeometry(
+                        document, model, materials, result.Warnings, partByForm, failedParts);
+                    joins = JoinOverlappingForms(
+                        document, forms, partByForm, materials, result.Warnings);
 
                     var status = transaction.Commit();
                     if (status != TransactionStatus.Committed)
@@ -417,36 +462,45 @@ namespace FamilyAgent.Addin
                 var inert = new List<string>();
                 var flex = string.Empty;
 
-                if (IncludeConstraints)
+                if (IncludeConstraints && skeleton != null)
                 {
                     stage = "dimensioning the reference planes";
                     refDimensions = CreateDimensions(document, skeleton.Dimensions, result.Warnings);
 
-                    stage = "locking the geometry to the reference planes";
-                    locks = LockGeometry(
-                        document, skeleton, forms, partByForm, out var lockedFormAxes, result.Warnings);
-
-                    stage = "dimensioning the part faces";
-                    faceDimensions = CreateFaceDimensions(
-                        document, skeleton, forms, parameters, lockedFormAxes, out var solvedFaces, result.Warnings);
-                    radialDimensions = CreateRadialDimensions(
-                        document, skeleton, forms, parameters, solvedFaces, result.Warnings);
-                    inert = skeleton.Inert().Where(name => !solvedFaces.Contains(name)).ToList();
-
-                    stage = "self-checking the parameters";
-                    try
+                    if (LockFacesToPlanes)
                     {
-                        flex = SelfCheck(document, parameters);
-                    }
-                    catch (Exception ex)
-                    {
-                        flex = "error: " + ex.Message;
-                    }
+                        stage = "locking the geometry to the reference planes";
+                        locks = LockGeometry(
+                            document, skeleton, forms, partByForm, out var lockedFormAxes, result.Warnings);
 
-                    if (flex.Contains("still") || flex.Contains("X "))
-                    {
-                        result.Warnings.Add("Flex check: " + flex);
+                        stage = "dimensioning the part faces";
+                        faceDimensions = CreateFaceDimensions(
+                            document, skeleton, forms, parameters, lockedFormAxes, out var solvedFaces, result.Warnings);
+                        radialDimensions = CreateRadialDimensions(
+                            document, skeleton, forms, parameters, solvedFaces, result.Warnings);
+                        inert = skeleton.Inert().Where(name => !solvedFaces.Contains(name)).ToList();
+
+                        stage = "self-checking the parameters";
+                        try
+                        {
+                            flex = SelfCheck(document, parameters);
+                        }
+                        catch (Exception ex)
+                        {
+                            flex = "error: " + ex.Message;
+                        }
+
+                        if (flex.Contains("still") || flex.Contains("X "))
+                        {
+                            result.Warnings.Add("Flex check: " + flex);
+                        }
                     }
+                }
+
+                if (failedParts.Count > 0)
+                {
+                    result.Warnings.Add(
+                        $"{failedParts.Count} part/copy không dựng được: {string.Join("; ", failedParts.Take(8))}");
                 }
 
                 stage = "creating MEP connectors";
@@ -464,6 +518,10 @@ namespace FamilyAgent.Addin
                     refPlanes = skeleton?.Created ?? 0,
                     refDimensions,
                     locks,
+                    joins,
+                    totalForms = forms.Count,
+                    missingForms = Math.Max(0, model.Instances - forms.Count),
+                    failedParts,
                     lod = spec.Lod,
                     driving = skeleton?.Driving ?? new List<string>(),
                     unlabelled = skeleton?.Unlabelled ?? new List<string>(),
@@ -527,6 +585,35 @@ namespace FamilyAgent.Addin
                 }
             }
             return volume;
+        }
+
+        /// <summary>
+        /// Computes a fingerprint of the active FamilyType and its parameter values so
+        /// the auto-sync monitor can detect when the user edits a parameter or switches
+        /// Family Types in Revit and immediately rebuild the 3D geometry from the spec.
+        /// </summary>
+        public static string ParameterSignature(Document document)
+        {
+            if (document == null || !document.IsFamilyDocument) return string.Empty;
+            try
+            {
+                var json = SpecStore.Load(document);
+                if (string.IsNullOrWhiteSpace(json)) return string.Empty;
+
+                var values = CurrentValues(document);
+                if (values.Count == 0) return "__empty__";
+                var sb = new StringBuilder();
+                sb.Append(document.FamilyManager.CurrentType?.Name ?? "");
+                foreach (var kv in values.OrderBy(k => k.Key, StringComparer.OrdinalIgnoreCase))
+                {
+                    sb.Append('|').Append(kv.Key).Append('=').Append(Math.Round(kv.Value, 4).ToString(CultureInfo.InvariantCulture));
+                }
+                return sb.ToString();
+            }
+            catch
+            {
+                return string.Empty;
+            }
         }
 
         /// <summary>Current numeric values of the family, in spec units (mm, degrees).</summary>
@@ -659,6 +746,46 @@ namespace FamilyAgent.Addin
                 // The template may already contain a type with that name.
             }
 
+            // Tạo sẵn các Type tiêu chuẩn của catalogue vào thẳng Family (nếu là dòng van giảm áp Fivalco)
+            var isFivalcoPrv = (spec.Name ?? string.Empty).IndexOf("F6316", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                               (spec.Name ?? string.Empty).IndexOf("PPR", StringComparison.OrdinalIgnoreCase) >= 0;
+            if (isFivalcoPrv)
+            {
+                var standardTypes = new[]
+                {
+                    "DN50 PN16 (2\")",
+                    "DN65 PN16 (2-1/2\")",
+                    "DN80 PN16 (3\")",
+                    "DN100 PN16 (4\")",
+                    "DN125 PN16 (5\")",
+                    "DN150 PN16 (6\")",
+                    "DN200 PN16 (8\")"
+                };
+
+                foreach (var name in standardTypes)
+                {
+                    try
+                    {
+                        manager.NewType(name);
+                    }
+                    catch
+                    {
+                        // Bỏ qua nếu type đã tồn tại
+                    }
+                }
+
+                // Đặt lại CurrentType về type mặc định của spec
+                try
+                {
+                    var defaultName = string.IsNullOrWhiteSpace(spec.TypeName) ? standardTypes[0] : spec.TypeName.Trim();
+                    var match = manager.Types.Cast<FamilyType>().FirstOrDefault(t => string.Equals(t.Name, defaultName, StringComparison.OrdinalIgnoreCase));
+                    if (match != null) manager.CurrentType = match;
+                }
+                catch
+                {
+                }
+            }
+
             // FamilyManager.Set writes through the current type. New templates usually have
             // one, but an empty family document can leave CurrentType null and every value
             // is then rejected with "There is no current type".
@@ -679,8 +806,13 @@ namespace FamilyAgent.Addin
             Document document,
             FamilyManager manager,
             CoreParameterSet parameters,
-            List<string> warnings)
+            List<string> warnings,
+            bool populateOtherTypes = true)
         {
+            var initialType = manager.CurrentType;
+            var allTypes = manager.Types.Cast<FamilyType>().ToList();
+            var createdParams = new List<(Autodesk.Revit.DB.FamilyParameter Target, ResolvedParameter Source)>();
+
             foreach (var parameter in parameters.Ordered)
             {
                 if (!string.IsNullOrEmpty(parameter.Error))
@@ -709,10 +841,70 @@ namespace FamilyAgent.Addin
                     }
 
                     ApplyValue(manager, familyParameter, parameter, warnings);
+                    createdParams.Add((familyParameter, parameter));
                 }
                 catch (Exception ex)
                 {
                     warnings.Add($"Parameter \"{parameter.Name}\" was not created: {ex.Message}");
+                }
+            }
+
+            // Ensure every FamilyType in the document receives valid baseline values
+            // (and catalogue presets if applicable) instead of 0.0 which breaks formulas.
+            if (populateOtherTypes && allTypes.Count > 1)
+            {
+                var presetTable = new Dictionary<string, Dictionary<string, double>>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["DN50 PN16 (2\")"] = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+                        { ["Nominal Diameter"] = 50, ["Face to Face Length"] = 230, ["Flange Diameter"] = 165, ["Flange Thickness"] = 19, ["Raised Face Diameter"] = 99, ["Bolt Circle Diameter"] = 125, ["Bolt Hole Diameter"] = 18 },
+                    ["DN65 PN16 (2-1/2\")"] = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+                        { ["Nominal Diameter"] = 65, ["Face to Face Length"] = 290, ["Flange Diameter"] = 185, ["Flange Thickness"] = 19, ["Raised Face Diameter"] = 118, ["Bolt Circle Diameter"] = 145, ["Bolt Hole Diameter"] = 18 },
+                    ["DN80 PN16 (3\")"] = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+                        { ["Nominal Diameter"] = 80, ["Face to Face Length"] = 310, ["Flange Diameter"] = 200, ["Flange Thickness"] = 19, ["Raised Face Diameter"] = 132, ["Bolt Circle Diameter"] = 160, ["Bolt Hole Diameter"] = 18 },
+                    ["DN100 PN16 (4\")"] = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+                        { ["Nominal Diameter"] = 100, ["Face to Face Length"] = 350, ["Flange Diameter"] = 220, ["Flange Thickness"] = 19, ["Raised Face Diameter"] = 156, ["Bolt Circle Diameter"] = 180, ["Bolt Hole Diameter"] = 18 },
+                    ["DN125 PN16 (5\")"] = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+                        { ["Nominal Diameter"] = 125, ["Face to Face Length"] = 400, ["Flange Diameter"] = 250, ["Flange Thickness"] = 19, ["Raised Face Diameter"] = 184, ["Bolt Circle Diameter"] = 210, ["Bolt Hole Diameter"] = 18 },
+                    ["DN150 PN16 (6\")"] = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+                        { ["Nominal Diameter"] = 150, ["Face to Face Length"] = 480, ["Flange Diameter"] = 285, ["Flange Thickness"] = 19, ["Raised Face Diameter"] = 211, ["Bolt Circle Diameter"] = 240, ["Bolt Hole Diameter"] = 22 },
+                    ["DN200 PN16 (8\")"] = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase)
+                        { ["Nominal Diameter"] = 200, ["Face to Face Length"] = 600, ["Flange Diameter"] = 340, ["Flange Thickness"] = 20, ["Raised Face Diameter"] = 266, ["Bolt Circle Diameter"] = 295, ["Bolt Hole Diameter"] = 22 },
+                };
+
+                foreach (var famType in allTypes)
+                {
+                    if (famType == null || (initialType != null && famType.Name == initialType.Name)) continue;
+
+                    try
+                    {
+                        manager.CurrentType = famType;
+                        presetTable.TryGetValue(famType.Name ?? string.Empty, out var presets);
+
+                        foreach (var (target, source) in createdParams)
+                        {
+                            if (!string.IsNullOrWhiteSpace(source.Formula)) continue;
+                            if (presets != null && presets.TryGetValue(source.Name, out var presetMm))
+                            {
+                                try { manager.Set(target, presetMm / MmPerFoot); } catch { }
+                                continue;
+                            }
+
+                            var currentVal = famType.AsDouble(target);
+                            if (!currentVal.HasValue || Math.Abs(currentVal.Value) < 1e-9)
+                            {
+                                ApplyValue(manager, target, source, new List<string>());
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // Ignore errors on non-active types
+                    }
+                }
+
+                if (initialType != null)
+                {
+                    try { manager.CurrentType = initialType; } catch { }
                 }
             }
         }

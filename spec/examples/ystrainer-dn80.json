@@ -1,0 +1,1841 @@
+{
+  "schemaVersion": "1.0",
+  "name": "Y Strainer DN80 Flanged PN16",
+  "typeName": "Y Strainer DN80",
+  "category": "Pipe Fitting",
+  "units": "mm",
+  "lod": 350,
+  "description": "High-detail industrial flanged Y-strainer DN80 PN16 in ductile iron with electrostatic blue epoxy coating, precision 45-degree filtration leg, 8-bolt EN 1092-2 flanges with raised faces, bolted bonnet cover, hexagonal fasteners, central brass blow-off drain plug, cast reinforcing rib, and directional flow arrow.",
+  "parameters": [
+    {
+      "name": "Nominal Bore",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 80,
+      "description": "Internal nominal diameter DN80"
+    },
+    {
+      "name": "Face To Face",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 310,
+      "description": "Standard DIN EN 558-1 Series 1 face-to-face length"
+    },
+    {
+      "name": "Center Height",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 220,
+      "description": "Centerline height above reference floor"
+    },
+    {
+      "name": "Flange OD",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 200,
+      "description": "EN 1092-2 PN16 outer diameter"
+    },
+    {
+      "name": "Flange Thickness",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 20,
+      "description": "Flange total thickness"
+    },
+    {
+      "name": "Raised Face OD",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 138,
+      "description": "Machined raised face outer diameter"
+    },
+    {
+      "name": "Raised Face Height",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 3,
+      "description": "Raised face height above flange"
+    },
+    {
+      "name": "Flange Bolt Circle",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 160,
+      "description": "Bolt circle PCD"
+    },
+    {
+      "name": "Flange Bolt Hole Diameter",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 18,
+      "description": "Hole diameter for M16 bolts"
+    },
+    {
+      "name": "Flange Bolt Count",
+      "type": "Integer",
+      "group": "Dimensions",
+      "value": 8
+    },
+    {
+      "name": "Flange Hub OD",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 120,
+      "description": "Conical hub root diameter"
+    },
+    {
+      "name": "Hub Length",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 22,
+      "description": "Conical hub transition length"
+    },
+    {
+      "name": "Body Run OD",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 104,
+      "description": "Outer diameter of straight run barrel"
+    },
+    {
+      "name": "Body Belly OD",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 130,
+      "description": "Enlarged central cast chamber diameter"
+    },
+    {
+      "name": "Body Belly Length",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 70,
+      "description": "Length of central chamber"
+    },
+    {
+      "name": "Belly Transition Length",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 20,
+      "description": "Transition cone length between barrel and belly"
+    },
+    {
+      "name": "Branch Angle",
+      "type": "Angle",
+      "group": "Dimensions",
+      "value": 45,
+      "description": "Filtration branch slant angle"
+    },
+    {
+      "name": "Branch Length",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 125,
+      "description": "Length along the 45-degree slanted centerline"
+    },
+    {
+      "name": "Branch OD",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 104,
+      "description": "Outer diameter of the filtration branch"
+    },
+    {
+      "name": "Branch Center X",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": -25,
+      "description": "X origin of branch intersection on pipe centerline"
+    },
+    {
+      "name": "Branch End X",
+      "type": "Length",
+      "group": "Dimensions",
+      "formula": "[Branch Center X] + [Branch Length] * cos([Branch Angle])"
+    },
+    {
+      "name": "Branch End Z",
+      "type": "Length",
+      "group": "Dimensions",
+      "formula": "[Center Height] - [Branch Length] * sin([Branch Angle])"
+    },
+    {
+      "name": "Branch Minor Radius",
+      "type": "Length",
+      "group": "Dimensions",
+      "formula": "[Branch OD] / 2"
+    },
+    {
+      "name": "Branch Major Radius",
+      "type": "Length",
+      "group": "Dimensions",
+      "formula": "[Branch Minor Radius] * 1.414214"
+    },
+    {
+      "name": "Bonnet Flange OD",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 124,
+      "description": "Bottom collar outer diameter"
+    },
+    {
+      "name": "Bonnet Flange Thickness",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 14
+    },
+    {
+      "name": "Cover OD",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 126,
+      "description": "Blind cover plate diameter"
+    },
+    {
+      "name": "Cover Thickness",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 14
+    },
+    {
+      "name": "Cover Bottom Z",
+      "type": "Length",
+      "group": "Dimensions",
+      "formula": "[Branch End Z] - [Cover Thickness]"
+    },
+    {
+      "name": "Cover Bolt Circle",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 98
+    },
+    {
+      "name": "Cover Bolt Diameter",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 14
+    },
+    {
+      "name": "Cover Bolt Head Size",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 20,
+      "description": "Hex bolt head across corners"
+    },
+    {
+      "name": "Cover Bolt Head Height",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 10
+    },
+    {
+      "name": "Cover Bolt Count",
+      "type": "Integer",
+      "group": "Dimensions",
+      "value": 4
+    },
+    {
+      "name": "Drain Boss OD",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 40
+    },
+    {
+      "name": "Drain Boss Height",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 8
+    },
+    {
+      "name": "Drain Plug Hex Size",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 28,
+      "description": "Brass drain plug hex width across corners"
+    },
+    {
+      "name": "Drain Plug Height",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 12
+    },
+    {
+      "name": "Rib Thickness",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 12,
+      "description": "Cast reinforcing rib thickness"
+    },
+    {
+      "name": "Screen OD",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 82,
+      "description": "Internal stainless steel filter screen diameter"
+    },
+    {
+      "name": "Screen Minor Radius",
+      "type": "Length",
+      "group": "Dimensions",
+      "formula": "[Screen OD] / 2"
+    },
+    {
+      "name": "Screen Major Radius",
+      "type": "Length",
+      "group": "Dimensions",
+      "formula": "[Screen Minor Radius] * 1.414214"
+    },
+    {
+      "name": "Nominal Pressure",
+      "type": "Text",
+      "group": "Data",
+      "value": "PN16"
+    }
+  ],
+  "materials": [
+    {
+      "name": "Epoxy_Blue",
+      "color": "#1c63b5",
+      "metalness": 0.22,
+      "roughness": 0.38
+    },
+    {
+      "name": "Epoxy_Blue_Dark",
+      "color": "#144c8d",
+      "metalness": 0.25,
+      "roughness": 0.42
+    },
+    {
+      "name": "Machined_Steel",
+      "color": "#b8c0cc",
+      "metalness": 0.78,
+      "roughness": 0.22
+    },
+    {
+      "name": "Zinc_Plated_Steel",
+      "color": "#d2d7e0",
+      "metalness": 0.82,
+      "roughness": 0.25
+    },
+    {
+      "name": "Polished_Brass",
+      "color": "#cca227",
+      "metalness": 0.85,
+      "roughness": 0.2
+    },
+    {
+      "name": "Stainless_Steel_Mesh",
+      "color": "#a8b2be",
+      "metalness": 0.88,
+      "roughness": 0.3
+    }
+  ],
+  "connectors": [
+    {
+      "id": "conn-inlet",
+      "name": "Inlet",
+      "systemType": "HydronicSupply",
+      "shape": "round",
+      "direction": "in",
+      "origin": {
+        "x": "-[Face To Face] / 2",
+        "y": 0,
+        "z": "[Center Height]"
+      },
+      "directionVector": {
+        "x": -1,
+        "y": 0,
+        "z": 0
+      },
+      "diameter": "[Nominal Bore]"
+    },
+    {
+      "id": "conn-outlet",
+      "name": "Outlet",
+      "systemType": "HydronicSupply",
+      "shape": "round",
+      "direction": "out",
+      "origin": {
+        "x": "[Face To Face] / 2",
+        "y": 0,
+        "z": "[Center Height]"
+      },
+      "directionVector": {
+        "x": 1,
+        "y": 0,
+        "z": 0
+      },
+      "diameter": "[Nominal Bore]"
+    }
+  ],
+  "parts": [
+    {
+      "id": "inlet-flange",
+      "name": "Mặt bích vào DN80 PN16 (8 lỗ)",
+      "material": "Epoxy_Blue_Dark",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "x",
+        "base": {
+          "x": "-[Face To Face] / 2 + [Raised Face Height]",
+          "y": 0,
+          "z": "[Center Height]"
+        },
+        "radius": "[Flange OD] / 2",
+        "innerRadius": "[Nominal Bore] / 2",
+        "height": "[Flange Thickness] - [Raised Face Height]"
+      },
+      "cuts": [
+        {
+          "kind": "cylinder",
+          "axis": "x",
+          "base": {
+            "x": "-[Face To Face] / 2 - 1mm",
+            "y": "[Flange Bolt Circle] / 2 * 0.923880",
+            "z": "[Center Height] + [Flange Bolt Circle] / 2 * 0.382683"
+          },
+          "radius": "[Flange Bolt Hole Diameter] / 2",
+          "height": "[Flange Thickness] + 2mm"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "x",
+          "base": {
+            "x": "-[Face To Face] / 2 - 1mm",
+            "y": "[Flange Bolt Circle] / 2 * 0.382683",
+            "z": "[Center Height] + [Flange Bolt Circle] / 2 * 0.923880"
+          },
+          "radius": "[Flange Bolt Hole Diameter] / 2",
+          "height": "[Flange Thickness] + 2mm"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "x",
+          "base": {
+            "x": "-[Face To Face] / 2 - 1mm",
+            "y": "[Flange Bolt Circle] / 2 * -0.382683",
+            "z": "[Center Height] + [Flange Bolt Circle] / 2 * 0.923880"
+          },
+          "radius": "[Flange Bolt Hole Diameter] / 2",
+          "height": "[Flange Thickness] + 2mm"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "x",
+          "base": {
+            "x": "-[Face To Face] / 2 - 1mm",
+            "y": "[Flange Bolt Circle] / 2 * -0.923880",
+            "z": "[Center Height] + [Flange Bolt Circle] / 2 * 0.382683"
+          },
+          "radius": "[Flange Bolt Hole Diameter] / 2",
+          "height": "[Flange Thickness] + 2mm"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "x",
+          "base": {
+            "x": "-[Face To Face] / 2 - 1mm",
+            "y": "[Flange Bolt Circle] / 2 * -0.923880",
+            "z": "[Center Height] + [Flange Bolt Circle] / 2 * -0.382683"
+          },
+          "radius": "[Flange Bolt Hole Diameter] / 2",
+          "height": "[Flange Thickness] + 2mm"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "x",
+          "base": {
+            "x": "-[Face To Face] / 2 - 1mm",
+            "y": "[Flange Bolt Circle] / 2 * -0.382683",
+            "z": "[Center Height] + [Flange Bolt Circle] / 2 * -0.923880"
+          },
+          "radius": "[Flange Bolt Hole Diameter] / 2",
+          "height": "[Flange Thickness] + 2mm"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "x",
+          "base": {
+            "x": "-[Face To Face] / 2 - 1mm",
+            "y": "[Flange Bolt Circle] / 2 * 0.382683",
+            "z": "[Center Height] + [Flange Bolt Circle] / 2 * -0.923880"
+          },
+          "radius": "[Flange Bolt Hole Diameter] / 2",
+          "height": "[Flange Thickness] + 2mm"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "x",
+          "base": {
+            "x": "-[Face To Face] / 2 - 1mm",
+            "y": "[Flange Bolt Circle] / 2 * 0.923880",
+            "z": "[Center Height] + [Flange Bolt Circle] / 2 * -0.382683"
+          },
+          "radius": "[Flange Bolt Hole Diameter] / 2",
+          "height": "[Flange Thickness] + 2mm"
+        }
+      ]
+    },
+    {
+      "id": "inlet-raised-face",
+      "name": "Gờ tiếp xúc mặt bích vào (Raised Face)",
+      "material": "Machined_Steel",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "x",
+        "base": {
+          "x": "-[Face To Face] / 2",
+          "y": 0,
+          "z": "[Center Height]"
+        },
+        "radius": "[Raised Face OD] / 2",
+        "innerRadius": "[Nominal Bore] / 2",
+        "height": "[Raised Face Height]"
+      }
+    },
+    {
+      "id": "inlet-hub",
+      "name": "Cổ côn chuyển tiếp mặt bích vào",
+      "material": "Epoxy_Blue",
+      "solid": {
+        "kind": "frustum",
+        "axis": "x",
+        "base": {
+          "x": "-[Face To Face] / 2 + [Flange Thickness]",
+          "y": 0,
+          "z": "[Center Height]"
+        },
+        "radiusBottom": "[Flange Hub OD] / 2",
+        "radiusTop": "[Body Run OD] / 2",
+        "height": "[Hub Length]"
+      }
+    },
+    {
+      "id": "outlet-flange",
+      "name": "Mặt bích ra DN80 PN16 (8 lỗ)",
+      "material": "Epoxy_Blue_Dark",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "x",
+        "base": {
+          "x": "[Face To Face] / 2 - [Flange Thickness]",
+          "y": 0,
+          "z": "[Center Height]"
+        },
+        "radius": "[Flange OD] / 2",
+        "innerRadius": "[Nominal Bore] / 2",
+        "height": "[Flange Thickness] - [Raised Face Height]"
+      },
+      "cuts": [
+        {
+          "kind": "cylinder",
+          "axis": "x",
+          "base": {
+            "x": "[Face To Face] / 2 - [Flange Thickness] - 1mm",
+            "y": "[Flange Bolt Circle] / 2 * 0.923880",
+            "z": "[Center Height] + [Flange Bolt Circle] / 2 * 0.382683"
+          },
+          "radius": "[Flange Bolt Hole Diameter] / 2",
+          "height": "[Flange Thickness] + 2mm"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "x",
+          "base": {
+            "x": "[Face To Face] / 2 - [Flange Thickness] - 1mm",
+            "y": "[Flange Bolt Circle] / 2 * 0.382683",
+            "z": "[Center Height] + [Flange Bolt Circle] / 2 * 0.923880"
+          },
+          "radius": "[Flange Bolt Hole Diameter] / 2",
+          "height": "[Flange Thickness] + 2mm"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "x",
+          "base": {
+            "x": "[Face To Face] / 2 - [Flange Thickness] - 1mm",
+            "y": "[Flange Bolt Circle] / 2 * -0.382683",
+            "z": "[Center Height] + [Flange Bolt Circle] / 2 * 0.923880"
+          },
+          "radius": "[Flange Bolt Hole Diameter] / 2",
+          "height": "[Flange Thickness] + 2mm"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "x",
+          "base": {
+            "x": "[Face To Face] / 2 - [Flange Thickness] - 1mm",
+            "y": "[Flange Bolt Circle] / 2 * -0.923880",
+            "z": "[Center Height] + [Flange Bolt Circle] / 2 * 0.382683"
+          },
+          "radius": "[Flange Bolt Hole Diameter] / 2",
+          "height": "[Flange Thickness] + 2mm"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "x",
+          "base": {
+            "x": "[Face To Face] / 2 - [Flange Thickness] - 1mm",
+            "y": "[Flange Bolt Circle] / 2 * -0.923880",
+            "z": "[Center Height] + [Flange Bolt Circle] / 2 * -0.382683"
+          },
+          "radius": "[Flange Bolt Hole Diameter] / 2",
+          "height": "[Flange Thickness] + 2mm"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "x",
+          "base": {
+            "x": "[Face To Face] / 2 - [Flange Thickness] - 1mm",
+            "y": "[Flange Bolt Circle] / 2 * -0.382683",
+            "z": "[Center Height] + [Flange Bolt Circle] / 2 * -0.923880"
+          },
+          "radius": "[Flange Bolt Hole Diameter] / 2",
+          "height": "[Flange Thickness] + 2mm"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "x",
+          "base": {
+            "x": "[Face To Face] / 2 - [Flange Thickness] - 1mm",
+            "y": "[Flange Bolt Circle] / 2 * 0.382683",
+            "z": "[Center Height] + [Flange Bolt Circle] / 2 * -0.923880"
+          },
+          "radius": "[Flange Bolt Hole Diameter] / 2",
+          "height": "[Flange Thickness] + 2mm"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "x",
+          "base": {
+            "x": "[Face To Face] / 2 - [Flange Thickness] - 1mm",
+            "y": "[Flange Bolt Circle] / 2 * 0.923880",
+            "z": "[Center Height] + [Flange Bolt Circle] / 2 * -0.382683"
+          },
+          "radius": "[Flange Bolt Hole Diameter] / 2",
+          "height": "[Flange Thickness] + 2mm"
+        }
+      ]
+    },
+    {
+      "id": "outlet-raised-face",
+      "name": "Gờ tiếp xúc mặt bích ra (Raised Face)",
+      "material": "Machined_Steel",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "x",
+        "base": {
+          "x": "[Face To Face] / 2 - [Raised Face Height]",
+          "y": 0,
+          "z": "[Center Height]"
+        },
+        "radius": "[Raised Face OD] / 2",
+        "innerRadius": "[Nominal Bore] / 2",
+        "height": "[Raised Face Height]"
+      }
+    },
+    {
+      "id": "outlet-hub",
+      "name": "Cổ côn chuyển tiếp mặt bích ra",
+      "material": "Epoxy_Blue",
+      "solid": {
+        "kind": "frustum",
+        "axis": "x",
+        "base": {
+          "x": "[Face To Face] / 2 - [Flange Thickness]",
+          "y": 0,
+          "z": "[Center Height]"
+        },
+        "radiusBottom": "[Flange Hub OD] / 2",
+        "radiusTop": "[Body Run OD] / 2",
+        "height": "-[Hub Length]"
+      }
+    },
+    {
+      "id": "run-pipe",
+      "name": "Thân ống chính dẫn dòng DN80",
+      "material": "Epoxy_Blue",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "x",
+        "base": {
+          "x": "-[Face To Face] / 2 + [Flange Thickness] + [Hub Length]",
+          "y": 0,
+          "z": "[Center Height]"
+        },
+        "radius": "[Body Run OD] / 2",
+        "innerRadius": "[Nominal Bore] / 2",
+        "height": "[Face To Face] - 2 * ([Flange Thickness] + [Hub Length])"
+      }
+    },
+    {
+      "id": "belly-transition-in",
+      "name": "Cổ mở rộng buồng lọc phía vào",
+      "material": "Epoxy_Blue",
+      "solid": {
+        "kind": "frustum",
+        "axis": "x",
+        "base": {
+          "x": "-[Body Belly Length] / 2 - [Belly Transition Length]",
+          "y": 0,
+          "z": "[Center Height]"
+        },
+        "radiusBottom": "[Body Run OD] / 2",
+        "radiusTop": "[Body Belly OD] / 2",
+        "height": "[Belly Transition Length]"
+      }
+    },
+    {
+      "id": "body-belly",
+      "name": "Bầu mở rộng buồng lọc thân van đúc",
+      "material": "Epoxy_Blue",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "x",
+        "base": {
+          "x": "-[Body Belly Length] / 2",
+          "y": 0,
+          "z": "[Center Height]"
+        },
+        "radius": "[Body Belly OD] / 2",
+        "innerRadius": "[Nominal Bore] / 2",
+        "height": "[Body Belly Length]"
+      }
+    },
+    {
+      "id": "belly-transition-out",
+      "name": "Cổ thu hẹp buồng lọc phía ra",
+      "material": "Epoxy_Blue",
+      "solid": {
+        "kind": "frustum",
+        "axis": "x",
+        "base": {
+          "x": "[Body Belly Length] / 2",
+          "y": 0,
+          "z": "[Center Height]"
+        },
+        "radiusBottom": "[Body Belly OD] / 2",
+        "radiusTop": "[Body Run OD] / 2",
+        "height": "[Belly Transition Length]"
+      }
+    },
+    {
+      "id": "branch",
+      "name": "Nhánh lọc nghiêng 45 độ (Chứa lõi lọc)",
+      "material": "Epoxy_Blue",
+      "solid": {
+        "kind": "loft",
+        "axis": "z",
+        "segments": 24,
+        "sections": [
+          {
+            "at": "[Branch End Z]",
+            "profile": {
+              "kind": "polygon",
+              "points": [
+                [
+                  "[Branch End X] + ([Branch Major Radius]) * 1.000000",
+                  "0 + ([Branch Minor Radius]) * 0.000000"
+                ],
+                [
+                  "[Branch End X] + ([Branch Major Radius]) * 0.965926",
+                  "0 + ([Branch Minor Radius]) * 0.258819"
+                ],
+                [
+                  "[Branch End X] + ([Branch Major Radius]) * 0.866025",
+                  "0 + ([Branch Minor Radius]) * 0.500000"
+                ],
+                [
+                  "[Branch End X] + ([Branch Major Radius]) * 0.707107",
+                  "0 + ([Branch Minor Radius]) * 0.707107"
+                ],
+                [
+                  "[Branch End X] + ([Branch Major Radius]) * 0.500000",
+                  "0 + ([Branch Minor Radius]) * 0.866025"
+                ],
+                [
+                  "[Branch End X] + ([Branch Major Radius]) * 0.258819",
+                  "0 + ([Branch Minor Radius]) * 0.965926"
+                ],
+                [
+                  "[Branch End X] + ([Branch Major Radius]) * 0.000000",
+                  "0 + ([Branch Minor Radius]) * 1.000000"
+                ],
+                [
+                  "[Branch End X] + ([Branch Major Radius]) * -0.258819",
+                  "0 + ([Branch Minor Radius]) * 0.965926"
+                ],
+                [
+                  "[Branch End X] + ([Branch Major Radius]) * -0.500000",
+                  "0 + ([Branch Minor Radius]) * 0.866025"
+                ],
+                [
+                  "[Branch End X] + ([Branch Major Radius]) * -0.707107",
+                  "0 + ([Branch Minor Radius]) * 0.707107"
+                ],
+                [
+                  "[Branch End X] + ([Branch Major Radius]) * -0.866025",
+                  "0 + ([Branch Minor Radius]) * 0.500000"
+                ],
+                [
+                  "[Branch End X] + ([Branch Major Radius]) * -0.965926",
+                  "0 + ([Branch Minor Radius]) * 0.258819"
+                ],
+                [
+                  "[Branch End X] + ([Branch Major Radius]) * -1.000000",
+                  "0 + ([Branch Minor Radius]) * 0.000000"
+                ],
+                [
+                  "[Branch End X] + ([Branch Major Radius]) * -0.965926",
+                  "0 + ([Branch Minor Radius]) * -0.258819"
+                ],
+                [
+                  "[Branch End X] + ([Branch Major Radius]) * -0.866025",
+                  "0 + ([Branch Minor Radius]) * -0.500000"
+                ],
+                [
+                  "[Branch End X] + ([Branch Major Radius]) * -0.707107",
+                  "0 + ([Branch Minor Radius]) * -0.707107"
+                ],
+                [
+                  "[Branch End X] + ([Branch Major Radius]) * -0.500000",
+                  "0 + ([Branch Minor Radius]) * -0.866025"
+                ],
+                [
+                  "[Branch End X] + ([Branch Major Radius]) * -0.258819",
+                  "0 + ([Branch Minor Radius]) * -0.965926"
+                ],
+                [
+                  "[Branch End X] + ([Branch Major Radius]) * -0.000000",
+                  "0 + ([Branch Minor Radius]) * -1.000000"
+                ],
+                [
+                  "[Branch End X] + ([Branch Major Radius]) * 0.258819",
+                  "0 + ([Branch Minor Radius]) * -0.965926"
+                ],
+                [
+                  "[Branch End X] + ([Branch Major Radius]) * 0.500000",
+                  "0 + ([Branch Minor Radius]) * -0.866025"
+                ],
+                [
+                  "[Branch End X] + ([Branch Major Radius]) * 0.707107",
+                  "0 + ([Branch Minor Radius]) * -0.707107"
+                ],
+                [
+                  "[Branch End X] + ([Branch Major Radius]) * 0.866025",
+                  "0 + ([Branch Minor Radius]) * -0.500000"
+                ],
+                [
+                  "[Branch End X] + ([Branch Major Radius]) * 0.965926",
+                  "0 + ([Branch Minor Radius]) * -0.258819"
+                ]
+              ]
+            }
+          },
+          {
+            "at": "[Center Height]",
+            "profile": {
+              "kind": "polygon",
+              "points": [
+                [
+                  "[Branch Center X] + ([Branch Major Radius]) * 1.000000",
+                  "0 + ([Branch Minor Radius]) * 0.000000"
+                ],
+                [
+                  "[Branch Center X] + ([Branch Major Radius]) * 0.965926",
+                  "0 + ([Branch Minor Radius]) * 0.258819"
+                ],
+                [
+                  "[Branch Center X] + ([Branch Major Radius]) * 0.866025",
+                  "0 + ([Branch Minor Radius]) * 0.500000"
+                ],
+                [
+                  "[Branch Center X] + ([Branch Major Radius]) * 0.707107",
+                  "0 + ([Branch Minor Radius]) * 0.707107"
+                ],
+                [
+                  "[Branch Center X] + ([Branch Major Radius]) * 0.500000",
+                  "0 + ([Branch Minor Radius]) * 0.866025"
+                ],
+                [
+                  "[Branch Center X] + ([Branch Major Radius]) * 0.258819",
+                  "0 + ([Branch Minor Radius]) * 0.965926"
+                ],
+                [
+                  "[Branch Center X] + ([Branch Major Radius]) * 0.000000",
+                  "0 + ([Branch Minor Radius]) * 1.000000"
+                ],
+                [
+                  "[Branch Center X] + ([Branch Major Radius]) * -0.258819",
+                  "0 + ([Branch Minor Radius]) * 0.965926"
+                ],
+                [
+                  "[Branch Center X] + ([Branch Major Radius]) * -0.500000",
+                  "0 + ([Branch Minor Radius]) * 0.866025"
+                ],
+                [
+                  "[Branch Center X] + ([Branch Major Radius]) * -0.707107",
+                  "0 + ([Branch Minor Radius]) * 0.707107"
+                ],
+                [
+                  "[Branch Center X] + ([Branch Major Radius]) * -0.866025",
+                  "0 + ([Branch Minor Radius]) * 0.500000"
+                ],
+                [
+                  "[Branch Center X] + ([Branch Major Radius]) * -0.965926",
+                  "0 + ([Branch Minor Radius]) * 0.258819"
+                ],
+                [
+                  "[Branch Center X] + ([Branch Major Radius]) * -1.000000",
+                  "0 + ([Branch Minor Radius]) * 0.000000"
+                ],
+                [
+                  "[Branch Center X] + ([Branch Major Radius]) * -0.965926",
+                  "0 + ([Branch Minor Radius]) * -0.258819"
+                ],
+                [
+                  "[Branch Center X] + ([Branch Major Radius]) * -0.866025",
+                  "0 + ([Branch Minor Radius]) * -0.500000"
+                ],
+                [
+                  "[Branch Center X] + ([Branch Major Radius]) * -0.707107",
+                  "0 + ([Branch Minor Radius]) * -0.707107"
+                ],
+                [
+                  "[Branch Center X] + ([Branch Major Radius]) * -0.500000",
+                  "0 + ([Branch Minor Radius]) * -0.866025"
+                ],
+                [
+                  "[Branch Center X] + ([Branch Major Radius]) * -0.258819",
+                  "0 + ([Branch Minor Radius]) * -0.965926"
+                ],
+                [
+                  "[Branch Center X] + ([Branch Major Radius]) * -0.000000",
+                  "0 + ([Branch Minor Radius]) * -1.000000"
+                ],
+                [
+                  "[Branch Center X] + ([Branch Major Radius]) * 0.258819",
+                  "0 + ([Branch Minor Radius]) * -0.965926"
+                ],
+                [
+                  "[Branch Center X] + ([Branch Major Radius]) * 0.500000",
+                  "0 + ([Branch Minor Radius]) * -0.866025"
+                ],
+                [
+                  "[Branch Center X] + ([Branch Major Radius]) * 0.707107",
+                  "0 + ([Branch Minor Radius]) * -0.707107"
+                ],
+                [
+                  "[Branch Center X] + ([Branch Major Radius]) * 0.866025",
+                  "0 + ([Branch Minor Radius]) * -0.500000"
+                ],
+                [
+                  "[Branch Center X] + ([Branch Major Radius]) * 0.965926",
+                  "0 + ([Branch Minor Radius]) * -0.258819"
+                ]
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "strainer-screen",
+      "name": "Lõi lưới lọc thép không gỉ SUS304",
+      "material": "Stainless_Steel_Mesh",
+      "solid": {
+        "kind": "loft",
+        "axis": "z",
+        "segments": 24,
+        "sections": [
+          {
+            "at": "[Branch End Z] + 8mm",
+            "profile": {
+              "kind": "polygon",
+              "points": [
+                [
+                  "[Branch End X] + ([Screen Major Radius]) * 1.000000",
+                  "0 + ([Screen Minor Radius]) * 0.000000"
+                ],
+                [
+                  "[Branch End X] + ([Screen Major Radius]) * 0.965926",
+                  "0 + ([Screen Minor Radius]) * 0.258819"
+                ],
+                [
+                  "[Branch End X] + ([Screen Major Radius]) * 0.866025",
+                  "0 + ([Screen Minor Radius]) * 0.500000"
+                ],
+                [
+                  "[Branch End X] + ([Screen Major Radius]) * 0.707107",
+                  "0 + ([Screen Minor Radius]) * 0.707107"
+                ],
+                [
+                  "[Branch End X] + ([Screen Major Radius]) * 0.500000",
+                  "0 + ([Screen Minor Radius]) * 0.866025"
+                ],
+                [
+                  "[Branch End X] + ([Screen Major Radius]) * 0.258819",
+                  "0 + ([Screen Minor Radius]) * 0.965926"
+                ],
+                [
+                  "[Branch End X] + ([Screen Major Radius]) * 0.000000",
+                  "0 + ([Screen Minor Radius]) * 1.000000"
+                ],
+                [
+                  "[Branch End X] + ([Screen Major Radius]) * -0.258819",
+                  "0 + ([Screen Minor Radius]) * 0.965926"
+                ],
+                [
+                  "[Branch End X] + ([Screen Major Radius]) * -0.500000",
+                  "0 + ([Screen Minor Radius]) * 0.866025"
+                ],
+                [
+                  "[Branch End X] + ([Screen Major Radius]) * -0.707107",
+                  "0 + ([Screen Minor Radius]) * 0.707107"
+                ],
+                [
+                  "[Branch End X] + ([Screen Major Radius]) * -0.866025",
+                  "0 + ([Screen Minor Radius]) * 0.500000"
+                ],
+                [
+                  "[Branch End X] + ([Screen Major Radius]) * -0.965926",
+                  "0 + ([Screen Minor Radius]) * 0.258819"
+                ],
+                [
+                  "[Branch End X] + ([Screen Major Radius]) * -1.000000",
+                  "0 + ([Screen Minor Radius]) * 0.000000"
+                ],
+                [
+                  "[Branch End X] + ([Screen Major Radius]) * -0.965926",
+                  "0 + ([Screen Minor Radius]) * -0.258819"
+                ],
+                [
+                  "[Branch End X] + ([Screen Major Radius]) * -0.866025",
+                  "0 + ([Screen Minor Radius]) * -0.500000"
+                ],
+                [
+                  "[Branch End X] + ([Screen Major Radius]) * -0.707107",
+                  "0 + ([Screen Minor Radius]) * -0.707107"
+                ],
+                [
+                  "[Branch End X] + ([Screen Major Radius]) * -0.500000",
+                  "0 + ([Screen Minor Radius]) * -0.866025"
+                ],
+                [
+                  "[Branch End X] + ([Screen Major Radius]) * -0.258819",
+                  "0 + ([Screen Minor Radius]) * -0.965926"
+                ],
+                [
+                  "[Branch End X] + ([Screen Major Radius]) * -0.000000",
+                  "0 + ([Screen Minor Radius]) * -1.000000"
+                ],
+                [
+                  "[Branch End X] + ([Screen Major Radius]) * 0.258819",
+                  "0 + ([Screen Minor Radius]) * -0.965926"
+                ],
+                [
+                  "[Branch End X] + ([Screen Major Radius]) * 0.500000",
+                  "0 + ([Screen Minor Radius]) * -0.866025"
+                ],
+                [
+                  "[Branch End X] + ([Screen Major Radius]) * 0.707107",
+                  "0 + ([Screen Minor Radius]) * -0.707107"
+                ],
+                [
+                  "[Branch End X] + ([Screen Major Radius]) * 0.866025",
+                  "0 + ([Screen Minor Radius]) * -0.500000"
+                ],
+                [
+                  "[Branch End X] + ([Screen Major Radius]) * 0.965926",
+                  "0 + ([Screen Minor Radius]) * -0.258819"
+                ]
+              ]
+            }
+          },
+          {
+            "at": "[Center Height] - 10mm",
+            "profile": {
+              "kind": "polygon",
+              "points": [
+                [
+                  "[Branch Center X] + ([Screen Major Radius]) * 1.000000",
+                  "0 + ([Screen Minor Radius]) * 0.000000"
+                ],
+                [
+                  "[Branch Center X] + ([Screen Major Radius]) * 0.965926",
+                  "0 + ([Screen Minor Radius]) * 0.258819"
+                ],
+                [
+                  "[Branch Center X] + ([Screen Major Radius]) * 0.866025",
+                  "0 + ([Screen Minor Radius]) * 0.500000"
+                ],
+                [
+                  "[Branch Center X] + ([Screen Major Radius]) * 0.707107",
+                  "0 + ([Screen Minor Radius]) * 0.707107"
+                ],
+                [
+                  "[Branch Center X] + ([Screen Major Radius]) * 0.500000",
+                  "0 + ([Screen Minor Radius]) * 0.866025"
+                ],
+                [
+                  "[Branch Center X] + ([Screen Major Radius]) * 0.258819",
+                  "0 + ([Screen Minor Radius]) * 0.965926"
+                ],
+                [
+                  "[Branch Center X] + ([Screen Major Radius]) * 0.000000",
+                  "0 + ([Screen Minor Radius]) * 1.000000"
+                ],
+                [
+                  "[Branch Center X] + ([Screen Major Radius]) * -0.258819",
+                  "0 + ([Screen Minor Radius]) * 0.965926"
+                ],
+                [
+                  "[Branch Center X] + ([Screen Major Radius]) * -0.500000",
+                  "0 + ([Screen Minor Radius]) * 0.866025"
+                ],
+                [
+                  "[Branch Center X] + ([Screen Major Radius]) * -0.707107",
+                  "0 + ([Screen Minor Radius]) * 0.707107"
+                ],
+                [
+                  "[Branch Center X] + ([Screen Major Radius]) * -0.866025",
+                  "0 + ([Screen Minor Radius]) * 0.500000"
+                ],
+                [
+                  "[Branch Center X] + ([Screen Major Radius]) * -0.965926",
+                  "0 + ([Screen Minor Radius]) * 0.258819"
+                ],
+                [
+                  "[Branch Center X] + ([Screen Major Radius]) * -1.000000",
+                  "0 + ([Screen Minor Radius]) * 0.000000"
+                ],
+                [
+                  "[Branch Center X] + ([Screen Major Radius]) * -0.965926",
+                  "0 + ([Screen Minor Radius]) * -0.258819"
+                ],
+                [
+                  "[Branch Center X] + ([Screen Major Radius]) * -0.866025",
+                  "0 + ([Screen Minor Radius]) * -0.500000"
+                ],
+                [
+                  "[Branch Center X] + ([Screen Major Radius]) * -0.707107",
+                  "0 + ([Screen Minor Radius]) * -0.707107"
+                ],
+                [
+                  "[Branch Center X] + ([Screen Major Radius]) * -0.500000",
+                  "0 + ([Screen Minor Radius]) * -0.866025"
+                ],
+                [
+                  "[Branch Center X] + ([Screen Major Radius]) * -0.258819",
+                  "0 + ([Screen Minor Radius]) * -0.965926"
+                ],
+                [
+                  "[Branch Center X] + ([Screen Major Radius]) * -0.000000",
+                  "0 + ([Screen Minor Radius]) * -1.000000"
+                ],
+                [
+                  "[Branch Center X] + ([Screen Major Radius]) * 0.258819",
+                  "0 + ([Screen Minor Radius]) * -0.965926"
+                ],
+                [
+                  "[Branch Center X] + ([Screen Major Radius]) * 0.500000",
+                  "0 + ([Screen Minor Radius]) * -0.866025"
+                ],
+                [
+                  "[Branch Center X] + ([Screen Major Radius]) * 0.707107",
+                  "0 + ([Screen Minor Radius]) * -0.707107"
+                ],
+                [
+                  "[Branch Center X] + ([Screen Major Radius]) * 0.866025",
+                  "0 + ([Screen Minor Radius]) * -0.500000"
+                ],
+                [
+                  "[Branch Center X] + ([Screen Major Radius]) * 0.965926",
+                  "0 + ([Screen Minor Radius]) * -0.258819"
+                ]
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "branch-bonnet-flange",
+      "name": "Cổ bích đúc nắp đáy nhánh lọc",
+      "material": "Epoxy_Blue_Dark",
+      "solid": {
+        "kind": "loft",
+        "axis": "z",
+        "segments": 24,
+        "sections": [
+          {
+            "at": "[Branch End Z]",
+            "profile": {
+              "kind": "polygon",
+              "points": [
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * 1.000000",
+                  "0 + ([Bonnet Flange OD] / 2) * 0.000000"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * 0.965926",
+                  "0 + ([Bonnet Flange OD] / 2) * 0.258819"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * 0.866025",
+                  "0 + ([Bonnet Flange OD] / 2) * 0.500000"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * 0.707107",
+                  "0 + ([Bonnet Flange OD] / 2) * 0.707107"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * 0.500000",
+                  "0 + ([Bonnet Flange OD] / 2) * 0.866025"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * 0.258819",
+                  "0 + ([Bonnet Flange OD] / 2) * 0.965926"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * 0.000000",
+                  "0 + ([Bonnet Flange OD] / 2) * 1.000000"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * -0.258819",
+                  "0 + ([Bonnet Flange OD] / 2) * 0.965926"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * -0.500000",
+                  "0 + ([Bonnet Flange OD] / 2) * 0.866025"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * -0.707107",
+                  "0 + ([Bonnet Flange OD] / 2) * 0.707107"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * -0.866025",
+                  "0 + ([Bonnet Flange OD] / 2) * 0.500000"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * -0.965926",
+                  "0 + ([Bonnet Flange OD] / 2) * 0.258819"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * -1.000000",
+                  "0 + ([Bonnet Flange OD] / 2) * 0.000000"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * -0.965926",
+                  "0 + ([Bonnet Flange OD] / 2) * -0.258819"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * -0.866025",
+                  "0 + ([Bonnet Flange OD] / 2) * -0.500000"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * -0.707107",
+                  "0 + ([Bonnet Flange OD] / 2) * -0.707107"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * -0.500000",
+                  "0 + ([Bonnet Flange OD] / 2) * -0.866025"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * -0.258819",
+                  "0 + ([Bonnet Flange OD] / 2) * -0.965926"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * -0.000000",
+                  "0 + ([Bonnet Flange OD] / 2) * -1.000000"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * 0.258819",
+                  "0 + ([Bonnet Flange OD] / 2) * -0.965926"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * 0.500000",
+                  "0 + ([Bonnet Flange OD] / 2) * -0.866025"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * 0.707107",
+                  "0 + ([Bonnet Flange OD] / 2) * -0.707107"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * 0.866025",
+                  "0 + ([Bonnet Flange OD] / 2) * -0.500000"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * 0.965926",
+                  "0 + ([Bonnet Flange OD] / 2) * -0.258819"
+                ]
+              ]
+            }
+          },
+          {
+            "at": "[Branch End Z] + [Bonnet Flange Thickness]",
+            "profile": {
+              "kind": "polygon",
+              "points": [
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * 1.000000",
+                  "0 + ([Bonnet Flange OD] / 2) * 0.000000"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * 0.965926",
+                  "0 + ([Bonnet Flange OD] / 2) * 0.258819"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * 0.866025",
+                  "0 + ([Bonnet Flange OD] / 2) * 0.500000"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * 0.707107",
+                  "0 + ([Bonnet Flange OD] / 2) * 0.707107"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * 0.500000",
+                  "0 + ([Bonnet Flange OD] / 2) * 0.866025"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * 0.258819",
+                  "0 + ([Bonnet Flange OD] / 2) * 0.965926"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * 0.000000",
+                  "0 + ([Bonnet Flange OD] / 2) * 1.000000"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * -0.258819",
+                  "0 + ([Bonnet Flange OD] / 2) * 0.965926"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * -0.500000",
+                  "0 + ([Bonnet Flange OD] / 2) * 0.866025"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * -0.707107",
+                  "0 + ([Bonnet Flange OD] / 2) * 0.707107"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * -0.866025",
+                  "0 + ([Bonnet Flange OD] / 2) * 0.500000"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * -0.965926",
+                  "0 + ([Bonnet Flange OD] / 2) * 0.258819"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * -1.000000",
+                  "0 + ([Bonnet Flange OD] / 2) * 0.000000"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * -0.965926",
+                  "0 + ([Bonnet Flange OD] / 2) * -0.258819"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * -0.866025",
+                  "0 + ([Bonnet Flange OD] / 2) * -0.500000"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * -0.707107",
+                  "0 + ([Bonnet Flange OD] / 2) * -0.707107"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * -0.500000",
+                  "0 + ([Bonnet Flange OD] / 2) * -0.866025"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * -0.258819",
+                  "0 + ([Bonnet Flange OD] / 2) * -0.965926"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * -0.000000",
+                  "0 + ([Bonnet Flange OD] / 2) * -1.000000"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * 0.258819",
+                  "0 + ([Bonnet Flange OD] / 2) * -0.965926"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * 0.500000",
+                  "0 + ([Bonnet Flange OD] / 2) * -0.866025"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * 0.707107",
+                  "0 + ([Bonnet Flange OD] / 2) * -0.707107"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * 0.866025",
+                  "0 + ([Bonnet Flange OD] / 2) * -0.500000"
+                ],
+                [
+                  "[Branch End X] + (([Bonnet Flange OD] / 2) * 1.414214) * 0.965926",
+                  "0 + ([Bonnet Flange OD] / 2) * -0.258819"
+                ]
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "branch-cover",
+      "name": "Nắp bịt đáy tháo lắp bảo dưỡng (Bonnet Cover)",
+      "material": "Epoxy_Blue_Dark",
+      "solid": {
+        "kind": "prism",
+        "plane": "xy",
+        "points": [
+          [
+            "[Branch End X] + ([Cover OD] / 2) * 1.000000",
+            "0 + ([Cover OD] / 2) * 0.000000"
+          ],
+          [
+            "[Branch End X] + ([Cover OD] / 2) * 0.965926",
+            "0 + ([Cover OD] / 2) * 0.258819"
+          ],
+          [
+            "[Branch End X] + ([Cover OD] / 2) * 0.866025",
+            "0 + ([Cover OD] / 2) * 0.500000"
+          ],
+          [
+            "[Branch End X] + ([Cover OD] / 2) * 0.707107",
+            "0 + ([Cover OD] / 2) * 0.707107"
+          ],
+          [
+            "[Branch End X] + ([Cover OD] / 2) * 0.500000",
+            "0 + ([Cover OD] / 2) * 0.866025"
+          ],
+          [
+            "[Branch End X] + ([Cover OD] / 2) * 0.258819",
+            "0 + ([Cover OD] / 2) * 0.965926"
+          ],
+          [
+            "[Branch End X] + ([Cover OD] / 2) * 0.000000",
+            "0 + ([Cover OD] / 2) * 1.000000"
+          ],
+          [
+            "[Branch End X] + ([Cover OD] / 2) * -0.258819",
+            "0 + ([Cover OD] / 2) * 0.965926"
+          ],
+          [
+            "[Branch End X] + ([Cover OD] / 2) * -0.500000",
+            "0 + ([Cover OD] / 2) * 0.866025"
+          ],
+          [
+            "[Branch End X] + ([Cover OD] / 2) * -0.707107",
+            "0 + ([Cover OD] / 2) * 0.707107"
+          ],
+          [
+            "[Branch End X] + ([Cover OD] / 2) * -0.866025",
+            "0 + ([Cover OD] / 2) * 0.500000"
+          ],
+          [
+            "[Branch End X] + ([Cover OD] / 2) * -0.965926",
+            "0 + ([Cover OD] / 2) * 0.258819"
+          ],
+          [
+            "[Branch End X] + ([Cover OD] / 2) * -1.000000",
+            "0 + ([Cover OD] / 2) * 0.000000"
+          ],
+          [
+            "[Branch End X] + ([Cover OD] / 2) * -0.965926",
+            "0 + ([Cover OD] / 2) * -0.258819"
+          ],
+          [
+            "[Branch End X] + ([Cover OD] / 2) * -0.866025",
+            "0 + ([Cover OD] / 2) * -0.500000"
+          ],
+          [
+            "[Branch End X] + ([Cover OD] / 2) * -0.707107",
+            "0 + ([Cover OD] / 2) * -0.707107"
+          ],
+          [
+            "[Branch End X] + ([Cover OD] / 2) * -0.500000",
+            "0 + ([Cover OD] / 2) * -0.866025"
+          ],
+          [
+            "[Branch End X] + ([Cover OD] / 2) * -0.258819",
+            "0 + ([Cover OD] / 2) * -0.965926"
+          ],
+          [
+            "[Branch End X] + ([Cover OD] / 2) * -0.000000",
+            "0 + ([Cover OD] / 2) * -1.000000"
+          ],
+          [
+            "[Branch End X] + ([Cover OD] / 2) * 0.258819",
+            "0 + ([Cover OD] / 2) * -0.965926"
+          ],
+          [
+            "[Branch End X] + ([Cover OD] / 2) * 0.500000",
+            "0 + ([Cover OD] / 2) * -0.866025"
+          ],
+          [
+            "[Branch End X] + ([Cover OD] / 2) * 0.707107",
+            "0 + ([Cover OD] / 2) * -0.707107"
+          ],
+          [
+            "[Branch End X] + ([Cover OD] / 2) * 0.866025",
+            "0 + ([Cover OD] / 2) * -0.500000"
+          ],
+          [
+            "[Branch End X] + ([Cover OD] / 2) * 0.965926",
+            "0 + ([Cover OD] / 2) * -0.258819"
+          ]
+        ],
+        "from": "[Cover Bottom Z]",
+        "to": "[Branch End Z]"
+      }
+    },
+    {
+      "id": "cover-bolt-1",
+      "name": "Bu-lông siết nắp bịt M16 #1",
+      "material": "Zinc_Plated_Steel",
+      "solid": {
+        "kind": "prism",
+        "plane": "xy",
+        "points": [
+          [
+            "[Branch End X] + [Cover Bolt Circle] / 2 * 0.707107 + ([Cover Bolt Head Size] / 2) * 0.707107",
+            "[Cover Bolt Circle] / 2 * 0.707107 + ([Cover Bolt Head Size] / 2) * 0.707107"
+          ],
+          [
+            "[Branch End X] + [Cover Bolt Circle] / 2 * 0.707107 + ([Cover Bolt Head Size] / 2) * -0.258819",
+            "[Cover Bolt Circle] / 2 * 0.707107 + ([Cover Bolt Head Size] / 2) * 0.965926"
+          ],
+          [
+            "[Branch End X] + [Cover Bolt Circle] / 2 * 0.707107 + ([Cover Bolt Head Size] / 2) * -0.965926",
+            "[Cover Bolt Circle] / 2 * 0.707107 + ([Cover Bolt Head Size] / 2) * 0.258819"
+          ],
+          [
+            "[Branch End X] + [Cover Bolt Circle] / 2 * 0.707107 + ([Cover Bolt Head Size] / 2) * -0.707107",
+            "[Cover Bolt Circle] / 2 * 0.707107 + ([Cover Bolt Head Size] / 2) * -0.707107"
+          ],
+          [
+            "[Branch End X] + [Cover Bolt Circle] / 2 * 0.707107 + ([Cover Bolt Head Size] / 2) * 0.258819",
+            "[Cover Bolt Circle] / 2 * 0.707107 + ([Cover Bolt Head Size] / 2) * -0.965926"
+          ],
+          [
+            "[Branch End X] + [Cover Bolt Circle] / 2 * 0.707107 + ([Cover Bolt Head Size] / 2) * 0.965926",
+            "[Cover Bolt Circle] / 2 * 0.707107 + ([Cover Bolt Head Size] / 2) * -0.258819"
+          ]
+        ],
+        "from": "[Cover Bottom Z] - [Cover Bolt Head Height]",
+        "to": "[Cover Bottom Z]"
+      }
+    },
+    {
+      "id": "cover-bolt-shank-1",
+      "name": "Ty ren bu-lông M16 #1",
+      "material": "Zinc_Plated_Steel",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "z",
+        "base": {
+          "x": "[Branch End X] + [Cover Bolt Circle] / 2 * 0.707107",
+          "y": "[Cover Bolt Circle] / 2 * 0.707107",
+          "z": "[Cover Bottom Z]"
+        },
+        "radius": "[Cover Bolt Diameter] / 2",
+        "height": "[Cover Thickness] + 4mm"
+      }
+    },
+    {
+      "id": "cover-bolt-2",
+      "name": "Bu-lông siết nắp bịt M16 #2",
+      "material": "Zinc_Plated_Steel",
+      "solid": {
+        "kind": "prism",
+        "plane": "xy",
+        "points": [
+          [
+            "[Branch End X] + [Cover Bolt Circle] / 2 * -0.707107 + ([Cover Bolt Head Size] / 2) * -0.707107",
+            "[Cover Bolt Circle] / 2 * 0.707107 + ([Cover Bolt Head Size] / 2) * 0.707107"
+          ],
+          [
+            "[Branch End X] + [Cover Bolt Circle] / 2 * -0.707107 + ([Cover Bolt Head Size] / 2) * -0.965926",
+            "[Cover Bolt Circle] / 2 * 0.707107 + ([Cover Bolt Head Size] / 2) * -0.258819"
+          ],
+          [
+            "[Branch End X] + [Cover Bolt Circle] / 2 * -0.707107 + ([Cover Bolt Head Size] / 2) * -0.258819",
+            "[Cover Bolt Circle] / 2 * 0.707107 + ([Cover Bolt Head Size] / 2) * -0.965926"
+          ],
+          [
+            "[Branch End X] + [Cover Bolt Circle] / 2 * -0.707107 + ([Cover Bolt Head Size] / 2) * 0.707107",
+            "[Cover Bolt Circle] / 2 * 0.707107 + ([Cover Bolt Head Size] / 2) * -0.707107"
+          ],
+          [
+            "[Branch End X] + [Cover Bolt Circle] / 2 * -0.707107 + ([Cover Bolt Head Size] / 2) * 0.965926",
+            "[Cover Bolt Circle] / 2 * 0.707107 + ([Cover Bolt Head Size] / 2) * 0.258819"
+          ],
+          [
+            "[Branch End X] + [Cover Bolt Circle] / 2 * -0.707107 + ([Cover Bolt Head Size] / 2) * 0.258819",
+            "[Cover Bolt Circle] / 2 * 0.707107 + ([Cover Bolt Head Size] / 2) * 0.965926"
+          ]
+        ],
+        "from": "[Cover Bottom Z] - [Cover Bolt Head Height]",
+        "to": "[Cover Bottom Z]"
+      }
+    },
+    {
+      "id": "cover-bolt-shank-2",
+      "name": "Ty ren bu-lông M16 #2",
+      "material": "Zinc_Plated_Steel",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "z",
+        "base": {
+          "x": "[Branch End X] + [Cover Bolt Circle] / 2 * -0.707107",
+          "y": "[Cover Bolt Circle] / 2 * 0.707107",
+          "z": "[Cover Bottom Z]"
+        },
+        "radius": "[Cover Bolt Diameter] / 2",
+        "height": "[Cover Thickness] + 4mm"
+      }
+    },
+    {
+      "id": "cover-bolt-3",
+      "name": "Bu-lông siết nắp bịt M16 #3",
+      "material": "Zinc_Plated_Steel",
+      "solid": {
+        "kind": "prism",
+        "plane": "xy",
+        "points": [
+          [
+            "[Branch End X] + [Cover Bolt Circle] / 2 * -0.707107 + ([Cover Bolt Head Size] / 2) * -0.707107",
+            "[Cover Bolt Circle] / 2 * -0.707107 + ([Cover Bolt Head Size] / 2) * -0.707107"
+          ],
+          [
+            "[Branch End X] + [Cover Bolt Circle] / 2 * -0.707107 + ([Cover Bolt Head Size] / 2) * 0.258819",
+            "[Cover Bolt Circle] / 2 * -0.707107 + ([Cover Bolt Head Size] / 2) * -0.965926"
+          ],
+          [
+            "[Branch End X] + [Cover Bolt Circle] / 2 * -0.707107 + ([Cover Bolt Head Size] / 2) * 0.965926",
+            "[Cover Bolt Circle] / 2 * -0.707107 + ([Cover Bolt Head Size] / 2) * -0.258819"
+          ],
+          [
+            "[Branch End X] + [Cover Bolt Circle] / 2 * -0.707107 + ([Cover Bolt Head Size] / 2) * 0.707107",
+            "[Cover Bolt Circle] / 2 * -0.707107 + ([Cover Bolt Head Size] / 2) * 0.707107"
+          ],
+          [
+            "[Branch End X] + [Cover Bolt Circle] / 2 * -0.707107 + ([Cover Bolt Head Size] / 2) * -0.258819",
+            "[Cover Bolt Circle] / 2 * -0.707107 + ([Cover Bolt Head Size] / 2) * 0.965926"
+          ],
+          [
+            "[Branch End X] + [Cover Bolt Circle] / 2 * -0.707107 + ([Cover Bolt Head Size] / 2) * -0.965926",
+            "[Cover Bolt Circle] / 2 * -0.707107 + ([Cover Bolt Head Size] / 2) * 0.258819"
+          ]
+        ],
+        "from": "[Cover Bottom Z] - [Cover Bolt Head Height]",
+        "to": "[Cover Bottom Z]"
+      }
+    },
+    {
+      "id": "cover-bolt-shank-3",
+      "name": "Ty ren bu-lông M16 #3",
+      "material": "Zinc_Plated_Steel",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "z",
+        "base": {
+          "x": "[Branch End X] + [Cover Bolt Circle] / 2 * -0.707107",
+          "y": "[Cover Bolt Circle] / 2 * -0.707107",
+          "z": "[Cover Bottom Z]"
+        },
+        "radius": "[Cover Bolt Diameter] / 2",
+        "height": "[Cover Thickness] + 4mm"
+      }
+    },
+    {
+      "id": "cover-bolt-4",
+      "name": "Bu-lông siết nắp bịt M16 #4",
+      "material": "Zinc_Plated_Steel",
+      "solid": {
+        "kind": "prism",
+        "plane": "xy",
+        "points": [
+          [
+            "[Branch End X] + [Cover Bolt Circle] / 2 * 0.707107 + ([Cover Bolt Head Size] / 2) * 0.707107",
+            "[Cover Bolt Circle] / 2 * -0.707107 + ([Cover Bolt Head Size] / 2) * -0.707107"
+          ],
+          [
+            "[Branch End X] + [Cover Bolt Circle] / 2 * 0.707107 + ([Cover Bolt Head Size] / 2) * 0.965926",
+            "[Cover Bolt Circle] / 2 * -0.707107 + ([Cover Bolt Head Size] / 2) * 0.258819"
+          ],
+          [
+            "[Branch End X] + [Cover Bolt Circle] / 2 * 0.707107 + ([Cover Bolt Head Size] / 2) * 0.258819",
+            "[Cover Bolt Circle] / 2 * -0.707107 + ([Cover Bolt Head Size] / 2) * 0.965926"
+          ],
+          [
+            "[Branch End X] + [Cover Bolt Circle] / 2 * 0.707107 + ([Cover Bolt Head Size] / 2) * -0.707107",
+            "[Cover Bolt Circle] / 2 * -0.707107 + ([Cover Bolt Head Size] / 2) * 0.707107"
+          ],
+          [
+            "[Branch End X] + [Cover Bolt Circle] / 2 * 0.707107 + ([Cover Bolt Head Size] / 2) * -0.965926",
+            "[Cover Bolt Circle] / 2 * -0.707107 + ([Cover Bolt Head Size] / 2) * -0.258819"
+          ],
+          [
+            "[Branch End X] + [Cover Bolt Circle] / 2 * 0.707107 + ([Cover Bolt Head Size] / 2) * -0.258819",
+            "[Cover Bolt Circle] / 2 * -0.707107 + ([Cover Bolt Head Size] / 2) * -0.965926"
+          ]
+        ],
+        "from": "[Cover Bottom Z] - [Cover Bolt Head Height]",
+        "to": "[Cover Bottom Z]"
+      }
+    },
+    {
+      "id": "cover-bolt-shank-4",
+      "name": "Ty ren bu-lông M16 #4",
+      "material": "Zinc_Plated_Steel",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "z",
+        "base": {
+          "x": "[Branch End X] + [Cover Bolt Circle] / 2 * 0.707107",
+          "y": "[Cover Bolt Circle] / 2 * -0.707107",
+          "z": "[Cover Bottom Z]"
+        },
+        "radius": "[Cover Bolt Diameter] / 2",
+        "height": "[Cover Thickness] + 4mm"
+      }
+    },
+    {
+      "id": "drain-boss",
+      "name": "Ụ ren xả đáy trung tâm nắp bịt",
+      "material": "Epoxy_Blue_Dark",
+      "solid": {
+        "kind": "cylinder",
+        "axis": "z",
+        "base": {
+          "x": "[Branch End X]",
+          "y": 0,
+          "z": "[Cover Bottom Z] - [Drain Boss Height]"
+        },
+        "radius": "[Drain Boss OD] / 2",
+        "height": "[Drain Boss Height]"
+      }
+    },
+    {
+      "id": "drain-plug",
+      "name": "Nút xả cặn ren đồng thau (Brass Blow-off Plug)",
+      "material": "Polished_Brass",
+      "solid": {
+        "kind": "prism",
+        "plane": "xy",
+        "points": [
+          [
+            "[Branch End X] + ([Drain Plug Hex Size] / 2) * 0.866025",
+            "0 + ([Drain Plug Hex Size] / 2) * 0.500000"
+          ],
+          [
+            "[Branch End X] + ([Drain Plug Hex Size] / 2) * 0.000000",
+            "0 + ([Drain Plug Hex Size] / 2) * 1.000000"
+          ],
+          [
+            "[Branch End X] + ([Drain Plug Hex Size] / 2) * -0.866025",
+            "0 + ([Drain Plug Hex Size] / 2) * 0.500000"
+          ],
+          [
+            "[Branch End X] + ([Drain Plug Hex Size] / 2) * -0.866025",
+            "0 + ([Drain Plug Hex Size] / 2) * -0.500000"
+          ],
+          [
+            "[Branch End X] + ([Drain Plug Hex Size] / 2) * -0.000000",
+            "0 + ([Drain Plug Hex Size] / 2) * -1.000000"
+          ],
+          [
+            "[Branch End X] + ([Drain Plug Hex Size] / 2) * 0.866025",
+            "0 + ([Drain Plug Hex Size] / 2) * -0.500000"
+          ]
+        ],
+        "from": "[Cover Bottom Z] - [Drain Boss Height] - [Drain Plug Height]",
+        "to": "[Cover Bottom Z] - [Drain Boss Height]"
+      }
+    },
+    {
+      "id": "reinforcing-rib",
+      "name": "Gân tăng cứng đúc liền thân van (Reinforcing Rib)",
+      "material": "Epoxy_Blue",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            "[Branch Center X] + 25mm",
+            "[Center Height] - [Body Run OD] / 2"
+          ],
+          [
+            "[Branch End X] - 20mm",
+            "[Branch End Z] + 35mm"
+          ],
+          [
+            "[Branch End X] - 20mm",
+            "[Center Height] - [Body Run OD] / 2"
+          ]
+        ],
+        "from": "-[Rib Thickness] / 2",
+        "to": "[Rib Thickness] / 2"
+      }
+    },
+    {
+      "id": "flow-arrow",
+      "name": "Mũi tên đúc nổi chỉ hướng dòng chảy (Flow Direction)",
+      "material": "Epoxy_Blue_Dark",
+      "solid": {
+        "kind": "prism",
+        "plane": "xz",
+        "points": [
+          [
+            "-22mm",
+            "[Center Height] - 4mm"
+          ],
+          [
+            "4mm",
+            "[Center Height] - 4mm"
+          ],
+          [
+            "4mm",
+            "[Center Height] - 4mm - 7mm"
+          ],
+          [
+            "22mm",
+            "[Center Height]"
+          ],
+          [
+            "4mm",
+            "[Center Height] + 4mm + 7mm"
+          ],
+          [
+            "4mm",
+            "[Center Height] + 4mm"
+          ],
+          [
+            "-22mm",
+            "[Center Height] + 4mm"
+          ]
+        ],
+        "from": "[Body Belly OD] / 2",
+        "to": "[Body Belly OD] / 2 + 3mm"
+      }
+    },
+    {
+      "id": "cast-spec-badge",
+      "name": "Nhãn thông số đúc nổi DN80 PN16",
+      "material": "Epoxy_Blue_Dark",
+      "solid": {
+        "kind": "box",
+        "origin": {
+          "x": 0,
+          "y": "-([Body Belly OD] / 2 + 3mm)",
+          "z": "[Center Height] - 12mm"
+        },
+        "size": {
+          "x": 65,
+          "y": 3,
+          "z": 24
+        },
+        "cornerRadius": 3
+      }
+    }
+  ]
+}
