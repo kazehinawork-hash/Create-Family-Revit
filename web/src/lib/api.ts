@@ -209,15 +209,43 @@ export interface BuildStats {
   parts?: number;
   instances?: number;
   forms?: number;
+  lofts?: number;
+  sweptBlends?: number;
+  freeforms?: number;
   voids?: number;
   refPlanes?: number;
   refDimensions?: number;
   locks?: number;
+  joins?: number;
+  totalForms?: number;
+  missingForms?: number;
+  failedParts?: string[];
   lod?: number | null;
   driving?: string[];
   unlabelled?: string[];
   inert?: string[];
   flex?: string;
+  faceDimensions?: number;
+  radialDimensions?: number;
+  connectors?: number;
+  parameters?: number;
+  volumeMm3?: number;
+  bounds?: { x: number; y: number; z: number };
+  elapsedMs?: number;
+}
+
+export interface BuildQaCheck {
+  id: string;
+  ok: boolean;
+  message: string;
+}
+
+export interface BuildQa {
+  ok: boolean;
+  warnings: string[];
+  checks: BuildQaCheck[];
+  rebuildRequired: boolean;
+  parityRisks: number;
 }
 
 export interface BuildResult {
@@ -233,6 +261,7 @@ export interface BuildResult {
   busy?: boolean;
   issues?: Issue[];
   stats?: BuildStats;
+  qa?: BuildQa;
 }
 
 export async function buildFamily(spec: FamilySpec): Promise<BuildResult> {

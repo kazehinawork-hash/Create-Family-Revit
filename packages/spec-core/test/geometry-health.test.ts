@@ -110,4 +110,107 @@ describe("geometry health checks", () => {
     expect(analysis.ok).toBe(true);
     expect(analysis.issues.some((issue) => issue.path === "lod.parts")).toBe(true);
   });
+
+  it("warns when geometry is smaller than Revit ShortCurveTolerance (0.8mm)", () => {
+    const spec = base({
+      parts: [
+        {
+          id: "tiny-plate",
+          name: "Tiny Plate",
+          solid: {
+            kind: "box",
+            origin: { x: 0, y: 0, z: 0 },
+            size: { x: 0.5, y: 10, z: 10 },
+          },
+        },
+      ],
+    });
+
+    const analysis = analyzeSpec(spec);
+    expect(analysis.ok).toBe(true);
+    expect(
+      analysis.issues.some(
+        (issue) =>
+          issue.severity === "warning" &&
+          issue.path === "logic.geometry.tiny-plate" &&
+          issue.message.includes("Revit tolerance"),
+      ),
+    ).toBe(true);
+  });
+
+  it("warns when connector origin is orphaned away from solids", () => {
+    const spec = base({
+      parts: [
+        {
+          id: "body",
+          name: "Body",
+          solid: {
+            kind: "box",
+            origin: { x: 0, y: 0, z: 0 },
+            size: { x: 100, y: 100, z: 100 },
+          },
+        },
+      ],
+      connectors: [
+        {
+          id: "c1",
+          name: "Inlet",
+          systemType: "hydronicsupply",
+          shape: "round",
+          origin: { x: 500, y: 500, z: 500 },
+          directionVector: { x: 0, y: 0, z: 1 },
+          diameter: 50,
+        },
+      ],
+    });
+
+    const analysis = analyzeSpec(spec);
+    expect(analysis.ok).toBe(true);
+    expect(
+      analysis.issues.some(
+        (issue) =>
+          issue.severity === "warning" &&
+          issue.path === "logic.geometry.connector.c1" &&
+          issue.message.includes("orphaned"),
+      ),
+    ).toBe(true);
+  });
+
+  it("does not warn when the connector is explicitly hosted on a reference plane", () => {
+    const spec = base({
+      parts: [
+        {
+          id: "body",
+          name: "Body",
+          solid: {
+            kind: "box",
+            origin: { x: 0, y: 0, z: 0 },
+            size: { x: 100, y: 100, z: 100 },
+          },
+        },
+      ],
+      connectors: [
+        {
+          id: "c1",
+          name: "Inlet",
+          systemType: "hydronicsupply",
+          shape: "round",
+          host: "reference-plane",
+          origin: { x: 500, y: 500, z: 500 },
+          directionVector: { x: 0, y: 0, z: 1 },
+          diameter: 50,
+        },
+      ],
+    });
+
+    const analysis = analyzeSpec(spec);
+    expect(analysis.ok).toBe(true);
+    expect(
+      analysis.issues.some(
+        (issue) =>
+          issue.path === "logic.geometry.connector.c1" &&
+          issue.message.includes("orphaned"),
+      ),
+    ).toBe(false);
+  });
 });

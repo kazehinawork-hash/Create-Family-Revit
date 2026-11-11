@@ -8,6 +8,58 @@ import { slugify } from "./bridge.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /**
+ * Sinh nội dung file Type Catalog (.txt) chuẩn Revit cho Family.
+ * Revit yêu cầu:
+ * - Tên file .txt phải trùng 100% với tên file .rfa (cùng thư mục).
+ * - Dòng đầu tiên định nghĩa header: ,TênThamSố##KIỂU##ĐƠN_VỊ,...
+ * - Dấu phẩy đầu dòng đại diện cho cột Tên Type.
+ * - Mã hóa UTF-16LE with BOM hoặc ANSI để Revit đọc đúng.
+ */
+export function generateTypeCatalogContent(spec) {
+  if (!spec || !Array.isArray(spec.parameters)) return null;
+
+  // Lấy các tham số cơ bản dạng Length hoặc Text thuộc nhóm kích thước chính
+  const drivingParams = [
+    { name: "Nominal Diameter", header: "Nominal Diameter##LENGTH##MILLIMETERS" },
+    { name: "Face to Face Length", header: "Face to Face Length##LENGTH##MILLIMETERS" },
+    { name: "Flange Diameter", header: "Flange Diameter##LENGTH##MILLIMETERS" },
+    { name: "Flange Thickness", header: "Flange Thickness##LENGTH##MILLIMETERS" },
+    { name: "Raised Face Diameter", header: "Raised Face Diameter##LENGTH##MILLIMETERS" },
+    { name: "Bolt Circle Diameter", header: "Bolt Circle Diameter##LENGTH##MILLIMETERS" },
+    { name: "Bolt Hole Diameter", header: "Bolt Hole Diameter##LENGTH##MILLIMETERS" },
+  ];
+
+  // Bảng kích thước tiêu chuẩn dải van Fivalco F6316-PPR PN16 (từ DN50 đến DN200)
+  const isFivalcoPrv = (spec.name || "").toLowerCase().includes("f6316") || (spec.name || "").toLowerCase().includes("prv");
+
+  let rows;
+  if (isFivalcoPrv) {
+    rows = [
+      { type: "DN50 PN16 (2\")", values: [50, 230, 165, 19, 99, 125, 18] },
+      { type: "DN65 PN16 (2-1/2\")", values: [65, 290, 185, 19, 118, 145, 18] },
+      { type: "DN80 PN16 (3\")", values: [80, 310, 200, 19, 132, 160, 18] },
+      { type: "DN100 PN16 (4\")", values: [100, 350, 220, 19, 156, 180, 18] },
+      { type: "DN125 PN16 (5\")", values: [125, 400, 250, 19, 184, 210, 18] },
+      { type: "DN150 PN16 (6\")", values: [150, 480, 285, 19, 211, 240, 22] },
+      { type: "DN200 PN16 (8\")", values: [200, 600, 340, 20, 266, 295, 22] },
+    ];
+  } else {
+    // Với model thông thường: xuất type hiện tại
+    const typeName = spec.typeName || "Default";
+    const values = drivingParams.map(p => {
+      const match = spec.parameters.find(x => x.name === p.name);
+      return match ? match.value : 0;
+    });
+    rows = [{ type: typeName, values }];
+  }
+
+  const headerLine = "," + drivingParams.map(p => p.header).join(",");
+  const dataLines = rows.map(r => `"${r.type}",` + r.values.join(","));
+
+  return [headerLine, ...dataLines].join("\r\n");
+}
+
+/**
  * Đóng gói thư mục thành file .zip bằng powershell Compress-Archive
  */
 function zipFolder(sourceFolder, zipFilePath) {
@@ -31,10 +83,22 @@ function zipFolder(sourceFolder, zipFilePath) {
 }
 
 /**
+ * Escape chuỗi để nhúng an toàn vào chuỗi "..." của PowerShell.
+ * Tên family thường chứa dấu " (inch) hoặc $, làm script vỡ cú pháp.
+ */
+export function escapePowerShellString(value) {
+  return String(value)
+    .replace(/`/g, "``")
+    .replace(/"/g, '`"')
+    .replace(/\$/g, "`$");
+}
+
+/**
  * Tạo kịch bản PowerShell chạy Portable tự động 100% (Zero-click):
  * Khởi động Revit, tự động dựng hình, MOVE file .rfa ra ngoài và tự đóng Revit.
  */
-function generatePs1Script(specName, safeName) {
+function generatePs1Script(rawSpecName, safeName) {
+  const specName = escapePowerShellString(rawSpecName);
   const runnerPs1Name = `runner-${safeName}.ps1`;
   const batLauncherName = `1-Click-Build-${safeName}.bat`;
   const specFileName = `${safeName}-spec.json`;
@@ -102,6 +166,36 @@ if (-not (Test-Path $addinDir)) {
     New-Item -ItemType Directory -Path $addinDir -Force | Out-Null
 }
 
+# Cai dat luon FamilyAgent Add-in vao %APPDATA% de sau khi build xong, mo bat ky file .rfa nao
+# trong Revit cung tu dong co tab Family Agent va tu dong cap nhat hinh hoc 3D khi sua Parameter!
+$permTargetDir = [System.IO.Path]::Combine($addinDir, "FamilyAgent")
+if (-not (Test-Path $permTargetDir)) {
+    New-Item -ItemType Directory -Path $permTargetDir -Force | Out-Null
+}
+foreach ($dll in $runnerDlls) {
+    $src = [System.IO.Path]::Combine($currentDir, $dll)
+    if (Test-Path $src) {
+        Copy-Item -Path $src -Destination (Join-Path $permTargetDir $dll) -Force -ErrorAction SilentlyContinue
+    }
+}
+$permAssemblyPath = [System.IO.Path]::Combine($permTargetDir, "FamilyAgent.Addin.dll")
+$permGuid = "8b0f4a8e-2c11-4f5a-9a0e-6f1f4d1c2a77"
+$permManifestFile = [System.IO.Path]::Combine($addinDir, "FamilyAgent.addin")
+$permManifestContent = @"
+<?xml version="1.0" encoding="utf-8"?>
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>Family Agent</Name>
+    <Assembly>$permAssemblyPath</Assembly>
+    <AddInId>$permGuid</AddInId>
+    <FullClassName>FamilyAgent.Addin.App</FullClassName>
+    <VendorId>FAMLYAGT</VendorId>
+    <VendorDescription>Family Agent — parametric Revit family studio</VendorDescription>
+  </AddIn>
+</RevitAddIns>
+"@
+[System.IO.File]::WriteAllText($permManifestFile, $permManifestContent, (New-Object System.Text.UTF8Encoding($false)))
+
 $manifestFile = [System.IO.Path]::Combine($addinDir, "FamilyAgent_Portable_Temp.addin")
 # Assembly tro den ban copy trong %TEMP%, hoan toan giai phong thu muc Downloads
 $assemblyPath = [System.IO.Path]::Combine($shadowDir, "FamilyAgent.Addin.dll")
@@ -117,6 +211,7 @@ foreach ($regKey in $codeSigningKeys) {
         New-Item -Path $regKey -Force | Out-Null
     }
     Set-ItemProperty -Path $regKey -Name $addInGuid -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
+    Set-ItemProperty -Path $regKey -Name $permGuid -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
 }
 
 # Manifest dang Application tu dong thuc thi khi khoi dong
@@ -148,7 +243,10 @@ $isRunning = Get-Process -Name "Revit" -ErrorAction SilentlyContinue
 Write-Host ""
 Write-Host "---------------------------------------------------------------------" -ForegroundColor Gray
 if ($isRunning) {
-    Write-Host "[THONG BAO]: Revit dang chay tren may. Dang khoi dong them session dung hinh..." -ForegroundColor Yellow
+    Write-Host "[LOI]: Revit dang chay. Revit chi nap add-in mot lan khi khoi dong, nen phien dang mo co the van dung DLL cu." -ForegroundColor Red
+    Write-Host "Hay DONG HOAN TOAN tat ca cua so Revit roi chay lai file .bat nay." -ForegroundColor Yellow
+    Read-Host "Nhan Enter de thoat..."
+    exit 1
 } else {
     Write-Host "[THONG BAO]: Dang khoi dong Revit de tu dong dung Native Family..." -ForegroundColor Green
 }
@@ -257,6 +355,14 @@ export async function createPortablePackage(spec) {
   const specPath = path.join(packageDir, `${safeName}-spec.json`);
   fs.writeFileSync(specPath, JSON.stringify(spec, null, 2), "utf8");
 
+  // 1.1 Tạo file Type Catalog (.txt) chuẩn Revit cùng tên với Family
+  const catalogContent = generateTypeCatalogContent(spec);
+  if (catalogContent) {
+    // Revit yêu cầu file Type Catalog lưu UTF-16LE with BOM
+    const catalogBuffer = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(catalogContent, "utf16le")]);
+    fs.writeFileSync(path.join(packageDir, `${safeName}.txt`), catalogBuffer);
+  }
+
   // 2. Copy các file DLL của Addin đã build sẵn
   const binDir = path.resolve(__dirname, "../../revit-addin/FamilyAgent.Addin/bin/Release");
   const requiredDlls = [
@@ -274,9 +380,10 @@ export async function createPortablePackage(spec) {
     fs.copyFileSync(path.join(binDir, dll), path.join(packageDir, dll));
   }
 
-  // 3. Tạo file PowerShell script (.ps1) chuẩn UTF-8 với tên riêng theo model
+  // 3. Tạo file PowerShell script (.ps1) với BOM UTF-8, vì Windows PowerShell 5.1
+  // đọc file không BOM theo ANSI và sẽ làm hỏng tên family có dấu tiếng Việt.
   const ps1Content = generatePs1Script(spec.name || "Family", safeName);
-  fs.writeFileSync(path.join(packageDir, `runner-${safeName}.ps1`), ps1Content, "utf8");
+  fs.writeFileSync(path.join(packageDir, `runner-${safeName}.ps1`), `\uFEFF${ps1Content}`, "utf8");
 
   // 4. Tạo file .bat wrapper chuẩn ASCII với tên riêng theo model
   const batContent = `@echo off\r\ncd /d "%~dp0"\r\npowershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0runner-${safeName}.ps1"\r\n`;

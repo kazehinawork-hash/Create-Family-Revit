@@ -8,9 +8,23 @@ evaluator.useGroups = false;
 evaluator.attributes = ["position", "normal"];
 
 const UP = new THREE.Vector3(0, 1, 0);
-const CORNER_SEGMENTS = 8;
 
-function roundedRectShape(width: number, depth: number, radius: number): THREE.Shape {
+export type PreviewQuality = "standard" | "high";
+
+const QUALITY: Record<
+  PreviewQuality,
+  { chord: number; min: number; max: number; corner: number; extrude: number; bendMax: number }
+> = {
+  standard: { chord: 10, min: 12, max: 96, corner: 8, extrude: 4, bendMax: 96 },
+  high: { chord: 4, min: 20, max: 192, corner: 16, extrude: 12, bendMax: 160 },
+};
+
+function roundedRectShape(
+  width: number,
+  depth: number,
+  radius: number,
+  cornerSegments: number,
+): THREE.Shape {
   const halfWidth = width / 2;
   const halfDepth = depth / 2;
   const r = Math.max(0, Math.min(radius, halfWidth, halfDepth));
@@ -24,8 +38,8 @@ function roundedRectShape(width: number, depth: number, radius: number): THREE.S
   const shape = new THREE.Shape();
   let started = false;
   for (const [cx, cy, start] of corners) {
-    for (let step = 0; step <= CORNER_SEGMENTS; step += 1) {
-      const angle = start + (step / CORNER_SEGMENTS) * (Math.PI / 2);
+    for (let step = 0; step <= cornerSegments; step += 1) {
+      const angle = start + (step / cornerSegments) * (Math.PI / 2);
       const x = cx + Math.cos(angle) * r;
       const y = cy + Math.sin(angle) * r;
       if (started) shape.lineTo(x, y);
@@ -54,9 +68,16 @@ function axisDirection(axis: "x" | "y" | "z", sign: number): THREE.Vector3 {
   return direction;
 }
 
-function cylinderSegments(radius: number, requested: number): number {
-  const chord = Math.ceil((2 * Math.PI * Math.max(Math.abs(radius), 1)) / 10);
-  return Math.min(96, Math.max(12, requested, chord));
+function cylinderSegments(
+  radius: number,
+  requested: number,
+  quality: PreviewQuality = "high",
+): number {
+  const config = QUALITY[quality];
+  const chord = Math.ceil(
+    (2 * Math.PI * Math.max(Math.abs(radius), 1)) / config.chord,
+  );
+  return Math.min(config.max, Math.max(config.min, requested, chord));
 }
 
 function pushTriangle(indices: number[], handed: number, a: number, b: number, c: number): void {
@@ -69,7 +90,11 @@ function pushTriangle(indices: number[], handed: number, a: number, b: number, c
  * the plane named by the spec (xy / xz / yz), a start angle, and flat end caps so it
  * matches the solid Revolution built in Revit.
  */
-function bendGeometry(solid: Extract<ResolvedSolid, { kind: "bend" }>): THREE.BufferGeometry {
+function bendGeometry(
+  solid: Extract<ResolvedSolid, { kind: "bend" }>,
+  quality: PreviewQuality = "high",
+): THREE.BufferGeometry {
+  const config = QUALITY[quality];
   const u =
     solid.plane === "yz" ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0);
   const v =
@@ -85,10 +110,14 @@ function bendGeometry(solid: Extract<ResolvedSolid, { kind: "bend" }>): THREE.Bu
   const start = (solid.startAngle * Math.PI) / 180;
   const sweep = (solid.angle * Math.PI) / 180;
   const tubular = Math.min(
-    96,
-    Math.max(8, solid.segments, Math.ceil((Math.abs(sweep) * solid.radius) / 10)),
+    config.bendMax,
+    Math.max(
+      config.min,
+      solid.segments,
+      Math.ceil((Math.abs(sweep) * solid.radius) / config.chord),
+    ),
   );
-  const radial = Math.min(96, Math.max(8, solid.segments));
+  const radial = cylinderSegments(solid.tubeRadius, solid.segments, quality);
   const rows = radial + 1;
   const positions: number[] = [];
   const normals: number[] = [];
@@ -242,7 +271,12 @@ function loftGeometry(solid: Extract<ResolvedSolid, { kind: "loft" }>): THREE.Bu
   return geometry;
 }
 
-export function solidGeometry(solid: ResolvedSolid): THREE.BufferGeometry {
+export function solidGeometry(
+  solid: ResolvedSolid,
+  quality: PreviewQuality = "high",
+): THREE.BufferGeometry {
+  const config = QUALITY[quality];
+
   if (solid.kind === "box") {
     const { origin, size } = solid;
     const width = Math.abs(size.x) || 0.01;
@@ -251,12 +285,15 @@ export function solidGeometry(solid: ResolvedSolid): THREE.BufferGeometry {
 
     let geometry: THREE.BufferGeometry;
     if (solid.cornerRadius > 0) {
-      geometry = new THREE.ExtrudeGeometry(roundedRectShape(width, depth, solid.cornerRadius), {
-        depth: height,
-        bevelEnabled: false,
-        steps: 1,
-        curveSegments: 4,
-      });
+      geometry = new THREE.ExtrudeGeometry(
+        roundedRectShape(width, depth, solid.cornerRadius, config.corner),
+        {
+          depth: height,
+          bevelEnabled: false,
+          steps: 1,
+          curveSegments: config.extrude,
+        },
+      );
       if (size.z < 0) geometry.translate(0, 0, size.z);
     } else {
       geometry = new THREE.BoxGeometry(width, depth, height);
@@ -270,19 +307,26 @@ export function solidGeometry(solid: ResolvedSolid): THREE.BufferGeometry {
 
   if (solid.kind === "cylinder") {
     const height = Math.abs(solid.height);
-    // Chord length ~10 mm: small pipes stay light, large drums get smooth circles.
-    const segments = cylinderSegments(solid.radius, solid.segments);
+    // Chord length is quality-dependent: small pipes stay light, large drums get smoother.
+    const segments = cylinderSegments(solid.radius, solid.segments, quality);
     let geometry: THREE.BufferGeometry;
 
     if (solid.innerRadius > 0) {
-      const profile = [
-        new THREE.Vector2(solid.innerRadius, 0),
-        new THREE.Vector2(solid.radius, 0),
-        new THREE.Vector2(solid.radius, height),
-        new THREE.Vector2(solid.innerRadius, height),
-        new THREE.Vector2(solid.innerRadius, 0),
-      ];
-      geometry = new THREE.LatheGeometry(profile, segments);
+      const shape = new THREE.Shape();
+      shape.absarc(0, 0, solid.radius, 0, Math.PI * 2, false);
+      const holePath = new THREE.Path();
+      holePath.absarc(0, 0, solid.innerRadius, 0, Math.PI * 2, true);
+      shape.holes.push(holePath);
+
+      // Extrude in 2D (X, Y) along Z by `height`.
+      // Rotate by +90 around X so extrusion axis Z aligns with UP (0, 1, 0),
+      // exactly matching CylinderGeometry before applyQuaternion(quaternion).
+      geometry = new THREE.ExtrudeGeometry(shape, {
+        depth: height,
+        bevelEnabled: false,
+        curveSegments: Math.max(config.min, Math.floor(segments * 0.75)),
+      });
+      geometry.rotateX(-Math.PI / 2);
     } else {
       geometry = new THREE.CylinderGeometry(solid.radius, solid.radius, height, segments, 1, false);
       geometry.translate(0, height / 2, 0);
@@ -298,7 +342,7 @@ export function solidGeometry(solid: ResolvedSolid): THREE.BufferGeometry {
   if (solid.kind === "frustum") {
     const height = Math.abs(solid.height);
     const radius = Math.max(solid.radiusBottom, solid.radiusTop);
-    const segments = cylinderSegments(radius, solid.segments);
+    const segments = cylinderSegments(radius, solid.segments, quality);
     // A negative height leaves the base where Revit puts it: the radii swap, then the
     // whole form runs backwards along the axis.
     const topRadius = solid.height >= 0 ? solid.radiusTop : solid.radiusBottom;
@@ -321,11 +365,73 @@ export function solidGeometry(solid: ResolvedSolid): THREE.BufferGeometry {
   }
 
   if (solid.kind === "bend") {
-    return bendGeometry(solid);
+    return bendGeometry(solid, quality);
   }
 
   if (solid.kind === "loft") {
     return loftGeometry(solid);
+  }
+
+  if (solid.kind === "revolve") {
+    const points = solid.points.map(([r, h]) => new THREE.Vector2(Math.max(0, Math.abs(r)), h));
+    const segments = Math.min(96, Math.max(12, solid.segments || 32));
+    const phiStart = (solid.startAngle * Math.PI) / 180;
+    const phiLength = ((solid.angle || 360) * Math.PI) / 180;
+    const geometry = new THREE.LatheGeometry(points, segments, phiStart, phiLength);
+    geometry.computeVertexNormals();
+
+    // LatheGeometry rotates around Y axis (x = radius, y = height).
+    // Map Y axis to solid.axis:
+    if (solid.axis === "z") {
+      geometry.rotateX(Math.PI / 2);
+    } else if (solid.axis === "x") {
+      geometry.rotateZ(-Math.PI / 2);
+    }
+    geometry.translate(solid.origin.x, solid.origin.y, solid.origin.z);
+    return geometry;
+  }
+
+  if (solid.kind === "tube") {
+    const direction = new THREE.Vector3(
+      solid.direction.x,
+      solid.direction.y,
+      solid.direction.z,
+    ).normalize();
+    const segments = cylinderSegments(solid.radius, solid.segments, quality);
+
+    if (solid.innerRadius > 0) {
+      const shape = new THREE.Shape();
+      shape.absarc(0, 0, solid.radius, 0, Math.PI * 2, false);
+      const hole = new THREE.Path();
+      hole.absarc(0, 0, solid.innerRadius, 0, Math.PI * 2, true);
+      shape.holes.push(hole);
+      const geometry = new THREE.ExtrudeGeometry(shape, {
+        depth: solid.length,
+        bevelEnabled: false,
+        steps: 1,
+        curveSegments: Math.max(config.min, Math.floor(segments * 0.75)),
+      });
+      geometry.applyQuaternion(
+        new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), direction),
+      );
+      geometry.translate(solid.start.x, solid.start.y, solid.start.z);
+      return geometry;
+    }
+
+    const geometry = new THREE.CylinderGeometry(
+      solid.radius,
+      solid.radius,
+      solid.length,
+      segments,
+      1,
+      false,
+    );
+    geometry.translate(0, solid.length / 2, 0);
+    geometry.applyQuaternion(
+      new THREE.Quaternion().setFromUnitVectors(UP, direction),
+    );
+    geometry.translate(solid.start.x, solid.start.y, solid.start.z);
+    return geometry;
   }
 
   const shape = new THREE.Shape(solid.points.map(([a, b]) => new THREE.Vector2(a, b)));
@@ -341,15 +447,30 @@ export function solidGeometry(solid: ResolvedSolid): THREE.BufferGeometry {
   });
 
   const low = Math.min(solid.from, solid.to);
-  const high = Math.max(solid.from, solid.to);
 
   if (solid.plane === "xy") {
     geometry.translate(0, 0, low);
   } else if (solid.plane === "xz") {
-    geometry.rotateX(Math.PI / 2);
-    geometry.translate(0, high, 0);
+    // Revit basis for xz: u = BasisX (a -> X), v = BasisZ (b -> Z), axisUnit = BasisY (from/to -> Y)
+    // ExtrudeGeometry generates 2D shape in (X, Y) with extrusion along +Z (0 to depth).
+    // We map 2D (X, Y) -> (X, Z) and depth (Z) -> Y.
+    const basis = new THREE.Matrix4().set(
+      1, 0, 0, 0,
+      0, 0, 1, 0,
+      0, 1, 0, 0,
+      0, 0, 0, 1
+    );
+    geometry.applyMatrix4(basis);
+    geometry.translate(0, low, 0);
   } else {
-    const basis = new THREE.Matrix4().set(0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1);
+    // Revit basis for yz: u = BasisY (a -> Y), v = BasisZ (b -> Z), axisUnit = BasisX (from/to -> X)
+    // We map 2D (X, Y) -> (Y, Z) and depth (Z) -> X.
+    const basis = new THREE.Matrix4().set(
+      0, 0, 1, 0,
+      1, 0, 0, 0,
+      0, 1, 0, 0,
+      0, 0, 0, 1
+    );
     geometry.applyMatrix4(basis);
     geometry.translate(low, 0, 0);
   }
@@ -527,13 +648,60 @@ export function instanceEdgeGeometry(
   return geometry;
 }
 
-export function buildPartGeometry(part: ResolvedPart): PartGeometry {
-  let geometry = prepare(solidGeometry(part.solid));
+function expandCutterSolid(solid: ResolvedSolid, delta = 0.5): ResolvedSolid {
+  switch (solid.kind) {
+    case "cylinder": {
+      const isPositive = solid.height >= 0;
+      const h = Math.abs(solid.height);
+      const newHeight = h + delta * 2;
+      const base = { ...solid.base };
+      base[solid.axis] += isPositive ? -delta : delta;
+      return {
+        ...solid,
+        base,
+        height: isPositive ? newHeight : -newHeight,
+      };
+    }
+    case "box": {
+      const signZ = solid.size.z >= 0 ? 1 : -1;
+      return {
+        ...solid,
+        origin: {
+          x: solid.origin.x,
+          y: solid.origin.y,
+          z: solid.origin.z - signZ * delta,
+        },
+        size: {
+          x: solid.size.x,
+          y: solid.size.y,
+          z: solid.size.z + signZ * delta * 2,
+        },
+      };
+    }
+    case "prism": {
+      const isPositive = solid.to >= solid.from;
+      return {
+        ...solid,
+        from: isPositive ? solid.from - delta : solid.from + delta,
+        to: isPositive ? solid.to + delta : solid.to - delta,
+      };
+    }
+    default:
+      return solid;
+  }
+}
+
+export function buildPartGeometry(
+  part: ResolvedPart,
+  quality: PreviewQuality = "high",
+): PartGeometry {
+  let geometry = prepare(solidGeometry(part.solid, quality));
   let cutFailed = false;
 
   for (const cut of part.cuts) {
     try {
-      const cutter = prepare(solidGeometry(cut));
+      const expandedCut = expandCutterSolid(cut, 0.5);
+      const cutter = prepare(solidGeometry(expandedCut, quality));
       const left = new Brush(geometry);
       const right = new Brush(cutter);
       left.updateMatrixWorld();

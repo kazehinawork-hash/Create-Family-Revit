@@ -52,7 +52,6 @@ export function subscribeExternalSpec(listener) {
     externalSpecListeners.delete(listener);
   };
 }
-
 export const JOBS_DIR = path.join(config.dirs.root, ".jobs");
 
 export function computeSpecHash(spec) {

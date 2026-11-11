@@ -91,6 +91,8 @@ namespace FamilyAgent.Core
         public Vec3 Size { get; set; }
         public Vec3 Base { get; set; }
         public Vec3 Center { get; set; }
+        public Vec3 Start { get; set; }
+        public Vec3 End { get; set; }
         public Num? Radius { get; set; }
         public Num? RadiusBottom { get; set; }
         public Num? RadiusTop { get; set; }
@@ -164,6 +166,7 @@ namespace FamilyAgent.Core
         public string SystemType { get; set; }
         public string Shape { get; set; }
         public string Direction { get; set; }
+        public string Host { get; set; }
         public Vec3 Origin { get; set; }
         public Vec3 DirectionVector { get; set; }
         public Num? Width { get; set; }

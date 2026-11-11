@@ -1,7 +1,11 @@
 import * as THREE from "three";
 import type { ResolvedPart } from "@family/spec-core";
 import { deserializeGeometry, type SerializedGeometry } from "./geometry-transfer";
-import { buildPartGeometry, csgEdgeGeometry } from "./three-build";
+import {
+  buildPartGeometry,
+  csgEdgeGeometry,
+  type PreviewQuality,
+} from "./three-build";
 
 export interface BuiltPartGeometry {
   geometry: THREE.BufferGeometry;
@@ -85,8 +89,8 @@ function getWorkers(): Worker[] | null {
   return workers;
 }
 
-function buildSync(part: ResolvedPart): BuiltPartGeometry {
-  const { geometry, hasCuts, cutFailed } = buildPartGeometry(part);
+function buildSync(part: ResolvedPart, quality: PreviewQuality): BuiltPartGeometry {
+  const { geometry, hasCuts, cutFailed } = buildPartGeometry(part, quality);
   const edges = hasCuts
     ? csgEdgeGeometry(geometry, 24)
     : new THREE.EdgesGeometry(geometry, 24);
@@ -98,9 +102,12 @@ function buildSync(part: ResolvedPart): BuiltPartGeometry {
  * use more than one core, while the viewer still adds completed parts in order.
  * Falls back to a synchronous build when workers are unavailable.
  */
-export async function buildPartGeometryAsync(part: ResolvedPart): Promise<BuiltPartGeometry> {
+export async function buildPartGeometryAsync(
+  part: ResolvedPart,
+  quality: PreviewQuality = "high",
+): Promise<BuiltPartGeometry> {
   const pool = getWorkers();
-  if (!pool || pool.length === 0) return buildSync(part);
+  if (!pool || pool.length === 0) return buildSync(part, quality);
   const instance = pool[workerIndex++ % pool.length];
 
   const id = nextId++;
@@ -109,7 +116,7 @@ export async function buildPartGeometryAsync(part: ResolvedPart): Promise<BuiltP
     return await new Promise<BuiltPartGeometry>((resolve, reject) => {
       waiting.set(id, { resolve, reject });
       try {
-        instance.postMessage({ id, part });
+        instance.postMessage({ id, part, quality });
       } catch (error) {
         waiting.delete(id);
         reject(error instanceof Error ? error : new Error(String(error)));
@@ -117,6 +124,6 @@ export async function buildPartGeometryAsync(part: ResolvedPart): Promise<BuiltP
     });
   } catch {
     // A dead worker should not block the viewer: finish this part synchronously.
-    return buildSync(part);
+    return buildSync(part, quality);
   }
 }

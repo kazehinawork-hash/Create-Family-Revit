@@ -73,13 +73,37 @@ export interface ResolvedLoft {
   sections: ResolvedLoftSection[];
 }
 
+export interface ResolvedRevolve {
+  kind: "revolve";
+  axis: Axis;
+  origin: Vec3n;
+  angle: number;
+  startAngle: number;
+  points: [number, number][];
+  segments: number;
+}
+
+export interface ResolvedTube {
+  kind: "tube";
+  start: Vec3n;
+  end: Vec3n;
+  radius: number;
+  innerRadius: number;
+  /** Unit vector from start to end. */
+  direction: Vec3n;
+  length: number;
+  segments: number;
+}
+
 export type ResolvedSolid =
   | ResolvedBox
   | ResolvedCylinder
   | ResolvedFrustum
   | ResolvedBend
   | ResolvedPrism
-  | ResolvedLoft;
+  | ResolvedLoft
+  | ResolvedRevolve
+  | ResolvedTube;
 
 export interface ResolvedPart {
   id: string;
@@ -97,6 +121,7 @@ export interface ResolvedConnector {
   systemType: string;
   shape: "round" | "rectangular";
   direction: "in" | "out" | "bidirectional";
+  host?: "solid" | "reference-plane";
   origin: Vec3n;
   directionVector: Vec3n;
   width?: number;
@@ -316,6 +341,53 @@ function solidBounds(solid: ResolvedSolid): Bounds {
         grow(bounds, loftPoint(solid.axis, section.at, a, b));
       }
     }
+    return bounds;
+  }
+
+  if (solid.kind === "revolve") {
+    let maxR = 0;
+    let minH = Infinity;
+    let maxH = -Infinity;
+    for (const [r, h] of solid.points) {
+      maxR = Math.max(maxR, Math.abs(r));
+      minH = Math.min(minH, h);
+      maxH = Math.max(maxH, h);
+    }
+    if (!Number.isFinite(minH)) {
+      minH = 0;
+      maxH = 0;
+    }
+    const o = solid.origin;
+    if (solid.axis === "x") {
+      grow(bounds, { x: o.x + minH, y: o.y - maxR, z: o.z - maxR });
+      grow(bounds, { x: o.x + maxH, y: o.y + maxR, z: o.z + maxR });
+    } else if (solid.axis === "y") {
+      grow(bounds, { x: o.x - maxR, y: o.y + minH, z: o.z - maxR });
+      grow(bounds, { x: o.x + maxR, y: o.y + maxH, z: o.z + maxR });
+    } else {
+      grow(bounds, { x: o.x - maxR, y: o.y - maxR, z: o.z + minH });
+      grow(bounds, { x: o.x + maxR, y: o.y + maxR, z: o.z + maxH });
+    }
+    return bounds;
+  }
+
+  if (solid.kind === "tube") {
+    const { start, end, radius, direction } = solid;
+    const extent = (component: number) =>
+      radius * Math.sqrt(Math.max(0, 1 - component * component));
+    const ex = extent(direction.x);
+    const ey = extent(direction.y);
+    const ez = extent(direction.z);
+    grow(bounds, {
+      x: Math.min(start.x, end.x) - ex,
+      y: Math.min(start.y, end.y) - ey,
+      z: Math.min(start.z, end.z) - ez,
+    });
+    grow(bounds, {
+      x: Math.max(start.x, end.x) + ex,
+      y: Math.max(start.y, end.y) + ey,
+      z: Math.max(start.z, end.z) + ez,
+    });
     return bounds;
   }
 
@@ -642,7 +714,68 @@ export function resolveModel(
       return { kind: "loft", axis, sections: normalized };
     }
 
-    throw new Error(`${path}.kind must be box, cylinder, frustum, bend, prism or loft`);
+    if (kind === "revolve") {
+      const axis = (solid.axis as Axis | undefined) ?? "z";
+      if (!["x", "y", "z"].includes(axis)) throw new Error(`${path}.axis must be x, y or z`);
+      const origin = solid.origin
+        ? numVec(solid.origin as { x: Numeric; y: Numeric; z: Numeric }, `${path}.origin`)
+        : { x: 0, y: 0, z: 0 };
+      const rawPoints = solid.points;
+      if (!Array.isArray(rawPoints) || rawPoints.length < 3) {
+        throw new Error(`${path}.points needs at least 3 [radial, height] pairs`);
+      }
+      const points = rawPoints.map((point, index) => {
+        if (!Array.isArray(point) || point.length < 2) {
+          throw new Error(`${path}.points[${index}] must be an [r, h] pair`);
+        }
+        return [
+          num(point[0], `${path}.points[${index}][0]`),
+          num(point[1], `${path}.points[${index}][1]`),
+        ] as [number, number];
+      });
+      const angle = num(solid.angle as Numeric | undefined, `${path}.angle`, 360);
+      const startAngle = num(solid.startAngle as Numeric | undefined, `${path}.startAngle`, 0);
+      const segments = Math.min(96, Math.max(12, Number(solid.segments) || 32));
+      return { kind: "revolve", axis, origin, points, angle, startAngle, segments };
+    }
+
+    if (kind === "tube") {
+      const start = numVec(
+        solid.start as { x: Numeric; y: Numeric; z: Numeric },
+        `${path}.start`,
+      );
+      const end = numVec(solid.end as { x: Numeric; y: Numeric; z: Numeric }, `${path}.end`);
+      const radius = num(solid.radius as Numeric, `${path}.radius`);
+      const innerRadius = num(
+        solid.innerRadius as Numeric | undefined,
+        `${path}.innerRadius`,
+        0,
+      );
+      if (radius <= 0) throw new Error(`${path}.radius must be greater than zero`);
+      if (innerRadius < 0 || innerRadius >= radius) {
+        throw new Error(`${path}.innerRadius must be between 0 and radius`);
+      }
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const dz = end.z - start.z;
+      const length = Math.hypot(dx, dy, dz);
+      if (!(length > 1e-9)) throw new Error(`${path}.start and ${path}.end must differ`);
+      const segments = Math.min(96, Math.max(12, Number(solid.segments) || DEFAULT_SEGMENTS));
+      return {
+        kind: "tube",
+        start,
+        end,
+        radius,
+        innerRadius,
+        direction: { x: dx / length, y: dy / length, z: dz / length },
+        length,
+        segments,
+      };
+    }
+
+    throw new Error(
+      `${path}.kind must be box, cylinder, frustum, bend, prism, loft, revolve or tube`,
+    );
   };
 
   spec.parts.forEach((part, index) => {
@@ -707,6 +840,7 @@ export function resolveModel(
           systemType: conn.systemType,
           shape: conn.shape,
           direction: conn.direction,
+          host: conn.host,
           origin,
           directionVector,
           width: conn.width !== undefined ? num(conn.width, `${path}.width`, 0) : undefined,

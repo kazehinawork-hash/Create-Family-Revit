@@ -225,6 +225,67 @@ describe("loft geometry", () => {
     expect(size.z).toBeCloseTo(100);
     expect(geometry.getIndex()?.count).toBeGreaterThan(0);
   });
+
+  it("builds a revolve solid of revolution using LatheGeometry", () => {
+    const solid: ResolvedSolid = {
+      kind: "revolve",
+      axis: "z",
+      origin: { x: 0, y: 0, z: 0 },
+      points: [
+        [0, 0],
+        [50, 0],
+        [30, 80],
+        [0, 80],
+      ],
+      angle: 360,
+      startAngle: 0,
+      segments: 24,
+    };
+
+    const geometry = solidGeometry(solid);
+    const size = sizeOf(geometry);
+    expect(size.x).toBeCloseTo(100, 0);
+    expect(size.y).toBeCloseTo(100, 0);
+    expect(size.z).toBeCloseTo(80, 0);
+  });
+
+  it("uses a denser mesh in high preview quality", () => {
+    const cylinder: ResolvedSolid = {
+      kind: "cylinder",
+      base: { x: 0, y: 0, z: 0 },
+      radius: 100,
+      innerRadius: 0,
+      height: 50,
+      axis: "z",
+      segments: 24,
+    };
+    const standard = solidGeometry(cylinder, "standard");
+    const high = solidGeometry(cylinder, "high");
+    expect(high.getAttribute("position").count).toBeGreaterThan(
+      standard.getAttribute("position").count,
+    );
+  });
+
+  it("builds an arbitrary-axis tube between start and end", () => {
+    const solid: ResolvedSolid = {
+      kind: "tube",
+      start: { x: 0, y: 0, z: 0 },
+      end: { x: 0, y: 0, z: 100 },
+      radius: 20,
+      innerRadius: 0,
+      direction: { x: 0, y: 0, z: 1 },
+      length: 100,
+      segments: 24,
+    };
+
+    const geometry = solidGeometry(solid);
+    const size = sizeOf(geometry);
+    expect(size.x).toBeCloseTo(40, 0);
+    expect(size.y).toBeCloseTo(40, 0);
+    expect(size.z).toBeCloseTo(100, 0);
+    geometry.computeBoundingBox();
+    expect(geometry.boundingBox!.min.z).toBeCloseTo(0, 0);
+  });
 });
 
 describe("worker transfer", () => {

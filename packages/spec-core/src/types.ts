@@ -132,13 +132,42 @@ export interface LoftSolid {
   sections: LoftSection[];
 }
 
+export interface RevolveSolid {
+  kind: "revolve";
+  /** Axis of revolution: x, y, or z. Defaults to z. */
+  axis?: Axis;
+  /** Point on the revolution axis. Defaults to (0, 0, 0). */
+  origin?: Vec3;
+  /** 2D profile points in [radial >= 0, height] coordinates. */
+  points: [Numeric, Numeric][];
+  /** Revolution sweep angle in degrees. Defaults to 360. */
+  angle?: Numeric;
+  /** Start angle in degrees. Defaults to 0. */
+  startAngle?: Numeric;
+  segments?: number;
+}
+
+export interface TubeSolid {
+  kind: "tube";
+  /** Centre of the start face. */
+  start: Vec3;
+  /** Centre of the end face. */
+  end: Vec3;
+  radius: Numeric;
+  /** Optional inner radius; the tube becomes a hollow pipe. */
+  innerRadius?: Numeric;
+  segments?: number;
+}
+
 export type SolidPrimitive =
   | BoxSolid
   | CylinderSolid
   | FrustumSolid
   | BendSolid
   | PrismSolid
-  | LoftSolid;
+  | LoftSolid
+  | RevolveSolid
+  | TubeSolid;
 
 export interface PartArray {
   /** Number, or an expression resolving to a whole number (e.g. "[Fin Count]"). */
@@ -202,6 +231,8 @@ export interface MepConnector {
     | "Fire Protection Other";
   shape: "round" | "rectangular";
   direction: "in" | "out" | "bidirectional";
+  /** solid = host on a real face; reference-plane = host on an invisible datum plane. */
+  host?: "solid" | "reference-plane";
   origin: Vec3;
   directionVector?: Vec3;
   width?: Numeric;
@@ -231,7 +262,7 @@ export interface FamilySpec {
 }
 
 export interface Issue {
-  severity: "error" | "warning";
+  severity: "error" | "warning" | "info";
   path: string;
   message: string;
 }

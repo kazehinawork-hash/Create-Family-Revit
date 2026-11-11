@@ -1,0 +1,556 @@
+{
+  "schemaVersion": "1.0",
+  "name": "Y Strainer DN80 Tube Branch",
+  "typeName": "Y Strainer DN80 Tube",
+  "category": "Pipe Fitting",
+  "units": "mm",
+  "lod": 350,
+  "description": "Y-strainer DN80 built around the arbitrary-axis tube primitive: hollow run and 45° branch, oriented flange ring, perpendicular bonnet cover, bolts and drain plug.",
+  "parameters": [
+    {
+      "name": "Nominal Bore",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 80
+    },
+    {
+      "name": "Center Height",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 250
+    },
+    {
+      "name": "Run Length",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 420
+    },
+    {
+      "name": "Run Radius",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 70
+    },
+    {
+      "name": "Run Bore",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 54
+    },
+    {
+      "name": "Flange OD",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 200
+    },
+    {
+      "name": "Flange Thickness",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 22
+    },
+    {
+      "name": "Branch Angle",
+      "type": "Angle",
+      "group": "Dimensions",
+      "value": 45
+    },
+    {
+      "name": "Branch Drop",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 140
+    },
+    {
+      "name": "Branch Radius",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 62
+    },
+    {
+      "name": "Branch Bore",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 54
+    },
+    {
+      "name": "Branch Center X",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 0
+    },
+    {
+      "name": "Branch End X",
+      "type": "Length",
+      "group": "Dimensions",
+      "formula": "[Branch Center X] - [Branch Drop] / tan([Branch Angle])"
+    },
+    {
+      "name": "Branch End Z",
+      "type": "Length",
+      "group": "Dimensions",
+      "formula": "[Center Height] - [Branch Drop]"
+    },
+    {
+      "name": "Branch Dir X",
+      "type": "Number",
+      "group": "Dimensions",
+      "formula": "-cos([Branch Angle])"
+    },
+    {
+      "name": "Branch Dir Z",
+      "type": "Number",
+      "group": "Dimensions",
+      "formula": "-sin([Branch Angle])"
+    },
+    {
+      "name": "Branch Perp X",
+      "type": "Number",
+      "group": "Dimensions",
+      "formula": "-sin([Branch Angle])"
+    },
+    {
+      "name": "Branch Perp Z",
+      "type": "Number",
+      "group": "Dimensions",
+      "formula": "cos([Branch Angle])"
+    },
+    {
+      "name": "Branch Flange OD",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 190
+    },
+    {
+      "name": "Cover OD",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 170
+    },
+    {
+      "name": "Cover Thickness",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 20
+    },
+    {
+      "name": "Cover Bolt Circle",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 150
+    },
+    {
+      "name": "Cover Bolt Diameter",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 16
+    },
+    {
+      "name": "Cover Bolt Length",
+      "type": "Length",
+      "group": "Dimensions",
+      "formula": "[Flange Thickness] + [Cover Thickness] + 14mm"
+    },
+    {
+      "name": "Bolt Head Diameter",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 26
+    },
+    {
+      "name": "Bolt Head Length",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 10
+    },
+    {
+      "name": "Drain Plug Diameter",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 26
+    },
+    {
+      "name": "Drain Plug Length",
+      "type": "Length",
+      "group": "Dimensions",
+      "value": 30
+    },
+    {
+      "name": "Model",
+      "type": "Text",
+      "group": "Data",
+      "value": "YS-TUBE-80"
+    }
+  ],
+  "materials": [
+    {
+      "name": "Epoxy Blue",
+      "color": "#1c63b5",
+      "metalness": 0.25,
+      "roughness": 0.4
+    },
+    {
+      "name": "Epoxy Blue Dark",
+      "color": "#124a8a",
+      "metalness": 0.25,
+      "roughness": 0.45
+    },
+    {
+      "name": "Brass",
+      "color": "#c9a227",
+      "metalness": 0.7,
+      "roughness": 0.3
+    }
+  ],
+  "parts": [
+    {
+      "id": "run",
+      "name": "Run Pipe",
+      "material": "Epoxy Blue",
+      "solid": {
+        "kind": "tube",
+        "start": {
+          "x": "-[Run Length] / 2",
+          "y": 0,
+          "z": "[Center Height]"
+        },
+        "end": {
+          "x": "[Run Length] / 2",
+          "y": 0,
+          "z": "[Center Height]"
+        },
+        "radius": "[Run Radius]",
+        "innerRadius": "[Run Bore]",
+        "segments": 48
+      }
+    },
+    {
+      "id": "inlet-flange",
+      "name": "Inlet Flange Ring",
+      "material": "Epoxy Blue Dark",
+      "solid": {
+        "kind": "tube",
+        "start": {
+          "x": "-([Run Length] / 2) - [Flange Thickness]",
+          "y": 0,
+          "z": "[Center Height]"
+        },
+        "end": {
+          "x": "-[Run Length] / 2",
+          "y": 0,
+          "z": "[Center Height]"
+        },
+        "radius": "[Flange OD] / 2",
+        "innerRadius": "[Run Bore]",
+        "segments": 48
+      }
+    },
+    {
+      "id": "outlet-flange",
+      "name": "Outlet Flange Ring",
+      "material": "Epoxy Blue Dark",
+      "solid": {
+        "kind": "tube",
+        "start": {
+          "x": "[Run Length] / 2",
+          "y": 0,
+          "z": "[Center Height]"
+        },
+        "end": {
+          "x": "[Run Length] / 2 + [Flange Thickness]",
+          "y": 0,
+          "z": "[Center Height]"
+        },
+        "radius": "[Flange OD] / 2",
+        "innerRadius": "[Run Bore]",
+        "segments": 48
+      }
+    },
+    {
+      "id": "branch",
+      "name": "45 Degree Branch",
+      "material": "Epoxy Blue",
+      "solid": {
+        "kind": "tube",
+        "start": {
+          "x": "[Branch Center X]",
+          "y": 0,
+          "z": "[Center Height]"
+        },
+        "end": {
+          "x": "[Branch End X]",
+          "y": 0,
+          "z": "[Branch End Z]"
+        },
+        "radius": "[Branch Radius]",
+        "innerRadius": "[Branch Bore]",
+        "segments": 48
+      }
+    },
+    {
+      "id": "branch-flange",
+      "name": "Oriented Branch Flange",
+      "material": "Epoxy Blue Dark",
+      "solid": {
+        "kind": "tube",
+        "start": {
+          "x": "[Branch End X]",
+          "y": 0,
+          "z": "[Branch End Z]"
+        },
+        "end": {
+          "x": "[Branch End X] + [Branch Dir X] * ([Flange Thickness])",
+          "y": 0,
+          "z": "[Branch End Z] + [Branch Dir Z] * ([Flange Thickness])"
+        },
+        "radius": "[Branch Flange OD] / 2",
+        "innerRadius": "[Branch Radius]",
+        "segments": 48
+      }
+    },
+    {
+      "id": "branch-cover",
+      "name": "Perpendicular Bonnet Cover",
+      "material": "Epoxy Blue Dark",
+      "solid": {
+        "kind": "tube",
+        "start": {
+          "x": "[Branch End X] + [Branch Dir X] * ([Flange Thickness])",
+          "y": 0,
+          "z": "[Branch End Z] + [Branch Dir Z] * ([Flange Thickness])"
+        },
+        "end": {
+          "x": "[Branch End X] + [Branch Dir X] * ([Flange Thickness] + [Cover Thickness])",
+          "y": 0,
+          "z": "[Branch End Z] + [Branch Dir Z] * ([Flange Thickness] + [Cover Thickness])"
+        },
+        "radius": "[Cover OD] / 2",
+        "segments": 48
+      }
+    },
+    {
+      "id": "drain-plug",
+      "name": "Drain Plug",
+      "material": "Brass",
+      "solid": {
+        "kind": "tube",
+        "start": {
+          "x": "[Branch End X] + [Branch Dir X] * ([Flange Thickness] + [Cover Thickness])",
+          "y": 0,
+          "z": "[Branch End Z] + [Branch Dir Z] * ([Flange Thickness] + [Cover Thickness])"
+        },
+        "end": {
+          "x": "[Branch End X] + [Branch Dir X] * (([Flange Thickness] + [Cover Thickness]) + [Drain Plug Length])",
+          "y": 0,
+          "z": "[Branch End Z] + [Branch Dir Z] * (([Flange Thickness] + [Cover Thickness]) + [Drain Plug Length])"
+        },
+        "radius": "[Drain Plug Diameter] / 2",
+        "segments": 32
+      }
+    },
+    {
+      "id": "bolt-1",
+      "name": "Cover Bolt 1",
+      "material": "Brass",
+      "solid": {
+        "kind": "tube",
+        "start": {
+          "x": "[Branch End X] + [Branch Dir X] * (-4mm) + [Branch Perp X] * ([Cover Bolt Circle] / 2)",
+          "y": "0",
+          "z": "[Branch End Z] + [Branch Dir Z] * (-4mm) + [Branch Perp Z] * ([Cover Bolt Circle] / 2)"
+        },
+        "end": {
+          "x": "[Branch End X] + [Branch Dir X] * (-4mm) + [Branch Perp X] * ([Cover Bolt Circle] / 2) + [Branch Dir X] * [Cover Bolt Length]",
+          "y": "0",
+          "z": "[Branch End Z] + [Branch Dir Z] * (-4mm) + [Branch Perp Z] * ([Cover Bolt Circle] / 2) + [Branch Dir Z] * [Cover Bolt Length]"
+        },
+        "radius": "[Cover Bolt Diameter] / 2",
+        "segments": 24
+      }
+    },
+    {
+      "id": "bolt-2",
+      "name": "Cover Bolt 2",
+      "material": "Brass",
+      "solid": {
+        "kind": "tube",
+        "start": {
+          "x": "[Branch End X] + [Branch Dir X] * (-4mm) + -[Branch Perp X] * ([Cover Bolt Circle] / 2)",
+          "y": "0",
+          "z": "[Branch End Z] + [Branch Dir Z] * (-4mm) + -[Branch Perp Z] * ([Cover Bolt Circle] / 2)"
+        },
+        "end": {
+          "x": "[Branch End X] + [Branch Dir X] * (-4mm) + -[Branch Perp X] * ([Cover Bolt Circle] / 2) + [Branch Dir X] * [Cover Bolt Length]",
+          "y": "0",
+          "z": "[Branch End Z] + [Branch Dir Z] * (-4mm) + -[Branch Perp Z] * ([Cover Bolt Circle] / 2) + [Branch Dir Z] * [Cover Bolt Length]"
+        },
+        "radius": "[Cover Bolt Diameter] / 2",
+        "segments": 24
+      }
+    },
+    {
+      "id": "bolt-3",
+      "name": "Cover Bolt 3",
+      "material": "Brass",
+      "solid": {
+        "kind": "tube",
+        "start": {
+          "x": "[Branch End X] + [Branch Dir X] * (-4mm) + 0",
+          "y": "([Cover Bolt Circle] / 2)",
+          "z": "[Branch End Z] + [Branch Dir Z] * (-4mm) + 0"
+        },
+        "end": {
+          "x": "[Branch End X] + [Branch Dir X] * (-4mm) + 0 + [Branch Dir X] * [Cover Bolt Length]",
+          "y": "([Cover Bolt Circle] / 2)",
+          "z": "[Branch End Z] + [Branch Dir Z] * (-4mm) + 0 + [Branch Dir Z] * [Cover Bolt Length]"
+        },
+        "radius": "[Cover Bolt Diameter] / 2",
+        "segments": 24
+      }
+    },
+    {
+      "id": "bolt-4",
+      "name": "Cover Bolt 4",
+      "material": "Brass",
+      "solid": {
+        "kind": "tube",
+        "start": {
+          "x": "[Branch End X] + [Branch Dir X] * (-4mm) + 0",
+          "y": "-([Cover Bolt Circle] / 2)",
+          "z": "[Branch End Z] + [Branch Dir Z] * (-4mm) + 0"
+        },
+        "end": {
+          "x": "[Branch End X] + [Branch Dir X] * (-4mm) + 0 + [Branch Dir X] * [Cover Bolt Length]",
+          "y": "-([Cover Bolt Circle] / 2)",
+          "z": "[Branch End Z] + [Branch Dir Z] * (-4mm) + 0 + [Branch Dir Z] * [Cover Bolt Length]"
+        },
+        "radius": "[Cover Bolt Diameter] / 2",
+        "segments": 24
+      }
+    },
+    {
+      "id": "bolt-head-1",
+      "name": "Bolt Head 1",
+      "material": "Brass",
+      "solid": {
+        "kind": "tube",
+        "start": {
+          "x": "[Branch End X] + [Branch Dir X] * (-4mm) + [Branch Perp X] * ([Cover Bolt Circle] / 2) + [Branch Dir X] * [Cover Bolt Length]",
+          "y": "0",
+          "z": "[Branch End Z] + [Branch Dir Z] * (-4mm) + [Branch Perp Z] * ([Cover Bolt Circle] / 2) + [Branch Dir Z] * [Cover Bolt Length]"
+        },
+        "end": {
+          "x": "[Branch End X] + [Branch Dir X] * (-4mm) + [Branch Perp X] * ([Cover Bolt Circle] / 2) + [Branch Dir X] * [Cover Bolt Length] + [Branch Dir X] * [Bolt Head Length]",
+          "y": "0",
+          "z": "[Branch End Z] + [Branch Dir Z] * (-4mm) + [Branch Perp Z] * ([Cover Bolt Circle] / 2) + [Branch Dir Z] * [Cover Bolt Length] + [Branch Dir Z] * [Bolt Head Length]"
+        },
+        "radius": "[Bolt Head Diameter] / 2",
+        "segments": 24
+      }
+    },
+    {
+      "id": "bolt-head-2",
+      "name": "Bolt Head 2",
+      "material": "Brass",
+      "solid": {
+        "kind": "tube",
+        "start": {
+          "x": "[Branch End X] + [Branch Dir X] * (-4mm) + -[Branch Perp X] * ([Cover Bolt Circle] / 2) + [Branch Dir X] * [Cover Bolt Length]",
+          "y": "0",
+          "z": "[Branch End Z] + [Branch Dir Z] * (-4mm) + -[Branch Perp Z] * ([Cover Bolt Circle] / 2) + [Branch Dir Z] * [Cover Bolt Length]"
+        },
+        "end": {
+          "x": "[Branch End X] + [Branch Dir X] * (-4mm) + -[Branch Perp X] * ([Cover Bolt Circle] / 2) + [Branch Dir X] * [Cover Bolt Length] + [Branch Dir X] * [Bolt Head Length]",
+          "y": "0",
+          "z": "[Branch End Z] + [Branch Dir Z] * (-4mm) + -[Branch Perp Z] * ([Cover Bolt Circle] / 2) + [Branch Dir Z] * [Cover Bolt Length] + [Branch Dir Z] * [Bolt Head Length]"
+        },
+        "radius": "[Bolt Head Diameter] / 2",
+        "segments": 24
+      }
+    },
+    {
+      "id": "bolt-head-3",
+      "name": "Bolt Head 3",
+      "material": "Brass",
+      "solid": {
+        "kind": "tube",
+        "start": {
+          "x": "[Branch End X] + [Branch Dir X] * (-4mm) + 0 + [Branch Dir X] * [Cover Bolt Length]",
+          "y": "([Cover Bolt Circle] / 2)",
+          "z": "[Branch End Z] + [Branch Dir Z] * (-4mm) + 0 + [Branch Dir Z] * [Cover Bolt Length]"
+        },
+        "end": {
+          "x": "[Branch End X] + [Branch Dir X] * (-4mm) + 0 + [Branch Dir X] * [Cover Bolt Length] + [Branch Dir X] * [Bolt Head Length]",
+          "y": "([Cover Bolt Circle] / 2)",
+          "z": "[Branch End Z] + [Branch Dir Z] * (-4mm) + 0 + [Branch Dir Z] * [Cover Bolt Length] + [Branch Dir Z] * [Bolt Head Length]"
+        },
+        "radius": "[Bolt Head Diameter] / 2",
+        "segments": 24
+      }
+    },
+    {
+      "id": "bolt-head-4",
+      "name": "Bolt Head 4",
+      "material": "Brass",
+      "solid": {
+        "kind": "tube",
+        "start": {
+          "x": "[Branch End X] + [Branch Dir X] * (-4mm) + 0 + [Branch Dir X] * [Cover Bolt Length]",
+          "y": "-([Cover Bolt Circle] / 2)",
+          "z": "[Branch End Z] + [Branch Dir Z] * (-4mm) + 0 + [Branch Dir Z] * [Cover Bolt Length]"
+        },
+        "end": {
+          "x": "[Branch End X] + [Branch Dir X] * (-4mm) + 0 + [Branch Dir X] * [Cover Bolt Length] + [Branch Dir X] * [Bolt Head Length]",
+          "y": "-([Cover Bolt Circle] / 2)",
+          "z": "[Branch End Z] + [Branch Dir Z] * (-4mm) + 0 + [Branch Dir Z] * [Cover Bolt Length] + [Branch Dir Z] * [Bolt Head Length]"
+        },
+        "radius": "[Bolt Head Diameter] / 2",
+        "segments": 24
+      }
+    }
+  ],
+  "connectors": [
+    {
+      "id": "conn-inlet",
+      "name": "Inlet",
+      "systemType": "HydronicSupply",
+      "shape": "round",
+      "direction": "in",
+      "origin": {
+        "x": "-([Run Length] / 2) - [Flange Thickness]",
+        "y": 0,
+        "z": "[Center Height]"
+      },
+      "directionVector": {
+        "x": -1,
+        "y": 0,
+        "z": 0
+      },
+      "diameter": "[Nominal Bore]"
+    },
+    {
+      "id": "conn-outlet",
+      "name": "Outlet",
+      "systemType": "HydronicSupply",
+      "shape": "round",
+      "direction": "out",
+      "origin": {
+        "x": "[Run Length] / 2 + [Flange Thickness]",
+        "y": 0,
+        "z": "[Center Height]"
+      },
+      "directionVector": {
+        "x": 1,
+        "y": 0,
+        "z": 0
+      },
+      "diameter": "[Nominal Bore]"
+    }
+  ],
+  "notes": [
+    "Preset thử primitive tube trục bất kỳ: thân và nhánh là tube rỗng, bích/nắp/bulong là tube ngắn xoay theo trục nhánh.",
+    "Bích nhánh và nắp nằm vuông góc trục nhánh 45° — khắc phục giới hạn nắp ngang của bản loft trước đây.",
+    "Tube rỗng thử ring profile native trong Revit; nếu Revit từ chối, builder fallback sang swept FreeFormElement (QA sẽ báo freeforms).",
+    "Bulong và đầu bulong là tube cùng trục nhánh, không dùng cylinder trục Z, nên giữ đúng hướng 45°."
+  ]
+}
