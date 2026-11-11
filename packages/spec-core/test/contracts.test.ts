@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   createEnvelope,
   type FamilyBuildRequest,
-  type FamilyBuildResult,
+  type _FamilyBuildResult,
   type BuilderCapabilities,
 } from "../src/contracts.js";
 
