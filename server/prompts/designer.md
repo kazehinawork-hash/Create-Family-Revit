@@ -132,7 +132,11 @@ Verify the pairs above (pan-coil, fan-collar, electrical box-casing, door-pipes)
 - Pipe stubs: a plain cylinder protruding 50-80 mm with the nominal DN diameter. Threads are not modelled.
 - Electrical box: a simple box on the casing side.
 - Declare `connectors` for every real port: id, name, systemType, shape, direction, origin, directionVector, and width/height or diameter, plus flow and pressureDrop when known.
-- **Accurate Connector Placement**: The connector `origin` must lie strictly on the exterior face plane of the stub or flange (offset $< 1.0\text{ mm}$ from the solid face boundary). Never place connector origins inside empty internal voids.
+- **Connector hosting**: Set `"host": "reference-plane"` on a connector that sits in a hollow opening (cable tray/ladder); the studio then skips the orphan warning and the builder first tries an invisible reference plane through `origin`, with `directionVector` as its normal. Use `"host": "solid"` (or omit it) for a connector on a real stub face. Revit's connector API is documented as taking a planar face, so if the build reports “reference plane unavailable/rejected”, add a **minimal** `Connector Host Tab` (for example 24×12 mm) and hide it in all views. Never create a large visible dummy block.
+- **Never** create an `End Connection Plate`, blank-off or full-section plate across a cable tray/ladder opening just to host a connector. The opening must stay open. If a solid host is unavoidable, use a **small hidden tab on the rail/flange** (maximum 30×30 mm); never a plate that spans the opening.
+- **Parametric connector**: every connector `origin` coordinate, `width`, `height` and `diameter` must be an expression that references the driving parameters (for example `"[Ladder Width]"` and `"[Ladder Height]"`), never a literal. The connector must re-resolve when those parameters change; include it in the dependency explanation.
+- **Name/parameter consistency**: keep the family/type name consistent with the actual parameter values. If the name says 400×100, set `Ladder Width=400` and `Ladder Height=100`, or rename the family to the real size. Do not leave a 400×100 name on a 200×100 model.
+- **Accurate Connector Placement**: `origin` and `directionVector` must describe the real port plane. The origin can sit in the middle of an empty opening; the host plane/tab handles hosting.
 
 ## Categories
 

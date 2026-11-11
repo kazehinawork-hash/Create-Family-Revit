@@ -974,6 +974,11 @@ export function validateSpec(raw: unknown): ValidationResult {
           direction: (["in", "out", "bidirectional"].includes(text(conn.direction))
             ? text(conn.direction)
             : "out") as any,
+          host: (text(conn.host) === "reference-plane"
+            ? "reference-plane"
+            : text(conn.host) === "solid"
+              ? "solid"
+              : undefined) as any,
           origin: (isObject(conn.origin) ? conn.origin : { x: 0, y: 0, z: 0 }) as any,
           directionVector: isObject(conn.directionVector) ? (conn.directionVector as any) : undefined,
           width: conn.width as any,

@@ -135,6 +135,7 @@
           },
           "shape": { "enum": ["round", "rectangular"] },
           "direction": { "enum": ["in", "out", "bidirectional"] },
+          "host": { "enum": ["solid", "reference-plane"] },
           "origin": { "$ref": "#/$defs/vec3" },
           "directionVector": { "$ref": "#/$defs/vec3" },
           "width": { "$ref": "#/$defs/numeric" },
