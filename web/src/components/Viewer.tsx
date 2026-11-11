@@ -2801,9 +2801,17 @@ export function Viewer({
             new THREE.LineBasicMaterial({ color: colorHex, linewidth: 2 })
           );
           state.disposables.push(rectGeom);
-          const defaultNormal = new THREE.Vector3(0, 0, 1);
-          const quat = new THREE.Quaternion().setFromUnitVectors(defaultNormal, arrowDir);
-          rectEdges.quaternion.copy(quat);
+
+          // Connector box local axes: X = width, Y = height, Z = flow direction.
+          // setFromUnitVectors alone leaves the roll undefined, so an X-facing
+          // connector maps its width into world Z and looks rotated 90 degrees.
+          const up = Math.abs(arrowDir.z) < 0.9
+            ? new THREE.Vector3(0, 0, 1)
+            : new THREE.Vector3(0, 1, 0);
+          const widthAxis = new THREE.Vector3().crossVectors(up, arrowDir).normalize();
+          const heightAxis = new THREE.Vector3().crossVectors(arrowDir, widthAxis).normalize();
+          const basis = new THREE.Matrix4().makeBasis(widthAxis, heightAxis, arrowDir);
+          rectEdges.quaternion.setFromRotationMatrix(basis);
           connGroup.add(rectEdges);
         }
 

@@ -205,8 +205,13 @@ function connectorIssues(connector: ResolvedConnector, parts: ResolvedModel["par
     }
   }
 
-  // Check for orphan connector: verify connector origin sits close to a part face/boundary
-  if (parts.length > 0 && finite(connector.origin.x, connector.origin.y, connector.origin.z)) {
+  // Check for orphan connector: verify connector origin sits close to a part face/boundary.
+  // A connector explicitly hosted on a reference plane is allowed to sit in a hollow opening.
+  if (
+    connector.host !== "reference-plane" &&
+    parts.length > 0 &&
+    finite(connector.origin.x, connector.origin.y, connector.origin.z)
+  ) {
     let minDistance = Number.POSITIVE_INFINITY;
     for (const part of parts) {
       const bounds = partBounds(part);

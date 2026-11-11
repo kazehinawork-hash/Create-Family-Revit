@@ -27,6 +27,7 @@ interface Props {
   onUpdateParameter: (name: string, value: number | string) => void;
   onAddParameter: (draft: { name: string; type: ParameterType; value: number | string }) => void;
   onHighlightParts?: (partIds: string[]) => void;
+  onUpdateConnectorHost?: (connectorId: string, host: "solid" | "reference-plane") => void;
 }
 
 const GROUP_ORDER = [
@@ -227,6 +228,7 @@ export function ParameterPanel({
   onUpdateParameter,
   onAddParameter,
   onHighlightParts,
+  onUpdateConnectorHost,
 }: Props) {
   const [tab, setTab] = useState<"parameters" | "parts" | "connectors">("parameters");
   const [filter, setFilter] = useState("");
@@ -237,6 +239,10 @@ export function ParameterPanel({
   const [draftType, setDraftType] = useState<ParameterType>("Length");
   const [onlyRisks, setOnlyRisks] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
+
+  const resolvedConnectors = new Map(
+    (analysis.model.connectors ?? []).map((connector) => [connector.id, connector]),
+  );
 
   const toggleGroup = (group: string) => {
     setCollapsedGroups((prev) => ({
@@ -682,15 +688,31 @@ export function ParameterPanel({
               </div>
             ) : (
               (spec.connectors ?? []).map((conn, idx) => {
+                const resolved = resolvedConnectors.get(conn.id);
                 const connIssues = analysis.issues.filter(
                   (issue) => issue.path === `logic.geometry.connector.${conn.id}`
                 );
-                const isOrphan = connIssues.some((issue) => issue.message.includes("orphaned"));
+                const referenceHost =
+                  resolved?.host === "reference-plane" || conn.host === "reference-plane";
+                const isOrphan =
+                  !referenceHost &&
+                  connIssues.some((issue) => issue.message.includes("orphaned"));
                 const dir = (conn.direction ?? "bidirectional").toLowerCase();
                 const isRound = conn.shape !== "rectangular";
+                const origin = resolved?.origin ?? conn.origin;
+                const width = resolved?.width ?? conn.width;
+                const height = resolved?.height ?? conn.height;
+                const diameter = resolved?.diameter ?? conn.diameter;
+                const rounded = (value: unknown, fallback: number) => {
+                  const number = Number(value);
+                  return Number.isFinite(number) ? Math.round(number) : fallback;
+                };
                 const sizeText = isRound
-                  ? `Ø${conn.diameter ?? 50}mm`
-                  : `${conn.width ?? 200}×${conn.height ?? 200}mm`;
+                  ? `Ø${rounded(diameter, 50)}mm`
+                  : `${rounded(width, 200)}×${rounded(height, 200)}mm`;
+                const coordinates = [origin?.x, origin?.y, origin?.z]
+                  .map((value) => (Number.isFinite(Number(value)) ? Math.round(Number(value)) : "—"))
+                  .join(", ");
 
                 return (
                   <div key={conn.id || idx} className="connector-card">
@@ -704,10 +726,25 @@ export function ParameterPanel({
                     </div>
 
                     <div className="connector-meta-row">
-                      <span className="connector-system">{conn.systemType}</span>
-                      <span className="connector-coords">
-                        ({Math.round(Number(conn.origin?.x ?? 0))}, {Math.round(Number(conn.origin?.y ?? 0))}, {Math.round(Number(conn.origin?.z ?? 0))})
+                      <span className="connector-system">
+                        {conn.systemType}
+                        {referenceHost ? " · reference plane" : ""}
                       </span>
+                      <span className="connector-coords">({coordinates})</span>
+                      <button
+                        type="button"
+                        className={`connector-host-toggle${referenceHost ? " ref" : ""}`}
+                        onClick={() =>
+                          onUpdateConnectorHost?.(
+                            conn.id,
+                            referenceHost ? "solid" : "reference-plane",
+                          )
+                        }
+                        disabled={!onUpdateConnectorHost}
+                        title="Đổi kiểu host của connector"
+                      >
+                        {referenceHost ? "Reference plane" : "Solid face"}
+                      </button>
                     </div>
 
                     {conn.flow !== undefined && (
