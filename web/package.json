@@ -13,6 +13,7 @@
     "@family/spec-core": "*",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
+    "read-excel-file": "^9.3.15",
     "three": "^0.180.0",
     "three-bvh-csg": "^0.0.17"
   },

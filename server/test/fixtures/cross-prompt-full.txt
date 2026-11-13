@@ -1,0 +1,28 @@
+Ngã tư thang cáp vát góc chấn mòi vuông (Mitered Cross) — Thịnh Phát
+
+Hệ thang cáp 400 × 100 mm, 4 nhánh vuông góc, mối nối vát 45°, tiết diện chữ C.
+Vật liệu: thép sơn tĩnh điện RAL 7035 cho thân/thành, thép mạ nhúng nóng cho bậc thang.
+
+Thông số yêu cầu:
+- `Ladder Width 1` = 400 mm
+- `Ladder Width 2` = 400 mm
+- `Ladder Height` = 100 mm
+- `Tangent Length` = 120 mm
+- `Miter_Offset` = 150 mm
+- `Sheet Thickness` = 1.8 mm
+- `Flange Width` = 15 mm
+- `Safety Lip` = 5 mm
+- `Rung Width` = 35 mm
+- `Rung Height` = 15 mm
+- `Rung Thickness` = 1.5 mm
+- `Bend Radius` = 0
+- X = 0, Y = 0, Z1 = 0, Z2 = 100
+- `Total_Length_X` = Total_Length_Y = W + 2×Tangent + 2×Miter_Offset = 940 mm
+- `Rung Pitch` — bước bậc tiêu chuẩn, Mặc định `300 mm`
+
+Hình học:
+- 4 cụm thành góc vát 45° chữ C, đối xứng qua ±X và ±Y.
+- 6 bậc thang có lỗ rãnh.
+- 4 connector CableTray trên reference plane tại ±Total_Length_X/2 và ±Total_Length_Y/2.
+
+Nếu có thông số nào chưa rõ, hãy dùng giá trị tiêu chuẩn và ghi giả định, không hỏi lại.

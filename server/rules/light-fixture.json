@@ -1,0 +1,134 @@
+{
+  "productType": "light-fixture",
+  "aliases": [
+    "đèn",
+    "light",
+    "luminaire",
+    "đèn led",
+    "downlight",
+    "highbay"
+  ],
+  "category": "Lighting Fixture",
+  "matchers": {
+    "keywords": [
+      "đèn",
+      "light",
+      "luminaire",
+      "led",
+      "downlight",
+      "highbay"
+    ],
+    "codePatterns": [
+      "^L-",
+      "LED-"
+    ]
+  },
+  "parameters": [
+    {
+      "name": "Fixture Length",
+      "group": "Dimensions",
+      "unit": "mm",
+      "default": 1200,
+      "range": [
+        100,
+        3000
+      ],
+      "fromEvidence": [],
+      "remember": false
+    },
+    {
+      "name": "Fixture Width",
+      "group": "Dimensions",
+      "unit": "mm",
+      "default": 100,
+      "range": [
+        50,
+        600
+      ],
+      "fromEvidence": [
+        "Width"
+      ],
+      "remember": true
+    },
+    {
+      "name": "Fixture Height",
+      "group": "Dimensions",
+      "unit": "mm",
+      "default": 60,
+      "range": [
+        20,
+        300
+      ],
+      "fromEvidence": [
+        "Height"
+      ],
+      "remember": true
+    },
+    {
+      "name": "Housing Thickness",
+      "group": "Dimensions",
+      "unit": "mm",
+      "default": 1.2,
+      "range": [
+        0.8,
+        3
+      ],
+      "fromEvidence": [],
+      "remember": true
+    },
+    {
+      "name": "LED Power",
+      "group": "Data",
+      "unit": "W",
+      "default": 36,
+      "range": [
+        5,
+        400
+      ],
+      "fromEvidence": [],
+      "remember": false
+    }
+  ],
+  "components": [
+    {
+      "kind": "housing",
+      "required": true,
+      "countFormula": "1"
+    },
+    {
+      "kind": "diffuser",
+      "required": true,
+      "countFormula": "1"
+    },
+    {
+      "kind": "led-board",
+      "required": true,
+      "countFormula": "1"
+    }
+  ],
+  "connectors": [
+    {
+      "domain": "cable",
+      "sizeFrom": "Fixture Width",
+      "placement": "end cap"
+    }
+  ],
+  "materials": [
+    {
+      "name": "Aluminium Housing",
+      "color": "#dcdcdc",
+      "finish": "anodized"
+    },
+    {
+      "name": "Opal Diffuser",
+      "color": "#f4f6f8",
+      "finish": "opal"
+    }
+  ],
+  "checks": [
+    {
+      "expr": "Housing Thickness >= 1",
+      "message": "Chiều dày vỏ đèn phải ≥ 1 mm"
+    }
+  ]
+}

@@ -1,0 +1,1708 @@
+{
+  "id": "1794390236816-thinh-phat-cable-ladder-mitered-tee",
+  "name": "Thinh Phat Cable Ladder Mitered Tee",
+  "spec": {
+    "name": "Thinh Phat Cable Ladder Mitered Tee",
+    "schemaVersion": "1.0",
+    "typeName": "TP-CLT-MT 400x300x100",
+    "category": "Electrical Equipment",
+    "units": "mm",
+    "lod": 400,
+    "description": "Tê thang cáp vát góc 45 độ Thịnh Phát, thành thang chấn gập liền khối kín góc miter, 3 bậc dọc hàn kín vào vách vát và 2 bậc ngang cổ nhánh rẽ, kèm 3 connector MEP.",
+    "parameters": [
+      {
+        "name": "Ladder Width 1",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 400
+      },
+      {
+        "name": "Ladder Width 2",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 300
+      },
+      {
+        "name": "Ladder Height",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 100
+      },
+      {
+        "name": "Sheet Thickness",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 1.8
+      },
+      {
+        "name": "Flange Width",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 15
+      },
+      {
+        "name": "Safety Lip",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 5
+      },
+      {
+        "name": "Tangent Length",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 120
+      },
+      {
+        "name": "Branch Throat Length",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 240
+      },
+      {
+        "name": "Miter Leg",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "formula": "[Ladder Width 1] / 2"
+      },
+      {
+        "name": "Total Length X",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "formula": "2 * [Tangent Length] + [Ladder Width 2] + 2 * [Miter Leg]"
+      },
+      {
+        "name": "Total Branch Y",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "formula": "[Branch Throat Length] + 2 * [Miter Leg]"
+      },
+      {
+        "name": "Branch Leg Length",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "formula": "[Total Branch Y] - ([Ladder Width 1] / 2 + [Miter Leg])"
+      },
+      {
+        "name": "Clear Width 1",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "formula": "[Ladder Width 1] - 2 * [Sheet Thickness]"
+      },
+      {
+        "name": "Clear Width 2",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "formula": "[Ladder Width 2] - 2 * [Sheet Thickness]"
+      },
+      {
+        "name": "Flange Inset",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "formula": "[Sheet Thickness] + [Flange Width]"
+      },
+      {
+        "name": "Lip Inset",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "formula": "[Flange Inset] + [Sheet Thickness]"
+      },
+      {
+        "name": "Miter Inner Sum",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "formula": "[Ladder Width 1] / 2 + [Ladder Width 2] / 2 + [Miter Leg] - [Sheet Thickness] * sqrt(2)"
+      },
+      {
+        "name": "Rung Width",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 35
+      },
+      {
+        "name": "Rung Height",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 15
+      },
+      {
+        "name": "Rung Thickness",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 1.5
+      },
+      {
+        "name": "Rung Z Base",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "formula": "[Sheet Thickness]"
+      },
+      {
+        "name": "Rung Hole Pitch",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 35
+      },
+      {
+        "name": "Rung Hole Length",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 25
+      },
+      {
+        "name": "Rung Hole Width",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 9
+      },
+      {
+        "name": "Branch Rung Offset",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 70
+      },
+      {
+        "name": "Branch Rung Spacing",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 150
+      },
+      {
+        "name": "Branch Rung 1 Y",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "formula": "-[Total Branch Y] + [Branch Rung Offset] + [Branch Rung Spacing]"
+      },
+      {
+        "name": "Branch Rung 2 Y",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "formula": "-[Total Branch Y] + [Branch Rung Offset]"
+      },
+      {
+        "name": "Main Rung Offset",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "formula": "[Total Length X] / 4"
+      },
+      {
+        "name": "Bolt Hole Length",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 20
+      },
+      {
+        "name": "Bolt Hole Width",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 9
+      },
+      {
+        "name": "Bolt Hole Low Z",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 25
+      },
+      {
+        "name": "Bolt Hole High Offset",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 25
+      },
+      {
+        "name": "Bolt Hole Edge Offset",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 30
+      }
+    ],
+    "parts": [
+      {
+        "id": "back-rail-web",
+        "name": "Back Rail Web",
+        "material": "ThinhPhat_PowderCoated_RAL7035",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": 0,
+            "y": "[Clear Width 1] / 2 + [Sheet Thickness] / 2",
+            "z": 0
+          },
+          "size": {
+            "x": "[Total Length X]",
+            "y": "[Sheet Thickness]",
+            "z": "[Ladder Height] - [Sheet Thickness]"
+          }
+        },
+        "cuts": [
+          {
+            "kind": "box",
+            "origin": {
+              "x": "-[Total Length X] / 2 + [Bolt Hole Edge Offset]",
+              "y": "[Clear Width 1] / 2 + [Sheet Thickness] / 2",
+              "z": "[Bolt Hole Low Z] - [Bolt Hole Width] / 2"
+            },
+            "size": {
+              "x": "[Bolt Hole Length]",
+              "y": "[Sheet Thickness] + 2mm",
+              "z": "[Bolt Hole Width]"
+            }
+          },
+          {
+            "kind": "box",
+            "origin": {
+              "x": "-[Total Length X] / 2 + [Bolt Hole Edge Offset]",
+              "y": "[Clear Width 1] / 2 + [Sheet Thickness] / 2",
+              "z": "[Ladder Height] - [Bolt Hole High Offset] - [Bolt Hole Width] / 2"
+            },
+            "size": {
+              "x": "[Bolt Hole Length]",
+              "y": "[Sheet Thickness] + 2mm",
+              "z": "[Bolt Hole Width]"
+            }
+          },
+          {
+            "kind": "box",
+            "origin": {
+              "x": "[Total Length X] / 2 - [Bolt Hole Edge Offset]",
+              "y": "[Clear Width 1] / 2 + [Sheet Thickness] / 2",
+              "z": "[Bolt Hole Low Z] - [Bolt Hole Width] / 2"
+            },
+            "size": {
+              "x": "[Bolt Hole Length]",
+              "y": "[Sheet Thickness] + 2mm",
+              "z": "[Bolt Hole Width]"
+            }
+          },
+          {
+            "kind": "box",
+            "origin": {
+              "x": "[Total Length X] / 2 - [Bolt Hole Edge Offset]",
+              "y": "[Clear Width 1] / 2 + [Sheet Thickness] / 2",
+              "z": "[Ladder Height] - [Bolt Hole High Offset] - [Bolt Hole Width] / 2"
+            },
+            "size": {
+              "x": "[Bolt Hole Length]",
+              "y": "[Sheet Thickness] + 2mm",
+              "z": "[Bolt Hole Width]"
+            }
+          }
+        ]
+      },
+      {
+        "id": "back-rail-top-flange",
+        "name": "Back Rail Top Flange",
+        "material": "ThinhPhat_PowderCoated_RAL7035",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": 0,
+            "y": "[Ladder Width 1] / 2 - [Flange Inset] + [Flange Width] / 2",
+            "z": "[Ladder Height] - [Sheet Thickness]"
+          },
+          "size": {
+            "x": "[Total Length X]",
+            "y": "[Flange Width]",
+            "z": "[Sheet Thickness]"
+          }
+        },
+        "cuts": []
+      },
+      {
+        "id": "back-rail-safety-lip",
+        "name": "Back Rail Safety Lip",
+        "material": "Sheet_Metal_Edges",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": 0,
+            "y": "[Ladder Width 1] / 2 - [Flange Inset] - [Sheet Thickness] / 2",
+            "z": "[Ladder Height] - [Sheet Thickness] - [Safety Lip]"
+          },
+          "size": {
+            "x": "[Total Length X]",
+            "y": "[Sheet Thickness]",
+            "z": "[Safety Lip]"
+          }
+        },
+        "cuts": []
+      },
+      {
+        "id": "back-rail-bottom-flange",
+        "name": "Back Rail Bottom Flange",
+        "material": "ThinhPhat_PowderCoated_RAL7035",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": 0,
+            "y": "[Ladder Width 1] / 2 - [Flange Inset] + [Flange Width] / 2",
+            "z": 0
+          },
+          "size": {
+            "x": "[Total Length X]",
+            "y": "[Flange Width]",
+            "z": "[Sheet Thickness]"
+          }
+        },
+        "cuts": []
+      },
+      {
+        "id": "front-left-web-tangent",
+        "name": "Front Left Rail Web Tangent",
+        "material": "ThinhPhat_PowderCoated_RAL7035",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": "-[Total Length X] / 2 + [Tangent Length] / 2",
+            "y": "-[Ladder Width 1] / 2 + [Sheet Thickness] / 2",
+            "z": 0
+          },
+          "size": {
+            "x": "[Tangent Length]",
+            "y": "[Sheet Thickness]",
+            "z": "[Ladder Height] - [Sheet Thickness]"
+          }
+        },
+        "cuts": [
+          {
+            "kind": "box",
+            "origin": {
+              "x": "-[Total Length X] / 2 + [Bolt Hole Edge Offset]",
+              "y": "-[Ladder Width 1] / 2 + [Sheet Thickness] / 2",
+              "z": "[Bolt Hole Low Z] - [Bolt Hole Width] / 2"
+            },
+            "size": {
+              "x": "[Bolt Hole Length]",
+              "y": "[Sheet Thickness] + 2mm",
+              "z": "[Bolt Hole Width]"
+            }
+          },
+          {
+            "kind": "box",
+            "origin": {
+              "x": "-[Total Length X] / 2 + [Bolt Hole Edge Offset]",
+              "y": "-[Ladder Width 1] / 2 + [Sheet Thickness] / 2",
+              "z": "[Ladder Height] - [Bolt Hole High Offset] - [Bolt Hole Width] / 2"
+            },
+            "size": {
+              "x": "[Bolt Hole Length]",
+              "y": "[Sheet Thickness] + 2mm",
+              "z": "[Bolt Hole Width]"
+            }
+          }
+        ],
+        "anchor": {
+          "x": "min",
+          "y": "min",
+          "z": "min"
+        }
+      },
+      {
+        "id": "front-left-web-miter",
+        "name": "Front Left Rail Web Miter",
+        "material": "ThinhPhat_PowderCoated_RAL7035",
+        "solid": {
+          "kind": "prism",
+          "plane": "xy",
+          "from": 0,
+          "to": "[Ladder Height] - [Sheet Thickness]",
+          "points": [
+            [
+              "-([Ladder Width 2] / 2 + [Miter Leg])",
+              "-[Ladder Width 1] / 2"
+            ],
+            [
+              "-[Ladder Width 2] / 2",
+              "-([Ladder Width 1] / 2 + [Miter Leg])"
+            ],
+            [
+              "-[Ladder Width 2] / 2 + [Sheet Thickness]",
+              "-([Ladder Width 1] / 2 + [Miter Leg]) + [Sheet Thickness] * (sqrt(2) - 1)"
+            ],
+            [
+              "-([Ladder Width 2] / 2 + [Miter Leg]) + [Sheet Thickness] * (sqrt(2) - 1)",
+              "-[Ladder Width 1] / 2 + [Sheet Thickness]"
+            ]
+          ]
+        },
+        "cuts": []
+      },
+      {
+        "id": "front-left-web-branch",
+        "name": "Front Left Rail Web Branch",
+        "material": "ThinhPhat_PowderCoated_RAL7035",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": "-[Ladder Width 2] / 2 + [Sheet Thickness] / 2",
+            "y": "-([Ladder Width 1] / 2 + [Miter Leg] + [Total Branch Y]) / 2",
+            "z": 0
+          },
+          "size": {
+            "x": "[Sheet Thickness]",
+            "y": "[Branch Leg Length]",
+            "z": "[Ladder Height] - [Sheet Thickness]"
+          }
+        },
+        "cuts": [
+          {
+            "kind": "box",
+            "origin": {
+              "x": "-[Ladder Width 2] / 2 + [Sheet Thickness] / 2",
+              "y": "-[Total Branch Y] + [Bolt Hole Edge Offset]",
+              "z": "[Bolt Hole Low Z] - [Bolt Hole Width] / 2"
+            },
+            "size": {
+              "x": "[Sheet Thickness] + 2mm",
+              "y": "[Bolt Hole Length]",
+              "z": "[Bolt Hole Width]"
+            }
+          },
+          {
+            "kind": "box",
+            "origin": {
+              "x": "-[Ladder Width 2] / 2 + [Sheet Thickness] / 2",
+              "y": "-[Total Branch Y] + [Bolt Hole Edge Offset]",
+              "z": "[Ladder Height] - [Bolt Hole High Offset] - [Bolt Hole Width] / 2"
+            },
+            "size": {
+              "x": "[Sheet Thickness] + 2mm",
+              "y": "[Bolt Hole Length]",
+              "z": "[Bolt Hole Width]"
+            }
+          }
+        ],
+        "anchor": {
+          "x": "min",
+          "y": "min",
+          "z": "min"
+        }
+      },
+      {
+        "id": "front-left-top-flange",
+        "name": "Front Left Top Flange",
+        "material": "ThinhPhat_PowderCoated_RAL7035",
+        "solid": {
+          "kind": "prism",
+          "plane": "xy",
+          "from": "[Ladder Height] - [Sheet Thickness]",
+          "to": "[Ladder Height]",
+          "points": [
+            [
+              "-[Total Length X] / 2",
+              "-[Ladder Width 1] / 2 + [Sheet Thickness]"
+            ],
+            [
+              "-([Ladder Width 2] / 2 + [Miter Leg]) + [Sheet Thickness] * (sqrt(2) - 1)",
+              "-[Ladder Width 1] / 2 + [Sheet Thickness]"
+            ],
+            [
+              "-[Ladder Width 2] / 2 + [Sheet Thickness]",
+              "-([Ladder Width 1] / 2 + [Miter Leg]) + [Sheet Thickness] * (sqrt(2) - 1)"
+            ],
+            [
+              "-[Ladder Width 2] / 2 + [Sheet Thickness]",
+              "-[Total Branch Y]"
+            ],
+            [
+              "-[Ladder Width 2] / 2 + [Flange Inset]",
+              "-[Total Branch Y]"
+            ],
+            [
+              "-[Ladder Width 2] / 2 + [Flange Inset]",
+              "-([Ladder Width 1] / 2 + [Miter Leg]) + [Flange Inset] * (sqrt(2) - 1)"
+            ],
+            [
+              "-([Ladder Width 2] / 2 + [Miter Leg]) + [Flange Inset] * (sqrt(2) - 1)",
+              "-[Ladder Width 1] / 2 + [Flange Inset]"
+            ],
+            [
+              "-[Total Length X] / 2",
+              "-[Ladder Width 1] / 2 + [Flange Inset]"
+            ]
+          ]
+        },
+        "cuts": []
+      },
+      {
+        "id": "front-left-safety-lip",
+        "name": "Front Left Safety Lip",
+        "material": "Sheet_Metal_Edges",
+        "solid": {
+          "kind": "prism",
+          "plane": "xy",
+          "from": "[Ladder Height] - [Sheet Thickness] - [Safety Lip]",
+          "to": "[Ladder Height] - [Sheet Thickness]",
+          "points": [
+            [
+              "-[Total Length X] / 2",
+              "-[Ladder Width 1] / 2 + [Flange Inset]"
+            ],
+            [
+              "-([Ladder Width 2] / 2 + [Miter Leg]) + [Flange Inset] * (sqrt(2) - 1)",
+              "-[Ladder Width 1] / 2 + [Flange Inset]"
+            ],
+            [
+              "-[Ladder Width 2] / 2 + [Flange Inset]",
+              "-([Ladder Width 1] / 2 + [Miter Leg]) + [Flange Inset] * (sqrt(2) - 1)"
+            ],
+            [
+              "-[Ladder Width 2] / 2 + [Flange Inset]",
+              "-[Total Branch Y]"
+            ],
+            [
+              "-[Ladder Width 2] / 2 + [Lip Inset]",
+              "-[Total Branch Y]"
+            ],
+            [
+              "-[Ladder Width 2] / 2 + [Lip Inset]",
+              "-([Ladder Width 1] / 2 + [Miter Leg]) + [Lip Inset] * (sqrt(2) - 1)"
+            ],
+            [
+              "-([Ladder Width 2] / 2 + [Miter Leg]) + [Lip Inset] * (sqrt(2) - 1)",
+              "-[Ladder Width 1] / 2 + [Lip Inset]"
+            ],
+            [
+              "-[Total Length X] / 2",
+              "-[Ladder Width 1] / 2 + [Lip Inset]"
+            ]
+          ]
+        },
+        "cuts": []
+      },
+      {
+        "id": "front-left-bottom-flange",
+        "name": "Front Left Bottom Flange",
+        "material": "ThinhPhat_PowderCoated_RAL7035",
+        "solid": {
+          "kind": "prism",
+          "plane": "xy",
+          "from": 0,
+          "to": "[Sheet Thickness]",
+          "points": [
+            [
+              "-[Total Length X] / 2",
+              "-[Ladder Width 1] / 2 + [Sheet Thickness]"
+            ],
+            [
+              "-([Ladder Width 2] / 2 + [Miter Leg]) + [Sheet Thickness] * (sqrt(2) - 1)",
+              "-[Ladder Width 1] / 2 + [Sheet Thickness]"
+            ],
+            [
+              "-[Ladder Width 2] / 2 + [Sheet Thickness]",
+              "-([Ladder Width 1] / 2 + [Miter Leg]) + [Sheet Thickness] * (sqrt(2) - 1)"
+            ],
+            [
+              "-[Ladder Width 2] / 2 + [Sheet Thickness]",
+              "-[Total Branch Y]"
+            ],
+            [
+              "-[Ladder Width 2] / 2 + [Flange Inset]",
+              "-[Total Branch Y]"
+            ],
+            [
+              "-[Ladder Width 2] / 2 + [Flange Inset]",
+              "-([Ladder Width 1] / 2 + [Miter Leg]) + [Flange Inset] * (sqrt(2) - 1)"
+            ],
+            [
+              "-([Ladder Width 2] / 2 + [Miter Leg]) + [Flange Inset] * (sqrt(2) - 1)",
+              "-[Ladder Width 1] / 2 + [Flange Inset]"
+            ],
+            [
+              "-[Total Length X] / 2",
+              "-[Ladder Width 1] / 2 + [Flange Inset]"
+            ]
+          ]
+        },
+        "cuts": []
+      },
+      {
+        "id": "front-right-web-tangent",
+        "name": "Front Right Rail Web Tangent",
+        "material": "ThinhPhat_PowderCoated_RAL7035",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": "[Total Length X] / 2 - [Tangent Length] / 2",
+            "y": "-[Ladder Width 1] / 2 + [Sheet Thickness] / 2",
+            "z": 0
+          },
+          "size": {
+            "x": "[Tangent Length]",
+            "y": "[Sheet Thickness]",
+            "z": "[Ladder Height] - [Sheet Thickness]"
+          }
+        },
+        "cuts": [
+          {
+            "kind": "box",
+            "origin": {
+              "x": "[Total Length X] / 2 - [Bolt Hole Edge Offset]",
+              "y": "-[Ladder Width 1] / 2 + [Sheet Thickness] / 2",
+              "z": "[Bolt Hole Low Z] - [Bolt Hole Width] / 2"
+            },
+            "size": {
+              "x": "[Bolt Hole Length]",
+              "y": "[Sheet Thickness] + 2mm",
+              "z": "[Bolt Hole Width]"
+            }
+          },
+          {
+            "kind": "box",
+            "origin": {
+              "x": "[Total Length X] / 2 - [Bolt Hole Edge Offset]",
+              "y": "-[Ladder Width 1] / 2 + [Sheet Thickness] / 2",
+              "z": "[Ladder Height] - [Bolt Hole High Offset] - [Bolt Hole Width] / 2"
+            },
+            "size": {
+              "x": "[Bolt Hole Length]",
+              "y": "[Sheet Thickness] + 2mm",
+              "z": "[Bolt Hole Width]"
+            }
+          }
+        ],
+        "anchor": {
+          "x": "max",
+          "y": "min",
+          "z": "min"
+        }
+      },
+      {
+        "id": "front-right-web-miter",
+        "name": "Front Right Rail Web Miter",
+        "material": "ThinhPhat_PowderCoated_RAL7035",
+        "solid": {
+          "kind": "prism",
+          "plane": "xy",
+          "from": 0,
+          "to": "[Ladder Height] - [Sheet Thickness]",
+          "points": [
+            [
+              "([Ladder Width 2] / 2 + [Miter Leg])",
+              "-[Ladder Width 1] / 2"
+            ],
+            [
+              "([Ladder Width 2] / 2 + [Miter Leg]) - [Sheet Thickness] * (sqrt(2) - 1)",
+              "-[Ladder Width 1] / 2 + [Sheet Thickness]"
+            ],
+            [
+              "[Ladder Width 2] / 2 - [Sheet Thickness]",
+              "-([Ladder Width 1] / 2 + [Miter Leg]) + [Sheet Thickness] * (sqrt(2) - 1)"
+            ],
+            [
+              "[Ladder Width 2] / 2",
+              "-([Ladder Width 1] / 2 + [Miter Leg])"
+            ]
+          ]
+        },
+        "cuts": []
+      },
+      {
+        "id": "front-right-web-branch",
+        "name": "Front Right Rail Web Branch",
+        "material": "ThinhPhat_PowderCoated_RAL7035",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": "[Ladder Width 2] / 2 - [Sheet Thickness] / 2",
+            "y": "-([Ladder Width 1] / 2 + [Miter Leg] + [Total Branch Y]) / 2",
+            "z": 0
+          },
+          "size": {
+            "x": "[Sheet Thickness]",
+            "y": "[Branch Leg Length]",
+            "z": "[Ladder Height] - [Sheet Thickness]"
+          }
+        },
+        "cuts": [
+          {
+            "kind": "box",
+            "origin": {
+              "x": "[Ladder Width 2] / 2 - [Sheet Thickness] / 2",
+              "y": "-[Total Branch Y] + [Bolt Hole Edge Offset]",
+              "z": "[Bolt Hole Low Z] - [Bolt Hole Width] / 2"
+            },
+            "size": {
+              "x": "[Sheet Thickness] + 2mm",
+              "y": "[Bolt Hole Length]",
+              "z": "[Bolt Hole Width]"
+            }
+          },
+          {
+            "kind": "box",
+            "origin": {
+              "x": "[Ladder Width 2] / 2 - [Sheet Thickness] / 2",
+              "y": "-[Total Branch Y] + [Bolt Hole Edge Offset]",
+              "z": "[Ladder Height] - [Bolt Hole High Offset] - [Bolt Hole Width] / 2"
+            },
+            "size": {
+              "x": "[Sheet Thickness] + 2mm",
+              "y": "[Bolt Hole Length]",
+              "z": "[Bolt Hole Width]"
+            }
+          }
+        ],
+        "anchor": {
+          "x": "max",
+          "y": "min",
+          "z": "min"
+        }
+      },
+      {
+        "id": "front-right-top-flange",
+        "name": "Front Right Top Flange",
+        "material": "ThinhPhat_PowderCoated_RAL7035",
+        "solid": {
+          "kind": "prism",
+          "plane": "xy",
+          "from": "[Ladder Height] - [Sheet Thickness]",
+          "to": "[Ladder Height]",
+          "points": [
+            [
+              "[Total Length X] / 2",
+              "-[Ladder Width 1] / 2 + [Sheet Thickness]"
+            ],
+            [
+              "([Ladder Width 2] / 2 + [Miter Leg]) - [Sheet Thickness] * (sqrt(2) - 1)",
+              "-[Ladder Width 1] / 2 + [Sheet Thickness]"
+            ],
+            [
+              "[Ladder Width 2] / 2 - [Sheet Thickness]",
+              "-([Ladder Width 1] / 2 + [Miter Leg]) + [Sheet Thickness] * (sqrt(2) - 1)"
+            ],
+            [
+              "[Ladder Width 2] / 2 - [Sheet Thickness]",
+              "-[Total Branch Y]"
+            ],
+            [
+              "[Ladder Width 2] / 2 - [Flange Inset]",
+              "-[Total Branch Y]"
+            ],
+            [
+              "[Ladder Width 2] / 2 - [Flange Inset]",
+              "-([Ladder Width 1] / 2 + [Miter Leg]) + [Flange Inset] * (sqrt(2) - 1)"
+            ],
+            [
+              "([Ladder Width 2] / 2 + [Miter Leg]) - [Flange Inset] * (sqrt(2) - 1)",
+              "-[Ladder Width 1] / 2 + [Flange Inset]"
+            ],
+            [
+              "[Total Length X] / 2",
+              "-[Ladder Width 1] / 2 + [Flange Inset]"
+            ]
+          ]
+        },
+        "cuts": []
+      },
+      {
+        "id": "front-right-safety-lip",
+        "name": "Front Right Safety Lip",
+        "material": "Sheet_Metal_Edges",
+        "solid": {
+          "kind": "prism",
+          "plane": "xy",
+          "from": "[Ladder Height] - [Sheet Thickness] - [Safety Lip]",
+          "to": "[Ladder Height] - [Sheet Thickness]",
+          "points": [
+            [
+              "[Total Length X] / 2",
+              "-[Ladder Width 1] / 2 + [Flange Inset]"
+            ],
+            [
+              "([Ladder Width 2] / 2 + [Miter Leg]) - [Flange Inset] * (sqrt(2) - 1)",
+              "-[Ladder Width 1] / 2 + [Flange Inset]"
+            ],
+            [
+              "[Ladder Width 2] / 2 - [Flange Inset]",
+              "-([Ladder Width 1] / 2 + [Miter Leg]) + [Flange Inset] * (sqrt(2) - 1)"
+            ],
+            [
+              "[Ladder Width 2] / 2 - [Flange Inset]",
+              "-[Total Branch Y]"
+            ],
+            [
+              "[Ladder Width 2] / 2 - [Lip Inset]",
+              "-[Total Branch Y]"
+            ],
+            [
+              "[Ladder Width 2] / 2 - [Lip Inset]",
+              "-([Ladder Width 1] / 2 + [Miter Leg]) + [Lip Inset] * (sqrt(2) - 1)"
+            ],
+            [
+              "([Ladder Width 2] / 2 + [Miter Leg]) - [Lip Inset] * (sqrt(2) - 1)",
+              "-[Ladder Width 1] / 2 + [Lip Inset]"
+            ],
+            [
+              "[Total Length X] / 2",
+              "-[Ladder Width 1] / 2 + [Lip Inset]"
+            ]
+          ]
+        },
+        "cuts": []
+      },
+      {
+        "id": "front-right-bottom-flange",
+        "name": "Front Right Bottom Flange",
+        "material": "ThinhPhat_PowderCoated_RAL7035",
+        "solid": {
+          "kind": "prism",
+          "plane": "xy",
+          "from": 0,
+          "to": "[Sheet Thickness]",
+          "points": [
+            [
+              "[Total Length X] / 2",
+              "-[Ladder Width 1] / 2 + [Sheet Thickness]"
+            ],
+            [
+              "([Ladder Width 2] / 2 + [Miter Leg]) - [Sheet Thickness] * (sqrt(2) - 1)",
+              "-[Ladder Width 1] / 2 + [Sheet Thickness]"
+            ],
+            [
+              "[Ladder Width 2] / 2 - [Sheet Thickness]",
+              "-([Ladder Width 1] / 2 + [Miter Leg]) + [Sheet Thickness] * (sqrt(2) - 1)"
+            ],
+            [
+              "[Ladder Width 2] / 2 - [Sheet Thickness]",
+              "-[Total Branch Y]"
+            ],
+            [
+              "[Ladder Width 2] / 2 - [Flange Inset]",
+              "-[Total Branch Y]"
+            ],
+            [
+              "[Ladder Width 2] / 2 - [Flange Inset]",
+              "-([Ladder Width 1] / 2 + [Miter Leg]) + [Flange Inset] * (sqrt(2) - 1)"
+            ],
+            [
+              "([Ladder Width 2] / 2 + [Miter Leg]) - [Flange Inset] * (sqrt(2) - 1)",
+              "-[Ladder Width 1] / 2 + [Flange Inset]"
+            ],
+            [
+              "[Total Length X] / 2",
+              "-[Ladder Width 1] / 2 + [Flange Inset]"
+            ]
+          ]
+        },
+        "cuts": []
+      },
+      {
+        "id": "main-rung-left-web",
+        "name": "Main Rung Left Web",
+        "material": "ThinhPhat_PowderCoated_RAL7035",
+        "solid": {
+          "kind": "prism",
+          "plane": "xy",
+          "from": "[Rung Z Base] + [Rung Height] - [Rung Thickness]",
+          "to": "[Rung Z Base] + [Rung Height]",
+          "points": [
+            [
+              "-[Main Rung Offset] - [Rung Width] / 2",
+              "[Clear Width 1] / 2"
+            ],
+            [
+              "-[Main Rung Offset] - [Rung Width] / 2",
+              "[Main Rung Offset] + [Rung Width] / 2 - [Miter Inner Sum]"
+            ],
+            [
+              "-[Main Rung Offset] + [Rung Width] / 2",
+              "[Main Rung Offset] - [Rung Width] / 2 - [Miter Inner Sum]"
+            ],
+            [
+              "-[Main Rung Offset] + [Rung Width] / 2",
+              "[Clear Width 1] / 2"
+            ]
+          ]
+        },
+        "cuts": [
+          {
+            "kind": "box",
+            "origin": {
+              "x": "-[Main Rung Offset]",
+              "y": "([Clear Width 1] / 2 + [Main Rung Offset] - [Miter Inner Sum]) / 2",
+              "z": "[Rung Z Base] + [Rung Height] - [Rung Thickness] - 1mm"
+            },
+            "size": {
+              "x": "[Rung Hole Width]",
+              "y": "[Rung Hole Length]",
+              "z": "[Rung Thickness] + 2mm"
+            }
+          },
+          {
+            "kind": "box",
+            "origin": {
+              "x": "-[Main Rung Offset]",
+              "y": "([Clear Width 1] / 2 + [Main Rung Offset] - [Miter Inner Sum]) / 2 + [Rung Hole Pitch]",
+              "z": "[Rung Z Base] + [Rung Height] - [Rung Thickness] - 1mm"
+            },
+            "size": {
+              "x": "[Rung Hole Width]",
+              "y": "[Rung Hole Length]",
+              "z": "[Rung Thickness] + 2mm"
+            }
+          },
+          {
+            "kind": "box",
+            "origin": {
+              "x": "-[Main Rung Offset]",
+              "y": "([Clear Width 1] / 2 + [Main Rung Offset] - [Miter Inner Sum]) / 2 - [Rung Hole Pitch]",
+              "z": "[Rung Z Base] + [Rung Height] - [Rung Thickness] - 1mm"
+            },
+            "size": {
+              "x": "[Rung Hole Width]",
+              "y": "[Rung Hole Length]",
+              "z": "[Rung Thickness] + 2mm"
+            }
+          }
+        ]
+      },
+      {
+        "id": "main-rung-left-lip-outer",
+        "name": "Main Rung Left Lip Outer",
+        "material": "Sheet_Metal_Edges",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": "-[Main Rung Offset] - [Rung Width] / 2 + [Rung Thickness] / 2",
+            "y": "([Clear Width 1] / 2 + [Main Rung Offset] + [Rung Width] / 2 - [Rung Thickness] / 2 - [Miter Inner Sum]) / 2",
+            "z": "[Rung Z Base]"
+          },
+          "size": {
+            "x": "[Rung Thickness]",
+            "y": "[Clear Width 1] / 2 - [Main Rung Offset] - [Rung Width] / 2 + [Rung Thickness] / 2 + [Miter Inner Sum]",
+            "z": "[Rung Height] - [Rung Thickness]"
+          }
+        },
+        "cuts": []
+      },
+      {
+        "id": "main-rung-left-lip-inner",
+        "name": "Main Rung Left Lip Inner",
+        "material": "Sheet_Metal_Edges",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": "-[Main Rung Offset] + [Rung Width] / 2 - [Rung Thickness] / 2",
+            "y": "([Clear Width 1] / 2 + [Main Rung Offset] - [Rung Width] / 2 + [Rung Thickness] / 2 - [Miter Inner Sum]) / 2",
+            "z": "[Rung Z Base]"
+          },
+          "size": {
+            "x": "[Rung Thickness]",
+            "y": "[Clear Width 1] / 2 - [Main Rung Offset] + [Rung Width] / 2 - [Rung Thickness] / 2 + [Miter Inner Sum]",
+            "z": "[Rung Height] - [Rung Thickness]"
+          }
+        },
+        "cuts": []
+      },
+      {
+        "id": "main-rung-centre-web",
+        "name": "Main Rung Centre Web",
+        "material": "ThinhPhat_PowderCoated_RAL7035",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": 0,
+            "y": "([Clear Width 1] / 2 + [Branch Rung 1 Y]) / 2",
+            "z": "[Rung Z Base] + [Rung Height] - [Rung Thickness]"
+          },
+          "size": {
+            "x": "[Rung Width]",
+            "y": "[Clear Width 1] / 2 - [Branch Rung 1 Y]",
+            "z": "[Rung Thickness]"
+          }
+        },
+        "cuts": [
+          {
+            "kind": "box",
+            "origin": {
+              "x": 0,
+              "y": "([Clear Width 1] / 2 + [Branch Rung 1 Y]) / 2",
+              "z": "[Rung Z Base] + [Rung Height] - [Rung Thickness] - 1mm"
+            },
+            "size": {
+              "x": "[Rung Hole Width]",
+              "y": "[Rung Hole Length]",
+              "z": "[Rung Thickness] + 2mm"
+            }
+          },
+          {
+            "kind": "box",
+            "origin": {
+              "x": 0,
+              "y": "([Clear Width 1] / 2 + [Branch Rung 1 Y]) / 2 + [Rung Hole Pitch]",
+              "z": "[Rung Z Base] + [Rung Height] - [Rung Thickness] - 1mm"
+            },
+            "size": {
+              "x": "[Rung Hole Width]",
+              "y": "[Rung Hole Length]",
+              "z": "[Rung Thickness] + 2mm"
+            }
+          },
+          {
+            "kind": "box",
+            "origin": {
+              "x": 0,
+              "y": "([Clear Width 1] / 2 + [Branch Rung 1 Y]) / 2 - [Rung Hole Pitch]",
+              "z": "[Rung Z Base] + [Rung Height] - [Rung Thickness] - 1mm"
+            },
+            "size": {
+              "x": "[Rung Hole Width]",
+              "y": "[Rung Hole Length]",
+              "z": "[Rung Thickness] + 2mm"
+            }
+          }
+        ]
+      },
+      {
+        "id": "main-rung-centre-lip-left",
+        "name": "Main Rung Centre Lip Left",
+        "material": "Sheet_Metal_Edges",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": "-[Rung Width] / 2 + [Rung Thickness] / 2",
+            "y": "([Clear Width 1] / 2 + [Branch Rung 1 Y]) / 2",
+            "z": "[Rung Z Base]"
+          },
+          "size": {
+            "x": "[Rung Thickness]",
+            "y": "[Clear Width 1] / 2 - [Branch Rung 1 Y]",
+            "z": "[Rung Height] - [Rung Thickness]"
+          }
+        },
+        "cuts": []
+      },
+      {
+        "id": "main-rung-centre-lip-right",
+        "name": "Main Rung Centre Lip Right",
+        "material": "Sheet_Metal_Edges",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": "[Rung Width] / 2 - [Rung Thickness] / 2",
+            "y": "([Clear Width 1] / 2 + [Branch Rung 1 Y]) / 2",
+            "z": "[Rung Z Base]"
+          },
+          "size": {
+            "x": "[Rung Thickness]",
+            "y": "[Clear Width 1] / 2 - [Branch Rung 1 Y]",
+            "z": "[Rung Height] - [Rung Thickness]"
+          }
+        },
+        "cuts": []
+      },
+      {
+        "id": "main-rung-right-web",
+        "name": "Main Rung Right Web",
+        "material": "ThinhPhat_PowderCoated_RAL7035",
+        "solid": {
+          "kind": "prism",
+          "plane": "xy",
+          "from": "[Rung Z Base] + [Rung Height] - [Rung Thickness]",
+          "to": "[Rung Z Base] + [Rung Height]",
+          "points": [
+            [
+              "[Main Rung Offset] + [Rung Width] / 2",
+              "[Clear Width 1] / 2"
+            ],
+            [
+              "[Main Rung Offset] + [Rung Width] / 2",
+              "[Main Rung Offset] + [Rung Width] / 2 - [Miter Inner Sum]"
+            ],
+            [
+              "[Main Rung Offset] - [Rung Width] / 2",
+              "[Main Rung Offset] - [Rung Width] / 2 - [Miter Inner Sum]"
+            ],
+            [
+              "[Main Rung Offset] - [Rung Width] / 2",
+              "[Clear Width 1] / 2"
+            ]
+          ]
+        },
+        "cuts": [
+          {
+            "kind": "box",
+            "origin": {
+              "x": "[Main Rung Offset]",
+              "y": "([Clear Width 1] / 2 + [Main Rung Offset] - [Miter Inner Sum]) / 2",
+              "z": "[Rung Z Base] + [Rung Height] - [Rung Thickness] - 1mm"
+            },
+            "size": {
+              "x": "[Rung Hole Width]",
+              "y": "[Rung Hole Length]",
+              "z": "[Rung Thickness] + 2mm"
+            }
+          },
+          {
+            "kind": "box",
+            "origin": {
+              "x": "[Main Rung Offset]",
+              "y": "([Clear Width 1] / 2 + [Main Rung Offset] - [Miter Inner Sum]) / 2 + [Rung Hole Pitch]",
+              "z": "[Rung Z Base] + [Rung Height] - [Rung Thickness] - 1mm"
+            },
+            "size": {
+              "x": "[Rung Hole Width]",
+              "y": "[Rung Hole Length]",
+              "z": "[Rung Thickness] + 2mm"
+            }
+          },
+          {
+            "kind": "box",
+            "origin": {
+              "x": "[Main Rung Offset]",
+              "y": "([Clear Width 1] / 2 + [Main Rung Offset] - [Miter Inner Sum]) / 2 - [Rung Hole Pitch]",
+              "z": "[Rung Z Base] + [Rung Height] - [Rung Thickness] - 1mm"
+            },
+            "size": {
+              "x": "[Rung Hole Width]",
+              "y": "[Rung Hole Length]",
+              "z": "[Rung Thickness] + 2mm"
+            }
+          }
+        ]
+      },
+      {
+        "id": "main-rung-right-lip-outer",
+        "name": "Main Rung Right Lip Outer",
+        "material": "Sheet_Metal_Edges",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": "[Main Rung Offset] + [Rung Width] / 2 - [Rung Thickness] / 2",
+            "y": "([Clear Width 1] / 2 + [Main Rung Offset] + [Rung Width] / 2 - [Rung Thickness] / 2 - [Miter Inner Sum]) / 2",
+            "z": "[Rung Z Base]"
+          },
+          "size": {
+            "x": "[Rung Thickness]",
+            "y": "[Clear Width 1] / 2 - [Main Rung Offset] - [Rung Width] / 2 + [Rung Thickness] / 2 + [Miter Inner Sum]",
+            "z": "[Rung Height] - [Rung Thickness]"
+          }
+        },
+        "cuts": []
+      },
+      {
+        "id": "main-rung-right-lip-inner",
+        "name": "Main Rung Right Lip Inner",
+        "material": "Sheet_Metal_Edges",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": "[Main Rung Offset] - [Rung Width] / 2 + [Rung Thickness] / 2",
+            "y": "([Clear Width 1] / 2 + [Main Rung Offset] - [Rung Width] / 2 + [Rung Thickness] / 2 - [Miter Inner Sum]) / 2",
+            "z": "[Rung Z Base]"
+          },
+          "size": {
+            "x": "[Rung Thickness]",
+            "y": "[Clear Width 1] / 2 - [Main Rung Offset] + [Rung Width] / 2 - [Rung Thickness] / 2 + [Miter Inner Sum]",
+            "z": "[Rung Height] - [Rung Thickness]"
+          }
+        },
+        "cuts": []
+      },
+      {
+        "id": "branch-rung-1-web",
+        "name": "Branch Rung 1 Web",
+        "material": "ThinhPhat_PowderCoated_RAL7035",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": 0,
+            "y": "[Branch Rung 1 Y]",
+            "z": "[Rung Z Base] + [Rung Height] - [Rung Thickness]"
+          },
+          "size": {
+            "x": "[Clear Width 2]",
+            "y": "[Rung Width]",
+            "z": "[Rung Thickness]"
+          }
+        },
+        "cuts": [
+          {
+            "kind": "box",
+            "origin": {
+              "x": 0,
+              "y": "[Branch Rung 1 Y]",
+              "z": "[Rung Z Base] + [Rung Height] - [Rung Thickness] - 1mm"
+            },
+            "size": {
+              "x": "[Rung Hole Length]",
+              "y": "[Rung Hole Width]",
+              "z": "[Rung Thickness] + 2mm"
+            }
+          },
+          {
+            "kind": "box",
+            "origin": {
+              "x": "[Rung Hole Pitch]",
+              "y": "[Branch Rung 1 Y]",
+              "z": "[Rung Z Base] + [Rung Height] - [Rung Thickness] - 1mm"
+            },
+            "size": {
+              "x": "[Rung Hole Length]",
+              "y": "[Rung Hole Width]",
+              "z": "[Rung Thickness] + 2mm"
+            }
+          },
+          {
+            "kind": "box",
+            "origin": {
+              "x": "-[Rung Hole Pitch]",
+              "y": "[Branch Rung 1 Y]",
+              "z": "[Rung Z Base] + [Rung Height] - [Rung Thickness] - 1mm"
+            },
+            "size": {
+              "x": "[Rung Hole Length]",
+              "y": "[Rung Hole Width]",
+              "z": "[Rung Thickness] + 2mm"
+            }
+          },
+          {
+            "kind": "box",
+            "origin": {
+              "x": "2 * [Rung Hole Pitch]",
+              "y": "[Branch Rung 1 Y]",
+              "z": "[Rung Z Base] + [Rung Height] - [Rung Thickness] - 1mm"
+            },
+            "size": {
+              "x": "[Rung Hole Length]",
+              "y": "[Rung Hole Width]",
+              "z": "[Rung Thickness] + 2mm"
+            }
+          },
+          {
+            "kind": "box",
+            "origin": {
+              "x": "-(2 * [Rung Hole Pitch])",
+              "y": "[Branch Rung 1 Y]",
+              "z": "[Rung Z Base] + [Rung Height] - [Rung Thickness] - 1mm"
+            },
+            "size": {
+              "x": "[Rung Hole Length]",
+              "y": "[Rung Hole Width]",
+              "z": "[Rung Thickness] + 2mm"
+            }
+          }
+        ]
+      },
+      {
+        "id": "branch-rung-1-lip-front",
+        "name": "Branch Rung 1 Front Lip",
+        "material": "Sheet_Metal_Edges",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": 0,
+            "y": "[Branch Rung 1 Y] - [Rung Width] / 2 + [Rung Thickness] / 2",
+            "z": "[Rung Z Base]"
+          },
+          "size": {
+            "x": "[Clear Width 2]",
+            "y": "[Rung Thickness]",
+            "z": "[Rung Height] - [Rung Thickness]"
+          }
+        },
+        "cuts": []
+      },
+      {
+        "id": "branch-rung-1-lip-back",
+        "name": "Branch Rung 1 Back Lip",
+        "material": "Sheet_Metal_Edges",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": 0,
+            "y": "[Branch Rung 1 Y] + [Rung Width] / 2 - [Rung Thickness] / 2",
+            "z": "[Rung Z Base]"
+          },
+          "size": {
+            "x": "[Clear Width 2]",
+            "y": "[Rung Thickness]",
+            "z": "[Rung Height] - [Rung Thickness]"
+          }
+        },
+        "cuts": []
+      },
+      {
+        "id": "branch-rung-2-web",
+        "name": "Branch Rung 2 Web",
+        "material": "ThinhPhat_PowderCoated_RAL7035",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": 0,
+            "y": "[Branch Rung 2 Y]",
+            "z": "[Rung Z Base] + [Rung Height] - [Rung Thickness]"
+          },
+          "size": {
+            "x": "[Clear Width 2]",
+            "y": "[Rung Width]",
+            "z": "[Rung Thickness]"
+          }
+        },
+        "cuts": [
+          {
+            "kind": "box",
+            "origin": {
+              "x": 0,
+              "y": "[Branch Rung 2 Y]",
+              "z": "[Rung Z Base] + [Rung Height] - [Rung Thickness] - 1mm"
+            },
+            "size": {
+              "x": "[Rung Hole Length]",
+              "y": "[Rung Hole Width]",
+              "z": "[Rung Thickness] + 2mm"
+            }
+          },
+          {
+            "kind": "box",
+            "origin": {
+              "x": "[Rung Hole Pitch]",
+              "y": "[Branch Rung 2 Y]",
+              "z": "[Rung Z Base] + [Rung Height] - [Rung Thickness] - 1mm"
+            },
+            "size": {
+              "x": "[Rung Hole Length]",
+              "y": "[Rung Hole Width]",
+              "z": "[Rung Thickness] + 2mm"
+            }
+          },
+          {
+            "kind": "box",
+            "origin": {
+              "x": "-[Rung Hole Pitch]",
+              "y": "[Branch Rung 2 Y]",
+              "z": "[Rung Z Base] + [Rung Height] - [Rung Thickness] - 1mm"
+            },
+            "size": {
+              "x": "[Rung Hole Length]",
+              "y": "[Rung Hole Width]",
+              "z": "[Rung Thickness] + 2mm"
+            }
+          },
+          {
+            "kind": "box",
+            "origin": {
+              "x": "2 * [Rung Hole Pitch]",
+              "y": "[Branch Rung 2 Y]",
+              "z": "[Rung Z Base] + [Rung Height] - [Rung Thickness] - 1mm"
+            },
+            "size": {
+              "x": "[Rung Hole Length]",
+              "y": "[Rung Hole Width]",
+              "z": "[Rung Thickness] + 2mm"
+            }
+          },
+          {
+            "kind": "box",
+            "origin": {
+              "x": "-(2 * [Rung Hole Pitch])",
+              "y": "[Branch Rung 2 Y]",
+              "z": "[Rung Z Base] + [Rung Height] - [Rung Thickness] - 1mm"
+            },
+            "size": {
+              "x": "[Rung Hole Length]",
+              "y": "[Rung Hole Width]",
+              "z": "[Rung Thickness] + 2mm"
+            }
+          }
+        ]
+      },
+      {
+        "id": "branch-rung-2-lip-front",
+        "name": "Branch Rung 2 Front Lip",
+        "material": "Sheet_Metal_Edges",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": 0,
+            "y": "[Branch Rung 2 Y] - [Rung Width] / 2 + [Rung Thickness] / 2",
+            "z": "[Rung Z Base]"
+          },
+          "size": {
+            "x": "[Clear Width 2]",
+            "y": "[Rung Thickness]",
+            "z": "[Rung Height] - [Rung Thickness]"
+          }
+        },
+        "cuts": []
+      },
+      {
+        "id": "branch-rung-2-lip-back",
+        "name": "Branch Rung 2 Back Lip",
+        "material": "Sheet_Metal_Edges",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": 0,
+            "y": "[Branch Rung 2 Y] + [Rung Width] / 2 - [Rung Thickness] / 2",
+            "z": "[Rung Z Base]"
+          },
+          "size": {
+            "x": "[Clear Width 2]",
+            "y": "[Rung Thickness]",
+            "z": "[Rung Height] - [Rung Thickness]"
+          }
+        },
+        "cuts": []
+      }
+    ],
+    "connectors": [
+      {
+        "id": "main-in",
+        "name": "Main In",
+        "systemType": "CableTray",
+        "shape": "rectangular",
+        "direction": "in",
+        "host": "reference-plane",
+        "origin": {
+          "x": "-[Total Length X] / 2",
+          "y": 0,
+          "z": "[Ladder Height] / 2"
+        },
+        "directionVector": {
+          "x": -1,
+          "y": 0,
+          "z": 0
+        },
+        "width": "[Ladder Width 1]",
+        "height": "[Ladder Height]"
+      },
+      {
+        "id": "main-out",
+        "name": "Main Out",
+        "systemType": "CableTray",
+        "shape": "rectangular",
+        "direction": "out",
+        "host": "reference-plane",
+        "origin": {
+          "x": "[Total Length X] / 2",
+          "y": 0,
+          "z": "[Ladder Height] / 2"
+        },
+        "directionVector": {
+          "x": 1,
+          "y": 0,
+          "z": 0
+        },
+        "width": "[Ladder Width 1]",
+        "height": "[Ladder Height]"
+      },
+      {
+        "id": "branch",
+        "name": "Branch",
+        "systemType": "CableTray",
+        "shape": "rectangular",
+        "direction": "out",
+        "host": "reference-plane",
+        "origin": {
+          "x": 0,
+          "y": "-[Total Branch Y]",
+          "z": "[Ladder Height] / 2"
+        },
+        "directionVector": {
+          "x": 0,
+          "y": -1,
+          "z": 0
+        },
+        "width": "[Ladder Width 2]",
+        "height": "[Ladder Height]"
+      }
+    ],
+    "materials": [
+      {
+        "name": "ThinhPhat_PowderCoated_RAL7035",
+        "color": "#d7dade",
+        "metalness": 0.35,
+        "roughness": 0.55
+      },
+      {
+        "name": "Sheet_Metal_Edges",
+        "color": "#c3c8cd",
+        "metalness": 0.55,
+        "roughness": 0.35
+      }
+    ],
+    "notes": [
+      "Đã dựng đúng mức LOD 400 - chi tiết chế tạo/lắp ráp: 31 part gồm 12 tấm thành chấn chữ C liên tục (web + gờ trên + mí an toàn + gờ đáy), 3 bậc dọc và 2 bậc ngang cổ nhánh, mỗi bậc có web đục lỗ oval 9x25 mm và 2 gờ mí chấn.",
+      "Sửa lỗi boolean trên tấm mỏng: mỗi thành trước được tách thành 3 chi tiết — đoạn thẳng phía tuyến chính (box dày Sheet Thickness, mang 2 lỗ bulông khoan xuyên chiều dày tấm), đoạn vát miter 45 độ (prism thuần, không cắt) và đoạn thẳng cổ nhánh (box dày Sheet Thickness, mang 2 lỗ bulông). Trước đây toàn bộ thành là một prism đứng và 4 lỗ bulông chỉ khoan 9 mm theo phương Z nên không xuyên hết chiều dày prism, Revit từ chối phép trừ và bỏ lỗ; nay lỗ bulông nằm trên box nên boolean chạy đúng, phần vát vẫn là một prism liền mạch nên không phát sinh khe hở.",
+      "Ba chi tiết thành trước vẫn tiếp giáp tuyệt đối tại hai mặt cắt miter (x = ±(W2/2 + Miter Leg) và y = -(W1/2 + Miter Leg)) nên thành thang vẫn khép kín từ mép tuyến chính qua vách nghiêng vào tận mép nhánh rẽ, đúng yêu cầu hàn kín khớp giao nhau.",
+      "Bậc dọc trái/phải vẫn dùng web dạng prism có đầu cắt vát 45 độ theo đúng đường chéo trong (x + y = ±Miter Inner Sum) nên mép bậc áp kín 100% vào mặt trong vách nghiêng; bậc dọc giữa kéo dài từ thành lưng sau tới tận bậc ngang thứ nhất của nhánh rẽ, không còn thanh cụt lơ lửng.",
+      "Cổ nhánh rẽ W2 có đúng 2 bậc ngang: bậc 1 tại y = Branch Rung 1 Y = -420 mm (ngay sau vùng vát miter), bậc 2 tại y = Branch Rung 2 Y = -570 mm (cách mặt cắt nhánh 70 mm, nằm trong dải 60-75 mm), hai bậc cách nhau đúng Branch Rung Spacing = 150 mm; chiều dài mỗi bậc bằng Clear Width 2 nên hai đầu tiếp xúc kín vào mặt trong 2 vách nhánh.",
+      "Quy luật tham số giữ nguyên: Miter Leg = W1/2; Total Length X = 2 x Tangent Length + W2 + 2 x Miter Leg; Total Branch Y = Branch Throat Length + 2 x Miter Leg; Miter Inner Sum = W1/2 + W2/2 + Miter Leg - Sheet Thickness x sqrt(2). Thêm tham số dẫn xuất Branch Leg Length = Total Branch Y - (W1/2 + Miter Leg) để chiều dài và tâm đoạn thành cổ nhánh tự co giãn theo W1, W2, Branch Throat Length.",
+      "Đổi Ladder Height kéo theo chiều cao toàn bộ web thành, vị trí 2 hàng lỗ bulông trên mỗi đầu (Z = H - 25 mm) và chiều cao 3 connector; đổi Sheet Thickness kéo theo Clear Width 1, Clear Width 2, Flange Inset, Lip Inset, Miter Inner Sum, Rung Z Base, chiều dày mọi tấm và cả 12 lỗ bulông.",
+      "3 connector đặt trên Reference Plane với host = reference-plane, lòng thang rỗng 100%, không có tấm chặn; khung connector ăn theo Ladder Width 1 / Ladder Width 2 / Ladder Height.",
+      "Gốc tọa độ (0,0,0) tại giao điểm tim tuyến chính (trục X) và tim nhánh rẽ (trục Y) trên mặt đáy thang; mặt vận hành và nhánh rẽ hướng về -Y.",
+      "Giả thiết cần xác nhận: bước lỗ luồn dây thít 35 mm (mỗi bậc dọc 3 lỗ, mỗi bậc ngang 5 lỗ oval 9x25 mm); mép lỗ bulông cách mặt cắt 30 mm; bán kính uốn bằng 0 (gập sắc cạnh).",
+      "Category yêu cầu là Cable Tray Fitting nhưng danh mục hệ thống không có, đã dùng Electrical Equipment để giữ nguyên hình học và connector kiểu CableTray; khi build có thể map sang Cable Tray Fitting của Revit."
+    ]
+  },
+  "entries": [
+    {
+      "id": "seed",
+      "role": "agent",
+      "text": "Xin chào! Hãy mô tả thiết bị bạn cần dựng hoặc kéo thả tài liệu/bản vẽ (PDF, ảnh) vào đây để tôi bắt đầu thiết kế từ đầu."
+    },
+    {
+      "role": "user",
+      "text": "Hãy đóng vai chuyên gia BIM Specialist / MEP Content LOD 400 Modeler, tạo một mô hình 3D Revit Family hoàn chỉnh thuộc Category **Cable Tray Fitting** (Part Type: **Tee**) cho phụ kiện **Tê Thang Cáp Vát Góc Chuẩn Gia Công Tôn Chấn CNC Thịnh Phát ICT (Cable Ladder Parametric Horizontal Mitered Tee - LOD 400)**. Mô hình phải được THAM SỐ HÓA TOÀN DIỆN (Fully Parametric), có thể linh hoạt thay đổi kích thước theo 3 chiều: Tuyến chính W1, Nhánh rẽ W2 và Chiều cao thành H.\n\n---\n\n## 1. THIẾT LẬP HỆ TRỤC TỌA ĐỘ GỐC (ORIGIN 0,0,0) & HỆ THAM SỐ CHÍNH (FAMILY PARAMETERS):\n- **Gốc tọa độ `(0, 0, 0)`:** Đặt tại **GIAO ĐIỂM GIỮA TRỤC TIM TUYẾN CHÍNH (Trục X) VÀ TRỤC TIM NHÁNH RẼ (Trục Y) TRÊN MẶT ĐÁY THANG (Z = 0)**.\n- **Tạo 3 tham số hình học điều khiển chính (Type hoặc Instance Parameters):**\n  1. `Ladder_Width_1` (W1 - Bề rộng lọt lòng tuyến chính): Mặc định `400.0 mm`.\n  2. `Ladder_Width_2` (W2 - Bề rộng lọt lòng nhánh rẽ): Mặc định `300.0 mm`.\n  3. `Ladder_Height` (H - Chiều cao thành đứng): Mặc định `100.0 mm`.\n- **Tham số phụ trợ:**\n  + `Tangent_Length`: Đoạn dẫn thẳng tại các đầu kết nối = `120.0 mm`.\n  + `Sheet_Thickness`: Độ dày thép tấm cán nguội = `1.8 mm`.\n  + `Flange_Width`: Độ rộng mép chấn gờ C = `15.0 mm`.\n  + `Safety_Lip`: Mép mí an toàn gập xuống = `5.0 mm`.\n\n---\n\n## 2. DỰNG HỆ VÁCH THÀNH THANG CHẤN MÒI VUÔNG GÃY GÓC (SIDE RAILS):\nToàn bộ thành thang làm bằng thép tấm dày `1.8 mm`, có biên dạng chấn gập chữ C an toàn. Tuyệt đối KHÔNG dùng bán kính uốn cong tròn (Bend Radius = 0):\n1. **Thành lưng sau thẳng (Back Rail at `Y = +W1/2`):**\n   - Vách thép phẳng chạy dài suốt từ đầu vào sang đầu ra: Chiều dài `Length = Total_Length_X`, chiều cao đúng bằng tham số `H`.\n   - Mép trên gập vuông vào trong `15.0 mm` rồi bẻ mí an toàn cắm xuống `5.0 mm`. Mép đáy gập vuông vào trong `15.0 mm`.\n2. **2 Cụm thành vát góc phía trước (Front Mitered Rails):**\n   - Bố trí đối xứng qua trục Y. Mỗi bên là một tấm thành liên tục gồm 3 nhịp phẳng gãy góc chấn mòi sắc nét:\n     + Nhịp 1 (Cổ tuyến chính): Đoạn thẳng dài `Tangent_Length` song song trục X tại `Y = -W1/2`.\n     + Nhịp 2 (Gờ vát miter): Đường gập bẻ góc sắc nét nghiêng `45.0°` (hoặc góc tính theo công thức miter) thu dần về phía nhánh rẽ.\n     + Nhịp 3 (Cổ nhánh rẽ): Đường gập bẻ góc sắc nét trở về phương song song trục Y tại `X = ±W2/2`.\n   - Tại các điểm gập góc trên gờ chấn chữ C mép trên và mép dưới: Cắt trích khe hở chữ nhật (Relief Notches) kích thước `5.0 mm x 15.0 mm` xuyên qua cánh chữ C để đảm bảo đúng quy chuẩn công nghệ chấn gấp kim loại tấm Thịnh Phát.\n3. **Cụm lỗ đột liên kết bắt bát nối tại 3 cửa kết nối:**\n   - Tại 2 đầu tuyến chính và đầu nhánh rẽ: Đột sẵn các lỗ oval `9.0 mm x 20.0 mm` bắt bu lông cổ vuông M8.\n   - **Ràng buộc cao độ lỗ linh hoạt theo tham số H:**\n     + Hàng lỗ dưới: Đặt cố định tại cao độ `Z = +25.0 mm`.\n     + Hàng lỗ trên: Luôn cách mép đỉnh một khoảng cố định `Z = H - 25.0 mm` (khi H đổi từ 50 lên 150mm thì lỗ trên tự động nâng cao theo).\n\n---\n\n## 3. DỰNG HỆ BƯỚC THANG HÀN NGANG CÓ ĐỤC LỖ DÂY THÍT (RUNGS):\nCác thanh bước thang chấn rãnh chữ C úp kích thước `35.0 mm (rộng) x 15.0 mm (cao) x 1.5 mm (dày)`, hàn cố định vào gờ đáy của thành thang tại `Z = 0`:\n1. **Bố trí các bậc thang thích ứng theo kích thước W1, W2:**\n   - **Bậc ngang nhánh rẽ (Branch Rung):** 1 Thanh hàn ngang theo trục X tại cổ nhánh rẽ `(Y = -Total_Branch_Y + 60mm)`, chiều dài thanh đúng bằng `W2`.\n   - **Các bậc dọc/xiên liên kết (Main Rungs):** Tối thiểu 3 thanh phân bố liên kết từ thành lưng sau sang hệ thành vát trước. Chiều dài mỗi thanh tự động co giãn theo khoảng cách giữa 2 thành tại vị trí đặt bậc.\n2. **Đục hàng lỗ cài dây thít (Rung Perforations):**\n   - Trên mặt mỗi bước thang, đục hàng lỗ rãnh oval kích thước `9.0 mm x 25.0 mm` cách đều nhau theo bước `35.0 mm` để luồn dây lạt nhựa cố định cáp điện.\n\n---\n\n## 4. THIẾT LẬP 3 CONNECTOR MEP TRỰC TIẾP TRÊN REFERENCE PLANE (KHÔNG DÙNG MIẾNG PAD SOLID):\n- **TUYỆT ĐỐI KHÔNG TẠO BẤT KỲ KHỐI PAD KIM LOẠI NÀO Ở CỬA KẾT NỐI.** Khoảng không lọt lòng giữa các thành thang phải hoàn toàn rỗng và thông suốt 100%.\n- Gán 3 Cable Tray Connector trực tiếp lên các Mặt phẳng tham chiếu (Reference Planes):\n1. **Connector 1 (Main In - Tuyến chính trái):**\n   - Đặt tại Reference Plane `X = -Total_Length_X / 2`, tâm tại `(X = -Total_Length_X / 2, Y = 0, Z = H / 2)`.\n   - Vector pháp tuyến hướng ra ngoài: `(-1, 0, 0)`.\n   - Ràng buộc tham số kích thước: **Width = Ladder_Width_1**, **Height = Ladder_Height**.\n2. **Connector 2 (Main Out - Tuyến chính phải):**\n   - Đặt tại Reference Plane `X = +Total_Length_X / 2`, tâm tại `(X = +Total_Length_X / 2, Y = 0, Z = H / 2)`.\n   - Vector pháp tuyến hướng ra ngoài: `(+1, 0, 0)`.\n   - Ràng buộc tham số kích thước: **Width = Ladder_Width_1**, **Height = Ladder_Height**.\n3. **Connector 3 (Branch - Nhánh rẽ):**\n   - Đặt tại Reference Plane `Y = -Total_Branch_Y`, tâm tại `(X = 0, Y = -Total_Branch_Y, Z = H / 2)`.\n   - Vector pháp tuyến hướng ra ngoài: `(0, -1, 0)`.\n   - Ràng buộc tham số kích thước: **Width = Ladder_Width_2**, **Height = Ladder_Height**.\n- Khung dây chữ nhật hiển thị của cả 3 Connector phải nằm lọt khít hoàn toàn vào biên dạng lọt lòng của thang, tự động co giãn khi thay đổi `W1, W2, H`.\n\n---\n\n## 5. BẢNG MÀU VẬT LIỆU CHẾ TẠO CHUẨN THỊNH PHÁT:\n1. `ThinhPhat_PowderCoated_RAL7035`: Thép tấm cán nguội sơn tĩnh điện màu Ghi Sáng (RAL 7035) hạt mịn mờ -> `RGB(215, 218, 222)`.\n2. `Sheet_Metal_Edges`: Đường mép chấn mí kim loại sắc nét ánh xám sáng -> `RGB(195, 200, 205)`.",
+      "id": "78359f71-d165-4864-90d0-25833434f00e"
+    },
+    {
+      "role": "agent",
+      "text": "Đã tạo Thinh Phat Cable Ladder Mitered Tee.\n40 chi tiết · 29 tham số · LOD 400 · 940 × 720 × 100 mm",
+      "notes": [
+        "Đã dựng đúng mức LOD 400 - chi tiết chế tạo/lắp ráp: 40 part gồm 28 tấm thành chấn chữ C (web + gờ trên + mí an toàn + gờ đáy), 12 thanh bậc thang chữ C úp có đục lỗ luồn dây thít, 12 lỗ oval bắt bu lông cổ vuông M8 và 8 rãnh trích góc 5x15 mm tại các điểm gập miter.",
+        "Đã sửa lỗi 4 rãnh trích gờ chấn tại cổ nhánh rẽ (Front Left/Right Top/Bottom Flange C): trước đây tâm rãnh đặt đúng mép Y = -2xMiter Leg nên khối cắt chỉ chạm mặt ngoài tấm, không giao với thân gờ. Nay tâm rãnh dời vào phía trong tấm một đoạn bằng Relief Notch Width / 2 (Y = -(2 * [Miter Leg]) - [Relief Notch Width] / 2), rãnh ăn sâu 5 mm qua chiều dài Tangent Length nên phép trừ khối hợp lệ và tự co giãn theo W1, W2, H.",
+        "Gốc tọa độ (0,0,0) đặt tại giao điểm tim tuyến chính (trục X) và tim nhánh rẽ (trục Y) trên mặt đáy thang; mặt vận hành và nhánh rẽ hướng về -Y.",
+        "Quy luật tham số: Total Length X = 2xTangent Length + Ladder Width 2 + 2xMiter Leg; Total Branch Y = Tangent Length + 2xMiter Leg; Miter Leg = W1/2 nên khi đổi Ladder Width 1 toàn bộ chiều dài tuyến chính, chiều dài nhánh, vị trí 3 nhịp thành vát và 3 connector tự động cập nhật.",
+        "Đổi Ladder Width 2 kéo theo Clear Width 2, chiều dài bậc nhánh và chiều rộng khung connector Branch; đổi Ladder Height kéo theo chiều cao toàn bộ web thành, vị trí hàng lỗ trên (Z = H - 25 mm), chiều cao connector và gờ mí an toàn.",
+        "Category yêu cầu là Cable Tray Fitting nhưng danh mục hệ thống không có, đã dùng Electrical Equipment để giữ nguyên hình học và connector kiểu CableTray; khi build có thể map sang Cable Tray Fitting của Revit.",
+        "3 connector đặt trên Reference Plane với host = reference-plane, không có pad kim loại, lòng thang rỗng 100%; khung connector ăn theo Ladder Width 1 / Ladder Width 2 / Ladder Height.",
+        "Giả thiết cần xác nhận: bước lỗ luồn dây thít 35 mm và mỗi bậc có 5 lỗ oval 9x25 mm (bậc nhánh dài 296,4 mm có thể lên 7 lỗ); khoảng cách mép lỗ bulông tới mặt cắt = 30 mm; bậc thang đặt trên mặt gờ đáy (Z = 1,8 mm) để tránh trùng mặt với gờ chấn.",
+        "Bán kính uốn = 0, toàn bộ góc gập là gập sắc cạnh; các mối nối miter dùng box xoay 45 độ nên khớp nối có sai số dưới 1 mm, chấp nhận được cho mô hình lắp ráp."
+      ],
+      "meta": "3 min 41 s · 2 lượt",
+      "issues": [
+        {
+          "severity": "warning",
+          "path": "parts[5].solid.rotationZ",
+          "message": "A box rotated off the 90° axes builds, but Revit cannot lock its faces to the reference planes; use Rebuild from spec after changing parameters."
+        },
+        {
+          "severity": "warning",
+          "path": "parts[8].solid.rotationZ",
+          "message": "A box rotated off the 90° axes builds, but Revit cannot lock its faces to the reference planes; use Rebuild from spec after changing parameters."
+        },
+        {
+          "severity": "warning",
+          "path": "parts[11].solid.rotationZ",
+          "message": "A box rotated off the 90° axes builds, but Revit cannot lock its faces to the reference planes; use Rebuild from spec after changing parameters."
+        },
+        {
+          "severity": "warning",
+          "path": "parts[14].solid.rotationZ",
+          "message": "A box rotated off the 90° axes builds, but Revit cannot lock its faces to the reference planes; use Rebuild from spec after changing parameters."
+        },
+        {
+          "severity": "warning",
+          "path": "parts[17].solid.rotationZ",
+          "message": "A box rotated off the 90° axes builds, but Revit cannot lock its faces to the reference planes; use Rebuild from spec after changing parameters."
+        },
+        {
+          "severity": "warning",
+          "path": "parts[20].solid.rotationZ",
+          "message": "A box rotated off the 90° axes builds, but Revit cannot lock its faces to the reference planes; use Rebuild from spec after changing parameters."
+        },
+        {
+          "severity": "warning",
+          "path": "parts[23].solid.rotationZ",
+          "message": "A box rotated off the 90° axes builds, but Revit cannot lock its faces to the reference planes; use Rebuild from spec after changing parameters."
+        },
+        {
+          "severity": "warning",
+          "path": "parts[26].solid.rotationZ",
+          "message": "A box rotated off the 90° axes builds, but Revit cannot lock its faces to the reference planes; use Rebuild from spec after changing parameters."
+        }
+      ],
+      "id": "3989f9ef-af75-4367-aa6e-f9f0d87cd19a"
+    },
+    {
+      "role": "user",
+      "text": "Mô hình Tê thang cáp (Parametric Mitered Tee) đang bị lỗi nghiêm trọng về liên kết bậc thang và hở vách. Hãy giữ nguyên hệ tham số W1, W2, H và sửa dứt điểm các lỗi hình học sau:\n\n## 1. KÉO DÀI 3 BƯỚC THANG (RUNGS) HÀN KÍN VÀO THÀNH THANG VÁT:\n- XÓA BỎ tình trạng 3 thanh bước thang dọc bị cụt đầu lơ lửng giữa không trung.\n- Kéo dài chiều dài của từng bước thang đâm xuyên qua vùng giao nhau và cắt vát miter để mép đầu thanh tiếp xúc kín khít 100% với mặt trong của thành thang:\n  + Bậc dọc bên trái: Nối liền từ thành lưng sau sang vách nghiêng 45° bên trái.\n  + Bậc dọc ở giữa: Kéo dài nối từ thành lưng sau đâm thẳng vào bậc ngang của nhánh rẽ (hoặc vách trước).\n  + Bậc dọc bên phải: Nối liền từ thành lưng sau sang vách nghiêng 45° bên phải.\n  + Đảm bảo hai đầu mỗi bước thang đều được liên kết kín, không để hở bất kỳ khoảng trống nào.\n\n## 2. HÀN KÍN KHỚP GIAO NHAU TẠI CỔ NHÁNH RẼ (W2):\n- XÓA BỎ khe hở đứt đoạn giữa vách nghiêng 45° và đoạn thành thẳng của nhánh rẽ.\n- Nối liền 2 đoạn thành thành một khối đa giác chấn gập liên tục (hoặc hàn kín mép tiếp giáp góc miter), đảm bảo thành thang chạy khép kín từ mép tuyến chính qua vách nghiêng vào tận mép nhánh rẽ.\n\n## 3. BỔ SUNG THÊM 1 BƯỚC THANG NGANG Ở NHÁNH RẼ:\n- Tại đoạn cổ nhánh rẽ W2, bố trí đúng 2 bước thang ngang song song cách nhau 150mm:\n  + Bậc 1: Nằm ở vị trí chuyển tiếp giữa vùng vát miter và cổ nhánh rẽ.\n  + Bậc 2: Nằm sát cửa kết nối nhánh rẽ (cách mép ngoài 60 - 75mm).\n  + Cả 2 bậc đều có chiều dài đúng bằng W2 và đục hàng lỗ oval 9x25mm định vị dây thít cáp.",
+      "id": "06e11b55-7edd-4a97-bfe5-ad33bee500e5"
+    },
+    {
+      "role": "agent",
+      "text": "Đã cập nhật Thinh Phat Cable Ladder Mitered Tee.\n31 chi tiết · 34 tham số · LOD 400 · 940 × 840 × 100 mm",
+      "notes": [
+        "Đã dựng đúng mức LOD 400 - chi tiết chế tạo/lắp ráp: 31 part gồm 12 tấm thành chấn chữ C liên tục (web + gờ trên + mí an toàn + gờ đáy), 3 bậc dọc và 2 bậc ngang cổ nhánh, mỗi bậc có web đục lỗ oval 9x25 mm và 2 gờ mí chấn.",
+        "Sửa lỗi boolean trên tấm mỏng: mỗi thành trước được tách thành 3 chi tiết — đoạn thẳng phía tuyến chính (box dày Sheet Thickness, mang 2 lỗ bulông khoan xuyên chiều dày tấm), đoạn vát miter 45 độ (prism thuần, không cắt) và đoạn thẳng cổ nhánh (box dày Sheet Thickness, mang 2 lỗ bulông). Trước đây toàn bộ thành là một prism đứng và 4 lỗ bulông chỉ khoan 9 mm theo phương Z nên không xuyên hết chiều dày prism, Revit từ chối phép trừ và bỏ lỗ; nay lỗ bulông nằm trên box nên boolean chạy đúng, phần vát vẫn là một prism liền mạch nên không phát sinh khe hở.",
+        "Ba chi tiết thành trước vẫn tiếp giáp tuyệt đối tại hai mặt cắt miter (x = ±(W2/2 + Miter Leg) và y = -(W1/2 + Miter Leg)) nên thành thang vẫn khép kín từ mép tuyến chính qua vách nghiêng vào tận mép nhánh rẽ, đúng yêu cầu hàn kín khớp giao nhau.",
+        "Bậc dọc trái/phải vẫn dùng web dạng prism có đầu cắt vát 45 độ theo đúng đường chéo trong (x + y = ±Miter Inner Sum) nên mép bậc áp kín 100% vào mặt trong vách nghiêng; bậc dọc giữa kéo dài từ thành lưng sau tới tận bậc ngang thứ nhất của nhánh rẽ, không còn thanh cụt lơ lửng.",
+        "Cổ nhánh rẽ W2 có đúng 2 bậc ngang: bậc 1 tại y = Branch Rung 1 Y = -420 mm (ngay sau vùng vát miter), bậc 2 tại y = Branch Rung 2 Y = -570 mm (cách mặt cắt nhánh 70 mm, nằm trong dải 60-75 mm), hai bậc cách nhau đúng Branch Rung Spacing = 150 mm; chiều dài mỗi bậc bằng Clear Width 2 nên hai đầu tiếp xúc kín vào mặt trong 2 vách nhánh.",
+        "Quy luật tham số giữ nguyên: Miter Leg = W1/2; Total Length X = 2 x Tangent Length + W2 + 2 x Miter Leg; Total Branch Y = Branch Throat Length + 2 x Miter Leg; Miter Inner Sum = W1/2 + W2/2 + Miter Leg - Sheet Thickness x sqrt(2). Thêm tham số dẫn xuất Branch Leg Length = Total Branch Y - (W1/2 + Miter Leg) để chiều dài và tâm đoạn thành cổ nhánh tự co giãn theo W1, W2, Branch Throat Length.",
+        "Đổi Ladder Height kéo theo chiều cao toàn bộ web thành, vị trí 2 hàng lỗ bulông trên mỗi đầu (Z = H - 25 mm) và chiều cao 3 connector; đổi Sheet Thickness kéo theo Clear Width 1, Clear Width 2, Flange Inset, Lip Inset, Miter Inner Sum, Rung Z Base, chiều dày mọi tấm và cả 12 lỗ bulông.",
+        "3 connector đặt trên Reference Plane với host = reference-plane, lòng thang rỗng 100%, không có tấm chặn; khung connector ăn theo Ladder Width 1 / Ladder Width 2 / Ladder Height.",
+        "Gốc tọa độ (0,0,0) tại giao điểm tim tuyến chính (trục X) và tim nhánh rẽ (trục Y) trên mặt đáy thang; mặt vận hành và nhánh rẽ hướng về -Y.",
+        "Giả thiết cần xác nhận: bước lỗ luồn dây thít 35 mm (mỗi bậc dọc 3 lỗ, mỗi bậc ngang 5 lỗ oval 9x25 mm); mép lỗ bulông cách mặt cắt 30 mm; bán kính uốn bằng 0 (gập sắc cạnh).",
+        "Category yêu cầu là Cable Tray Fitting nhưng danh mục hệ thống không có, đã dùng Electrical Equipment để giữ nguyên hình học và connector kiểu CableTray; khi build có thể map sang Cable Tray Fitting của Revit."
+      ],
+      "meta": "12 min 26 s · 3 lượt",
+      "issues": [],
+      "id": "d431f7d7-e4c6-484b-bfcb-9aabbdcaed53"
+    },
+    {
+      "role": "agent",
+      "text": "Đã xuất Thinh Phat Cable Ladder Mitered Tee.rfa (Revit 2024).\n34 tham số dẫn động · 56 ràng buộc hình học · 38 reference plane · 34 form · QA 1 cảnh báo",
+      "notes": [
+        "Reference dimensions were rolled back (RolledBack): Parameter \"Branch Rung 1 Y\" cannot be changed because it is defined by formula \"-Total Branch Y + Branch Rung Offset + Branch Rung Spacing\" [14d9912f-17ce-4385-80fa-0d8a24c78511] Parameter \"Branch Rung 2 Y\" cannot be changed because it is defined by formula \"-Total Branch Y + Branch Rung Offset\" [14d9912f-17ce-4385-80fa-0d8a24c78511]",
+        "Skipped overconstraining face dimension \"Branch Leg Length\"",
+        "Skipped overconstraining face dimension \"Rung Height\"",
+        "Skipped overconstraining face dimension \"Rung Z Base\"",
+        "Skipped overconstraining face dimension \"Rung Hole Pitch\"",
+        "Skipped overconstraining face dimension \"Bolt Hole Width\"",
+        "Skipped overconstraining face dimension \"Bolt Hole Low Z\"",
+        "Skipped overconstraining face dimension \"Bolt Hole High Offset\"",
+        "Skipped overconstraining face dimension \"Bolt Hole High Offset\"",
+        "Flex check: Ladder Width 1: MOVE; Ladder Width 2: MOVE; Ladder Height: still; Sheet Thickness: MOVE; Flange Width: MOVE; Safety Lip: MOVE; Tangent Length: MOVE; Branch Throat Length: MOVE; Rung Width: MOVE; Rung Height: MOVE; Rung Thickness: MOVE; Rung Hole Pitch: MOVE; Rung Hole Length: still; Rung Hole Width: still; Branch Rung Offset: MOVE; Branch Rung Spacing: still; Bolt Hole Length: still; Bolt Hole Width: still; Bolt Hole Low Z: still; Bolt Hole High Offset: still; Bolt Hole Edge Offset: still; ",
+        "Connector \"main-in\" host is offset 49 mm from the spec origin",
+        "Connector \"main-out\" host is offset 399.1 mm from the spec origin",
+        "Connector \"branch\" host is offset 1.3 mm from the spec origin",
+        "QA: 8 part đã thành FreeFormElement — đổi tham số sẽ cần Rebuild from spec."
+      ],
+      "meta": "C:\\OneDrive - Vilai Viet Construction JSC\\Documents\\FamilyAgent\\out\\thinh-phat-cable-ladder-mitered-tee.rfa",
+      "id": "068e149c-4957-42ba-8a5d-f119c201341d"
+    },
+    {
+      "role": "user",
+      "text": "Vách miter đã liền khối rất tốt. Hãy điều chỉnh lại bố cục hệ bậc thang (Rungs) cho đúng chuẩn chế tạo cơ khí thang cáp Thịnh Phát ICT:\n\n## 1. XÓA BỎ BẬC DỌC Ở GIỮA ĐÂM CHỮ T:\n- XÓA BỎ hoàn toàn thanh bậc dọc ở chính giữa đang đâm vuông góc vào thân bậc ngang của nhánh rẽ.\n- Tâm vùng ngã 3 để khoảng trống thông thoáng tự nhiên cho cáp điện cỡ lớn uốn bán kính cong khi rẽ nhánh.\n\n## 2. BỐ TRÍ LẠI HỆ BẬC THANG CHUẨN (TỔNG CỘNG 6 BẬC):\n- **2 Bậc ở nhánh rẽ W2:** Giữ nguyên 2 bậc ngang song song hiện tại (chiều dài = W2).\n- **2 Bậc chuyển tiếp miter:** 2 Thanh đặt chéo nối từ 2 điểm gập góc miter phía trước chạy xéo lên liên kết vào thành lưng sau.\n- **2 Bậc ở 2 đầu tuyến chính W1 (BỔ SUNG MỚI):**\n  + Đầu bên trái: Bố trí 1 bậc thang vuông góc nối từ thành sau sang thành trước (cách mép ngoài kết nối 60 - 75mm).\n  + Đầu bên phải: Bố trí 1 bậc thang vuông góc nối từ thành sau sang thành trước (cách mép ngoài kết nối 60 - 75mm).\n\n## 3. RẢI ĐỀU HÀNG LỖ OVAL CÀI DÂY THÍT CÁP (RUNGS PERFORATIONS):\n- Rải đều hàng lỗ rãnh oval 9.0 x 25.0mm cách đều nhau bước 30 - 35mm chạy dọc suốt chiều dài của tất cả các bậc thang (không để co cụm 3 lỗ như hiện tại).",
+      "id": "b5fc41f8-ea22-4342-8a4b-6365c8da652b"
+    },
+    {
+      "role": "agent",
+      "text": "Agent run timed out after 600s",
+      "tone": "error",
+      "id": "7db595b7-91b5-4ee2-a3aa-fbedaad96fe1"
+    },
+    {
+      "role": "agent",
+      "text": "Server đóng kết nối mà chưa trả về spec — có thể API vừa restart. Bấm gửi lại yêu cầu.",
+      "tone": "error",
+      "id": "0027243b-1df0-4a7e-91d2-0d41f948eb19"
+    }
+  ],
+  "savedAt": 1794392365332
+}

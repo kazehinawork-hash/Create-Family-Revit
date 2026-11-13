@@ -17,3 +17,7 @@ blob-report/
 # Local studio output: generated families are the user's data, never committed.
 saved-models/
 .jobs/
+
+# Rule packs learned/edited while the studio runs belong to this machine.
+server/rules/overrides/
+server/rules/learned/

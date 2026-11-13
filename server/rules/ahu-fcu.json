@@ -1,0 +1,174 @@
+{
+  "productType": "ahu-fcu",
+  "aliases": [
+    "ahu",
+    "fcu",
+    "dàn lạnh",
+    "air handling unit",
+    "fan coil",
+    "hộp gió",
+    "bồn xử lý không khí"
+  ],
+  "category": "Mechanical Equipment",
+  "matchers": {
+    "keywords": [
+      "ahu",
+      "fcu",
+      "dàn lạnh",
+      "fan coil",
+      "air handling",
+      "hộp gió",
+      "xử lý không khí"
+    ],
+    "codePatterns": [
+      "^AHU-",
+      "^FCU-"
+    ]
+  },
+  "parameters": [
+    {
+      "name": "Casing Width",
+      "group": "Dimensions",
+      "unit": "mm",
+      "default": 1200,
+      "range": [
+        400,
+        4000
+      ],
+      "fromEvidence": [
+        "Width"
+      ],
+      "remember": false
+    },
+    {
+      "name": "Casing Height",
+      "group": "Dimensions",
+      "unit": "mm",
+      "default": 800,
+      "range": [
+        300,
+        2500
+      ],
+      "fromEvidence": [
+        "Height"
+      ],
+      "remember": false
+    },
+    {
+      "name": "Casing Depth",
+      "group": "Dimensions",
+      "unit": "mm",
+      "default": 900,
+      "range": [
+        300,
+        3000
+      ],
+      "fromEvidence": [
+        "Depth"
+      ],
+      "remember": false
+    },
+    {
+      "name": "Panel Thickness",
+      "group": "Dimensions",
+      "unit": "mm",
+      "default": 25,
+      "range": [
+        20,
+        50
+      ],
+      "fromEvidence": [],
+      "remember": true
+    },
+    {
+      "name": "Airflow",
+      "group": "Data",
+      "unit": "m3/h",
+      "default": 4000,
+      "range": [
+        200,
+        40000
+      ],
+      "fromEvidence": [
+        "Flow"
+      ],
+      "remember": false
+    },
+    {
+      "name": "Coil Length",
+      "group": "Dimensions",
+      "unit": "mm",
+      "formula": "[Casing Width] - 2 * [Panel Thickness]",
+      "fromEvidence": [],
+      "remember": false
+    },
+    {
+      "name": "Filter Width",
+      "group": "Dimensions",
+      "unit": "mm",
+      "formula": "[Casing Width] * 0.8",
+      "fromEvidence": [],
+      "remember": false
+    },
+    {
+      "name": "Fan Diameter",
+      "group": "Dimensions",
+      "unit": "mm",
+      "formula": "[Casing Height] * 0.55",
+      "fromEvidence": [],
+      "remember": false
+    }
+  ],
+  "components": [
+    {
+      "kind": "casing",
+      "required": true,
+      "countFormula": "1"
+    },
+    {
+      "kind": "coil",
+      "required": true,
+      "countFormula": "1"
+    },
+    {
+      "kind": "filter",
+      "required": true,
+      "countFormula": "1"
+    },
+    {
+      "kind": "fan",
+      "required": true,
+      "countFormula": "1"
+    },
+    {
+      "kind": "access-door",
+      "required": true,
+      "countFormula": "1"
+    }
+  ],
+  "connectors": [
+    {
+      "domain": "duct",
+      "sizeFrom": "Casing Width",
+      "placement": "supply and return"
+    }
+  ],
+  "materials": [
+    {
+      "name": "Galvanized Casing",
+      "color": "#b9bec2",
+      "finish": "galvanized"
+    },
+    {
+      "name": "Copper Coil",
+      "color": "#b87333",
+      "finish": "copper"
+    }
+  ],
+  "checks": [
+    {
+      "expr": "Panel Thickness >= 20",
+      "message": "Vách panel phải ≥ 20 mm"
+    }
+  ]
+}

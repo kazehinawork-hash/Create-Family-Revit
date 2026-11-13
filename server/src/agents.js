@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { config } from "./config.js";
 import { LlmError, chatJson as openAiChatJson, dispatchCustomApi, parseModelJson } from "./llm.js";
+import { runWithModelFallback } from "./retry.js";
 
 /**
  * Antigravity CLI (agy) always writes a conversation entry, even in --print mode;
@@ -75,6 +76,24 @@ function extractResult(stdout) {
     }
   }
   return null;
+}
+
+/** A result frame whose answer was cut off by the CLI's turn or output-token limit. */
+export function isTruncatedFrame(frame, stderr = "") {
+  const stop = String(frame?.stopReason ?? frame?.stop_reason ?? "").toLowerCase();
+  if (/max_turns|max_tokens|length|output_limit/.test(stop)) return true;
+  return /reached maximum conversation turns|max(imum)? output tokens/i.test(String(stderr ?? ""));
+}
+
+export function outputLimitError(outputTokens) {
+  const size = Number.isFinite(Number(outputTokens)) && outputTokens
+    ? `${Number(outputTokens).toLocaleString("en-US")} token`
+    : "giới hạn token";
+  const error = new LlmError(
+    `Model viết quá dài (${size}) mà chưa xong spec — yêu cầu cần được chia nhỏ (OUTPUT_LIMIT).`,
+  );
+  error.code = "OUTPUT_LIMIT";
+  return error;
 }
 
 function describeEvent(event) {
@@ -162,6 +181,41 @@ function killTree(child) {
   }
 
   try { child.kill("SIGTERM"); } catch { /* ignore */ }
+
+  // A wedged CLI can ignore SIGTERM; without a hard kill the run would hold the
+  // model slot (and the studio connection) until the step timeout expires.
+  const hardKill = setTimeout(() => {
+    if (child.exitCode === null) {
+      try { child.kill("SIGKILL"); } catch { /* already gone */ }
+    }
+  }, 5000);
+  hardKill.unref?.();
+}
+
+// The model a CLI run actually used. `cmdc` silently falls back to its default
+// model when the requested id is unknown, so the reported model can differ from
+// the one the user picked.
+function extractUsedModel(stdout) {
+  if (!stdout) return null;
+
+  let model = null;
+  for (const line of stdout.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("{") || !trimmed.includes("model")) continue;
+    try {
+      const frame = JSON.parse(trimmed);
+      const candidate = frame?.event?.model ?? frame?.model;
+      if (typeof candidate === "string" && candidate.trim()) model = candidate.trim();
+    } catch {
+      /* partial line */
+    }
+  }
+  return model;
+}
+
+function attachModel(error, model) {
+  if (error && model && !error.model) error.model = model;
+  return error;
 }
 
 /**
@@ -201,6 +255,7 @@ function runCliProcess({
     let stdout = "";
     let stderr = "";
     let buffer = "";
+    let lastModel = null;
     let stdoutTruncated = false;
     let stderrTruncated = false;
     let lineTruncated = false;
@@ -219,7 +274,7 @@ function runCliProcess({
     const fail = (message) => {
       finish(() => {
         killTree(child);
-        reject(new LlmError(message));
+        reject(attachModel(new LlmError(message), lastModel));
       });
     };
 
@@ -246,25 +301,27 @@ function runCliProcess({
       if (stdout.length + text.length > MAX_STDOUT_CHARS) stdoutTruncated = true;
       stdout = keepTail(stdout, text, MAX_STDOUT_CHARS);
 
-      if (onStdoutLine) {
-        if (buffer.length + text.length > MAX_LINE_CHARS) lineTruncated = true;
-        buffer = keepTail(buffer, text, MAX_LINE_CHARS);
-        const lines = buffer.split(/\r?\n/);
-        buffer = lines.pop() ?? "";
+      if (buffer.length + text.length > MAX_LINE_CHARS) lineTruncated = true;
+      buffer = keepTail(buffer, text, MAX_LINE_CHARS);
+      const lines = buffer.split(/\r?\n/);
+      buffer = lines.pop() ?? "";
 
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed.startsWith("{")) continue;
-          try {
-            onStdoutLine(JSON.parse(trimmed));
-          } catch {
-            /* partial or non JSON line */
-          }
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("{")) continue;
+        let frame;
+        try {
+          frame = JSON.parse(trimmed);
+        } catch {
+          continue;
         }
-        return;
+
+        const model = frame?.event?.model ?? frame?.model;
+        if (typeof model === "string" && model.trim()) lastModel = model.trim();
+        onStdoutLine?.(frame);
       }
 
-      if (onProgress) onProgress("Writing the spec");
+      if (!onStdoutLine && onProgress) onProgress("Writing the spec");
     });
 
     child.stderr.on("data", (chunk) => {
@@ -300,7 +357,7 @@ function runCliProcess({
         );
       }
       if (stderr.trim()) console.log(`[agent${tag}] stderr: ${stderr.trim().slice(-600)}`);
-      finish(() => resolve({ code: code ?? 0, stdout, stderr }));
+      finish(() => resolve({ code: code ?? 0, stdout, stderr, model: lastModel }));
     });
 
     try {
@@ -517,9 +574,13 @@ async function commandCodeJson(messages, options = {}) {
       options.attachments && options.attachments.length > 0 ? 3 : 1,
     );
     const frame = extractResult(result.stdout);
+    const usedModel = result.model || extractUsedModel(result.stdout);
 
     if (frame && frame.subtype === "error") {
-      throw new LlmError(frame.error || result.stderr.trim() || "Command Code returned an error");
+      throw attachModel(
+        new LlmError(frame.error || result.stderr.trim() || "Command Code returned an error"),
+        usedModel,
+      );
     }
 
     let text = "";
@@ -527,10 +588,21 @@ async function commandCodeJson(messages, options = {}) {
 
     if (frame) {
       if (frame.subtype === "error" || frame.status === "ERROR") {
-        throw new LlmError(frame.error || result.stderr.trim() || "Agent returned an error");
+        throw attachModel(
+          new LlmError(frame.error || result.stderr.trim() || "Agent returned an error"),
+          usedModel,
+        );
       }
       text = (frame.finalText || frame.response || "").trim();
       usage = frame.usage ?? null;
+
+      // The CLI stopped before the answer was finished (output-token cap or turn
+      // limit). Its stdout is megabytes of stream frames, so never fish a "{...}"
+      // out of it: report the real cause so the designer can split the brief.
+      if (!text && isTruncatedFrame(frame, result.stderr)) {
+        const tokens = frame.usage?.outputTokens ?? frame.usage?.output_tokens ?? null;
+        throw attachModel(outputLimitError(tokens), usedModel);
+      }
     } else {
       try {
         const agyJson = JSON.parse(result.stdout.trim());
@@ -557,11 +629,11 @@ async function commandCodeJson(messages, options = {}) {
       const summary = (result.stderr.trim() || result.stdout.trim() || "no output from agent").slice(
         -400,
       );
-      throw new LlmError(`Agent completed without returning a spec: ${summary}`);
+      throw attachModel(new LlmError(`Agent completed without returning a spec: ${summary}`), usedModel);
     }
 
     const json = parseModelJson(text);
-    return { text, json, usage };
+    return { text, json, usage, model: usedModel };
   } finally {
     if (workspace.dir) {
       try { fs.rmSync(workspace.dir, { recursive: true, force: true }); } catch { /* ignore */ }
@@ -571,31 +643,103 @@ async function commandCodeJson(messages, options = {}) {
 
 let cachedModels = null;
 let lastFetchModels = 0;
+let modelsInFlight = null;
+
+/**
+ * Test hook: a hanging CLI or a missing binary must never stall /api/health.
+ * Tests swap the spawner instead of depending on OS scripts.
+ */
+let spawnOverride = null;
+export function __setSpawnOverrideForTests(fn) {
+  spawnOverride = fn;
+}
+export function __resetAgentCachesForTests() {
+  cachedModels = null;
+  lastFetchModels = 0;
+  backendsCache = { at: 0, value: null };
+  modelsInFlight = null;
+  backendsInFlight = null;
+  spawnOverride = null;
+}
+
+// `cmdc --list-models` takes ~16 s on a cold Node start here; a 15 s timeout made
+// the model list silently empty (the studio dropdown lost every CLI model).
+const listTimeoutMs = () => Number(process.env.AGENT_LIST_TIMEOUT || 45000);
+const binTimeoutMs = () => Number(process.env.AGENT_BIN_TIMEOUT || 5000);
+const modelsTtlMs = () => Number(process.env.AGENT_MODELS_TTL_MS || 60000);
+const BACKENDS_TTL_MS = 30000;
+
+function spawnProcess(executable, args, options = {}) {
+  return spawnOverride ? spawnOverride(executable, args, options) : spawnCli(executable, args, options);
+}
+
+function spawnBinary(command, args, options = {}) {
+  return spawnOverride ? spawnOverride(command, args, options) : spawn(command, args, options);
+}
 
 function checkBinaryExists(bin) {
   return new Promise((resolve) => {
-    const cmd = process.platform === "win32" ? "where.exe" : "which";
-    const child = spawn(cmd, [bin], { stdio: "ignore", windowsHide: true });
-    child.on("close", (code) => resolve(code === 0));
-    child.on("error", () => resolve(false));
+    let settled = false;
+    let timer = null;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      resolve(value);
+    };
+
+    let child;
+    try {
+      const cmd = process.platform === "win32" ? "where.exe" : "which";
+      child = spawnBinary(cmd, [bin], { stdio: "ignore", windowsHide: true });
+    } catch {
+      finish(false);
+      return;
+    }
+
+    timer = setTimeout(() => {
+      console.warn(`[agent] checking "${bin}" timed out after ${binTimeoutMs()}ms`);
+      try { child.kill(); } catch { /* already gone */ }
+      finish(false);
+    }, binTimeoutMs());
+
+    child.on("close", (code) => finish(code === 0));
+    child.on("error", () => finish(false));
   });
 }
 
 /**
  * `cmdc --list-models` prints grouped rows: "<group>" headings followed by
  * "<id>  <description>" lines. Turn that into dropdown entries.
+ * A wedged CLI is killed after the timeout and reported as "no models".
  */
-function listCommandModels(command) {
+export function listCommandModels(command) {
   return new Promise((resolve) => {
-    const child = spawnCli(command, ["--list-models"], { windowsHide: true });
+    let settled = false;
+    let timer = null;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      resolve(value);
+    };
+
+    let child;
+    try {
+      child = spawnProcess(command, ["--list-models"], { windowsHide: true });
+    } catch {
+      finish([]);
+      return;
+    }
+
     let stdout = "";
-    child.stdout.on("data", (chunk) => {
+    child.stdout?.on("data", (chunk) => {
       stdout = keepTail(stdout, chunk.toString(), MAX_LISTING_CHARS);
     });
-    child.on("error", () => resolve([]));
+    child.on("error", () => finish([]));
     child.on("close", (code) => {
       if (code !== 0 || !stdout) {
-        resolve([]);
+        finish([]);
         return;
       }
 
@@ -629,36 +773,41 @@ function listCommandModels(command) {
         models.unshift(entry);
       }
 
-      resolve(models);
+      finish(models);
     });
+
+    timer = setTimeout(() => {
+      console.warn(`[agent] "${command} --list-models" timed out after ${listTimeoutMs()}ms`);
+      try { child.kill(); } catch { /* already gone */ }
+      finish([]);
+    }, listTimeoutMs());
   });
 }
 
-export async function getCmdcModels() {
-  const now = Date.now();
-  if (cachedModels && now - lastFetchModels < 60000) {
-    return cachedModels;
-  }
+function listAgyModels() {
+  return new Promise((resolve) => {
+    let settled = false;
+    let timer = null;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      resolve(value);
+    };
 
-  const list = [];
-  const command = config.agent.command || "cmdc";
-  const [hasCommand, hasAgy] = await Promise.all([
-    checkBinaryExists(command),
-    checkBinaryExists("agy"),
-  ]);
+    let child;
+    try {
+      child = spawnProcess("agy", ["models"], { windowsHide: true });
+    } catch {
+      finish([]);
+      return;
+    }
 
-  // 1. Command Code models, only when the CLI is actually installed here.
-  if (hasCommand && command !== "agy") {
-    list.push(...(await listCommandModels(command)));
-  }
-
-  // 2. Fetch agy models
-  const agyModels = !hasAgy ? [] : await new Promise((resolve) => {
-    const child = spawnCli("agy", ["models"], { windowsHide: true });
     let stdout = "";
-    child.stdout.on("data", (chunk) => {
+    child.stdout?.on("data", (chunk) => {
       stdout = keepTail(stdout, chunk.toString(), MAX_LISTING_CHARS);
     });
+    child.on("error", () => finish([]));
     child.on("close", (code) => {
       const agyList = [];
       if (code === 0 && stdout) {
@@ -675,74 +824,152 @@ export async function getCmdcModels() {
           }
         }
       }
-      resolve(agyList);
+      finish(agyList);
     });
-    child.on("error", () => resolve([]));
-  });
-  list.push(...agyModels);
 
-  // 2. Check Codex CLI
-  const hasCodex = await checkBinaryExists(config.agent.codexBin || "codex");
-  if (hasCodex) {
-    list.push(
-      { id: "codex:default", category: "OpenAI Codex CLI", label: "[Codex] Default Model" },
-      { id: "codex:gpt-6-astra:low", category: "OpenAI Codex CLI", label: "[Codex] GPT-6 Astra (Low)" },
-      { id: "codex:gpt-6-astra:medium", category: "OpenAI Codex CLI", label: "[Codex] GPT-6 Astra (Medium)" },
-      { id: "codex:gpt-6-astra:high", category: "OpenAI Codex CLI", label: "[Codex] GPT-6 Astra (High)" },
-      { id: "codex:gpt-6.1-sol:low", category: "OpenAI Codex CLI", label: "[Codex] GPT-6.1 Sol (Low)" },
-      { id: "codex:gpt-6.1-sol:medium", category: "OpenAI Codex CLI", label: "[Codex] GPT-6.1 Sol (Medium)" },
-      { id: "codex:gpt-6.1-sol:high", category: "OpenAI Codex CLI", label: "[Codex] GPT-6.1 Sol (High)" },
-      { id: "codex:gpt-6-sol:low", category: "OpenAI Codex CLI", label: "[Codex] GPT-6 Sol (Low)" },
-      { id: "codex:gpt-6-sol:medium", category: "OpenAI Codex CLI", label: "[Codex] GPT-6 Sol (Medium)" },
-      { id: "codex:gpt-6-luna:low", category: "OpenAI Codex CLI", label: "[Codex] GPT-6 Luna (Low)" },
-      { id: "codex:gpt-6-luna:medium", category: "OpenAI Codex CLI", label: "[Codex] GPT-6 Luna (Medium)" },
-      { id: "codex:o4-mini:low", category: "OpenAI Codex CLI", label: "[Codex] o4-mini (Low)" },
-      { id: "codex:o4-mini:medium", category: "OpenAI Codex CLI", label: "[Codex] o4-mini (Medium)" },
-      { id: "codex:o4-mini:high", category: "OpenAI Codex CLI", label: "[Codex] o4-mini (High)" },
-      { id: "codex:gpt-5.6-sol:medium", category: "OpenAI Codex CLI", label: "[Codex] GPT-5.6 Sol (Medium)" },
-      { id: "codex:gpt-5.6-terra:medium", category: "OpenAI Codex CLI", label: "[Codex] GPT-5.6 Terra (Medium)" },
-    );
+    timer = setTimeout(() => {
+      console.warn(`[agent] "agy models" timed out after ${listTimeoutMs()}ms`);
+      try { child.kill(); } catch { /* already gone */ }
+      finish([]);
+    }, listTimeoutMs());
+  });
+}
+
+/**
+ * Stale-while-revalidate + in-flight dedupe: concurrent /api/health calls share
+ * one listing, and an expired cache is returned immediately while it refreshes.
+ */
+export async function getCmdcModels() {
+  const now = Date.now();
+  if (cachedModels && now - lastFetchModels < modelsTtlMs()) return cachedModels;
+
+  if (cachedModels) {
+    void refreshModels().catch(() => {});
+    return cachedModels;
   }
 
-  // 3. Check Claude CLI
-  const hasClaude = await checkBinaryExists(config.agent.claudeBin || "claude");
-  if (hasClaude) {
-    list.push(
-      { id: "claude:default", category: "Claude Code CLI", label: "[Claude] Default" },
-      { id: "claude:claude-3-7-sonnet", category: "Claude Code CLI", label: "[Claude] Claude 3.7 Sonnet" },
-    );
-  }
+  return refreshModels();
+}
 
-  // 4. Custom Direct API option
-  list.push({
-    id: "custom:api",
-    category: "Direct API",
-    label: "⚙️ Custom API... (Dán link / cấu hình URL)",
-  });
+function refreshModels() {
+  if (modelsInFlight) return modelsInFlight;
 
-  cachedModels = list;
-  lastFetchModels = now;
-  return list;
+  modelsInFlight = (async () => {
+    const list = [];
+    const command = config.agent.command || "cmdc";
+    const [hasCommand, hasAgy] = await Promise.all([
+      checkBinaryExists(command),
+      checkBinaryExists("agy"),
+    ]);
+
+    // 1. Command Code models, only when the CLI is actually installed here.
+    if (hasCommand && command !== "agy") {
+      list.push(...(await listCommandModels(command)));
+    }
+
+    // 2. Antigravity CLI models
+    if (hasAgy) {
+      list.push(...(await listAgyModels()));
+    }
+
+    // 3. Codex CLI
+    const hasCodex = await checkBinaryExists(config.agent.codexBin || "codex");
+    if (hasCodex) {
+      list.push(
+        { id: "codex:default", category: "OpenAI Codex CLI", label: "[Codex] Default Model" },
+        { id: "codex:gpt-6-astra:low", category: "OpenAI Codex CLI", label: "[Codex] GPT-6 Astra (Low)" },
+        { id: "codex:gpt-6-astra:medium", category: "OpenAI Codex CLI", label: "[Codex] GPT-6 Astra (Medium)" },
+        { id: "codex:gpt-6-astra:high", category: "OpenAI Codex CLI", label: "[Codex] GPT-6 Astra (High)" },
+        { id: "codex:gpt-6.1-sol:low", category: "OpenAI Codex CLI", label: "[Codex] GPT-6.1 Sol (Low)" },
+        { id: "codex:gpt-6.1-sol:medium", category: "OpenAI Codex CLI", label: "[Codex] GPT-6.1 Sol (Medium)" },
+        { id: "codex:gpt-6.1-sol:high", category: "OpenAI Codex CLI", label: "[Codex] GPT-6.1 Sol (High)" },
+        { id: "codex:gpt-6-sol:low", category: "OpenAI Codex CLI", label: "[Codex] GPT-6 Sol (Low)" },
+        { id: "codex:gpt-6-sol:medium", category: "OpenAI Codex CLI", label: "[Codex] GPT-6 Sol (Medium)" },
+        { id: "codex:gpt-6-luna:low", category: "OpenAI Codex CLI", label: "[Codex] GPT-6 Luna (Low)" },
+        { id: "codex:gpt-6-luna:medium", category: "OpenAI Codex CLI", label: "[Codex] GPT-6 Luna (Medium)" },
+        { id: "codex:o4-mini:low", category: "OpenAI Codex CLI", label: "[Codex] o4-mini (Low)" },
+        { id: "codex:o4-mini:medium", category: "OpenAI Codex CLI", label: "[Codex] o4-mini (Medium)" },
+        { id: "codex:o4-mini:high", category: "OpenAI Codex CLI", label: "[Codex] o4-mini (High)" },
+        { id: "codex:gpt-5.6-sol:medium", category: "OpenAI Codex CLI", label: "[Codex] GPT-5.6 Sol (Medium)" },
+        { id: "codex:gpt-5.6-terra:medium", category: "OpenAI Codex CLI", label: "[Codex] GPT-5.6 Terra (Medium)" },
+      );
+    }
+
+    // 4. Claude Code CLI
+    const hasClaude = await checkBinaryExists(config.agent.claudeBin || "claude");
+    if (hasClaude) {
+      list.push(
+        { id: "claude:default", category: "Claude Code CLI", label: "[Claude] Default" },
+        { id: "claude:claude-3-7-sonnet", category: "Claude Code CLI", label: "[Claude] Claude 3.7 Sonnet" },
+      );
+    }
+
+    // 5. Custom Direct API option
+    list.push({
+      id: "custom:api",
+      category: "Direct API",
+      label: "⚙️ Custom API... (Dán link / cấu hình URL)",
+    });
+
+    cachedModels = list;
+    lastFetchModels = Date.now();
+    return list;
+  })()
+    .catch((error) => {
+      console.warn("[agent] model listing failed:", error?.message);
+      return cachedModels ?? [];
+    })
+    .finally(() => {
+      modelsInFlight = null;
+    });
+
+  return modelsInFlight;
 }
 
 let backendsCache = { at: 0, value: null };
+let backendsInFlight = null;
 
 /** Which agent backends this machine can actually run right now. */
 export async function detectAgentBackends() {
-  if (backendsCache.value && Date.now() - backendsCache.at < 30000) {
+  if (backendsCache.value && Date.now() - backendsCache.at < BACKENDS_TTL_MS) {
     return backendsCache.value;
   }
 
-  const [commandcode, agy, codex, claude] = await Promise.all([
-    checkBinaryExists(config.agent.command || "cmdc"),
-    checkBinaryExists("agy"),
-    checkBinaryExists(config.agent.codexBin || "codex"),
-    checkBinaryExists(config.agent.claudeBin || "claude"),
-  ]);
+  if (backendsCache.value) {
+    void refreshBackends().catch(() => {});
+    return backendsCache.value;
+  }
 
-  const value = { commandcode, agy, codex, claude, openai: Boolean(config.llm.apiKey) };
-  backendsCache = { at: Date.now(), value };
-  return value;
+  return refreshBackends();
+}
+
+function refreshBackends() {
+  if (backendsInFlight) return backendsInFlight;
+
+  backendsInFlight = (async () => {
+    const [commandcode, agy, codex, claude] = await Promise.all([
+      checkBinaryExists(config.agent.command || "cmdc"),
+      checkBinaryExists("agy"),
+      checkBinaryExists(config.agent.codexBin || "codex"),
+      checkBinaryExists(config.agent.claudeBin || "claude"),
+    ]);
+
+    const value = { commandcode, agy, codex, claude, openai: Boolean(config.llm.apiKey) };
+    backendsCache = { at: Date.now(), value };
+    return value;
+  })()
+    .catch(() => ({
+      commandcode: false,
+      agy: false,
+      codex: false,
+      claude: false,
+      openai: Boolean(config.llm.apiKey),
+    }))
+    .finally(() => {
+      backendsInFlight = null;
+    });
+
+  return backendsInFlight;
 }
 
 export function agentStatus() {
@@ -765,8 +992,61 @@ export function agentStatus() {
   };
 }
 
-export async function generateJson(messages, options = {}) {
+/**
+ * Fallback chain for a failed primary model. Only models this machine can actually
+ * run are offered: an installed CLI, or the direct API with a valid key.
+ */
+export async function resolveFallbackModels(primary, { backends, provider } = {}) {
+  if (config.agent.fallbackModels.length > 0) {
+    return config.agent.fallbackModels.filter((model) => model && model !== primary);
+  }
+
+  const detected = backends ?? (await detectAgentBackends());
+  const chosen = (primary || config.agent.model || "").trim();
+
+  if (chosen === "custom:api") return [];
+  if (chosen.startsWith("codex:")) return detected.codex ? ["codex:default"] : [];
+  if (chosen.startsWith("claude:")) return detected.claude ? ["claude:default"] : [];
+  if ((provider ?? config.agent.provider) === "openai") return [];
+
+  const models = detected.commandcode ? await getCmdcModels() : [];
+  const ids = models
+    .map((entry) => entry.id)
+    .filter(
+      (id) =>
+        id &&
+        id !== chosen &&
+        !id.startsWith("codex:") &&
+        !id.startsWith("claude:") &&
+        id !== "custom:api",
+    );
+
+  // The CLI silently runs its own default when it does not know the id, so say so
+  // instead of pretending the requested model is what answered.
+  if (chosen && models.length > 0 && !models.some((entry) => entry.id === chosen)) {
+    console.warn(
+      `[design] model "${chosen}" không có trong danh sách của ${config.agent.command}; ` +
+        "CLI có thể chạy model mặc định của nó",
+    );
+  }
+
+  const fast = ids.filter((id) => /flash|lite|mini|fast|haiku/i.test(id));
+  const rest = ids.filter((id) => !fast.includes(id));
+
+  return [...new Set([...fast.slice(0, 2), ...rest.slice(0, 1)])];
+}
+
+function hasImageParts(messages) {
+  return (messages ?? []).some(
+    (message) =>
+      Array.isArray(message?.content) &&
+      message.content.some((part) => part && part.type === "image"),
+  );
+}
+
+function callBackend(messages, options) {
   const chosen = (options.model || config.agent.model || "").trim();
+  const images = hasImageParts(messages);
 
   // 1. Direct API via Custom API or config
   if (chosen === "custom:api" || options.customApiConfig) {
@@ -778,6 +1058,14 @@ export async function generateJson(messages, options = {}) {
 
   if (config.agent.provider === "openai") {
     return openAiChatJson(messages, options);
+  }
+
+  // A CLI has no image input in this app: say so instead of flattening objects.
+  if (images) {
+    throw new LlmError(
+      `Backend CLI không nhận ảnh (model "${chosen || "mặc định"}"). ` +
+        "Chọn model vision hoặc cấu hình Direct API trong ô model.",
+    );
   }
 
   // 2. Codex CLI
@@ -792,4 +1080,51 @@ export async function generateJson(messages, options = {}) {
 
   // 4. Default / AGY / Command Code
   return commandCodeJson(messages, options);
+}
+
+/** Models to try for one call: the selected one, then fallbacks unless the user locked it. */
+export function modelCandidates(primary, fallbacks = [], { lockModel = false, customApiConfig } = {}) {
+  const base = [primary || "default"];
+  if (lockModel || customApiConfig) return base;
+
+  return [...new Set([...base, ...(fallbacks ?? [])].filter(Boolean))];
+}
+
+/**
+ * Picking a model in the dropdown is the user's decision: it is used as-is and a
+ * provider hiccup never silently moves the run to another model. Only the server
+ * default (no explicit choice) may fall back, or an explicit `lockModel: false`.
+ */
+export function isModelLocked({ model, lockModel } = {}) {
+  if (typeof lockModel === "boolean") return lockModel;
+  return Boolean(model && String(model).trim());
+}
+
+export async function generateJson(messages, options = {}) {
+  const primary = (options.model || config.agent.model || "").trim();
+  const locked = isModelLocked({ model: options.model, lockModel: options.lockModel });
+
+  // A custom endpoint belongs to one provider; switching models there is the user's job.
+  const fallbacks =
+    locked || options.customApiConfig
+      ? []
+      : await resolveFallbackModels(primary, {
+          backends: options.backends,
+          provider: options.provider,
+        });
+
+  return runWithModelFallback({
+    models: modelCandidates(primary, fallbacks, {
+      lockModel: locked,
+      customApiConfig: options.customApiConfig,
+    }),
+    run: (model) => callBackend(messages, { ...options, model }),
+    retryMax: options.retryMax ?? config.agent.retryMax,
+    baseMs: options.retryBaseMs ?? config.agent.retryBaseMs,
+    jitter: options.jitter,
+    signal: options.signal,
+    sleep: options.sleep,
+    onRetry: options.onRetry,
+    onFallback: options.onFallback,
+  });
 }

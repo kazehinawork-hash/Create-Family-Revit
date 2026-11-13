@@ -141,9 +141,12 @@ namespace FamilyAgent.Addin
                         }
                         else if (hasCuts)
                         {
-                            // Revit voids cut every intersecting solid, not only their host.
-                            // A per-part boolean keeps the cut local, exactly like the studio.
-                            body = CreateBooleanBody(document, part, offset, warnings);
+                            // Native host + void cutters keeps the form an Extrusion, which is
+                            // the only shape whose faces can be locked to reference planes.
+                            // Voids cut every form they touch, so only use them when the cut
+                            // stays inside this part; the boolean covers the rest.
+                            body = TryCreateVoidCutBody(document, part, offset, warnings) ??
+                                   CreateBooleanBody(document, part, offset, warnings);
                         }
                         else if (hasInnerRadius)
                         {
@@ -276,6 +279,124 @@ namespace FamilyAgent.Addin
                 if (item is Solid solid && solid.Volume > 1e-9) return solid;
             }
             return null;
+        }
+
+        /// <summary>
+        /// Builds a plate as a native extrusion and punches its cuts with void extrusions
+        /// instead of a boolean. Only an Extrusion can have its faces locked to reference
+        /// planes, so this is what keeps webs, rungs and incline segments parametric instead
+        /// of turning them into FreeFormElements. Voids cut every form they touch, so the
+        /// build falls back to the boolean when a cut reaches outside its own part.
+        /// </summary>
+        private static Element TryCreateVoidCutBody(
+            Document document,
+            ResolvedPart part,
+            Vec3d offset,
+            List<string> warnings)
+        {
+            if (part.Solid.Kind != "prism" && part.Solid.Kind != "box") return null;
+            if (part.Cuts.Count == 0) return null;
+            if (!CutsStayInside(part)) return null;
+
+            Element body;
+            try
+            {
+                body = CreateForm(document, part.Solid, offset, true);
+            }
+            catch (Exception ex)
+            {
+                warnings.Add($"Void host for \"{part.Id}\" failed: {ex.Message}");
+                return null;
+            }
+
+            if (body == null) return null;
+
+            var voids = 0;
+            foreach (var cut in part.Cuts)
+            {
+                try
+                {
+                    if (CreateForm(document, cut, offset, false) != null) voids += 1;
+                }
+                catch (Exception ex)
+                {
+                    warnings.Add($"Void cut on \"{part.Id}\" failed: {ex.Message}");
+                }
+            }
+
+            if (voids == 0)
+            {
+                TryDelete(document, body);
+                return null;
+            }
+
+            if (voids < part.Cuts.Count)
+            {
+                warnings.Add(
+                    $"Part \"{part.Id}\": {part.Cuts.Count - voids} void cut(s) could not be created.");
+            }
+
+            return body;
+        }
+
+        /// <summary>
+        /// True when a cut can only punch its own part: it must stay inside on the two
+        /// in-plane axes and may only poke through the third (the plate normal). The through
+        /// axis is the shortest one, which is how a bolt hole "thickness + 2 mm" cutter is
+        /// recognised as a hole rather than a notch.
+        /// </summary>
+        private static bool CutsStayInside(ResolvedPart part)
+        {
+            const double insideTolerance = 0.3;
+            const double throughOvershoot = 3.0;
+
+            Bounds3 host;
+            try
+            {
+                host = GeometryResolver.BoundsOf(part.Solid);
+            }
+            catch
+            {
+                return false;
+            }
+
+            if (!host.IsValid) return false;
+
+            var hostMin = new[] { host.MinX, host.MinY, host.MinZ };
+            var hostMax = new[] { host.MaxX, host.MaxY, host.MaxZ };
+
+            foreach (var cut in part.Cuts)
+            {
+                Bounds3 box;
+                try
+                {
+                    box = GeometryResolver.BoundsOf(cut);
+                }
+                catch
+                {
+                    return false;
+                }
+
+                if (!box.IsValid) return false;
+
+                var min = new[] { box.MinX, box.MinY, box.MinZ };
+                var max = new[] { box.MaxX, box.MaxY, box.MaxZ };
+
+                var through = 0;
+                for (var axis = 1; axis < 3; axis += 1)
+                {
+                    if (max[axis] - min[axis] < max[through] - min[through]) through = axis;
+                }
+
+                for (var axis = 0; axis < 3; axis += 1)
+                {
+                    var overshoot = axis == through ? throughOvershoot : insideTolerance;
+                    if (min[axis] < hostMin[axis] - overshoot) return false;
+                    if (max[axis] > hostMax[axis] + overshoot) return false;
+                }
+            }
+
+            return true;
         }
 
         /// <summary>
@@ -2357,7 +2478,13 @@ namespace FamilyAgent.Addin
             if (lineDir.GetLength() < 1e-9) lineDir = direction.CrossProduct(XYZ.BasisY);
             if (lineDir.GetLength() < 1e-9) lineDir = direction.CrossProduct(XYZ.BasisX);
             lineDir = lineDir.Normalize();
-            var freeEnd = origin + lineDir * (300.0 / MmPerFoot);
+
+            // Keep the datum line short and centred on the connector origin.
+            // Revit places the connector at one end/midpoint of this line; the old
+            // 300 mm line pushed it hundreds of millimetres away from the studio origin.
+            var halfLine = 1.0 / MmPerFoot;
+            var bubbleEnd = origin - lineDir * halfLine;
+            var freeEnd = origin + lineDir * halfLine;
 
             var candidates = new[]
             {
@@ -2375,7 +2502,7 @@ namespace FamilyAgent.Addin
                 try
                 {
                     plane = document.FamilyCreate.NewReferencePlane(
-                        origin, freeEnd, candidate.Normalize(), view);
+                        bubbleEnd, freeEnd, candidate.Normalize(), view);
                 }
                 catch (Exception ex)
                 {
@@ -2406,23 +2533,329 @@ namespace FamilyAgent.Addin
             return null;
         }
 
+        /// <summary>
+        /// Revit connectors require a planar face, not a reference plane. Create a
+        /// thin host solid at the connector origin, hidden in every view, and use its
+        /// face. It never appears in the studio or in the rendered family.
+        /// </summary>
+        private static Element CreateConnectorHostTab(
+            Document document,
+            XYZ origin,
+            XYZ direction,
+            double widthMm,
+            double heightMm,
+            IList<Element> forms,
+            bool fullSize)
+        {
+            // A small tab is enough for the connector coordinate system; Revit does
+            // not require the host face to be as large as the connector profile.
+            var width = fullSize ? Math.Max(12.0, widthMm) : 12.0;
+            var height = fullSize ? Math.Max(12.0, heightMm) : 12.0;
+            const double thickness = 2.0;
+            var ox = origin.X * MmPerFoot;
+            var oy = origin.Y * MmPerFoot;
+            var oz = origin.Z * MmPerFoot;
+
+            Vec3d boxOrigin;
+            Vec3d size;
+            if (Math.Abs(direction.X) >= Math.Abs(direction.Y) &&
+                Math.Abs(direction.X) >= Math.Abs(direction.Z))
+            {
+                var sign = direction.X >= 0 ? 1.0 : -1.0;
+                size = new Vec3d(thickness, width, height);
+                // ResolvedSolid.Origin is the box CENTRE, so half the thickness keeps
+                // one face exactly on the connector origin with the body behind it.
+                boxOrigin = new Vec3d(ox + sign * thickness / 2.0, oy, oz - height / 2.0);
+            }
+            else if (Math.Abs(direction.Y) >= Math.Abs(direction.Z))
+            {
+                var sign = direction.Y >= 0 ? 1.0 : -1.0;
+                size = new Vec3d(width, thickness, height);
+                boxOrigin = new Vec3d(ox, oy + sign * thickness / 2.0, oz - height / 2.0);
+            }
+            else
+            {
+                var sign = direction.Z >= 0 ? 1.0 : -1.0;
+                size = new Vec3d(width, height, thickness);
+                // Z is the exception: an extrusion uses origin.Z as the BOTTOM of the box.
+                boxOrigin = new Vec3d(ox, oy, oz - (sign >= 0 ? thickness : 0));
+            }
+
+            var solid = new ResolvedSolid
+            {
+                Kind = "box",
+                Origin = boxOrigin,
+                Size = size,
+                RotationZ = 0,
+                CornerRadius = 0,
+            };
+
+            var tab = CreateForm(document, solid, new Vec3d(0, 0, 0), true);
+            if (tab == null) return null;
+
+            try { tab.Name = "Family Agent Connector Host"; } catch { }
+            try
+            {
+                if (tab is GenericForm form)
+                {
+                    form.SetVisibility(new FamilyElementVisibility(FamilyElementVisibilityType.Model)
+                    {
+                        IsShownInCoarse = false,
+                        IsShownInMedium = false,
+                        IsShownInFine = false,
+                        IsShownInFrontBack = false,
+                        IsShownInLeftRight = false,
+                        IsShownInPlanRCPCut = false,
+                    });
+                }
+            }
+            catch
+            {
+                // A hidden host is best effort; the connector can still use the face.
+            }
+
+            try
+            {
+                document.ActiveView?.HideElements(new List<ElementId> { tab.Id });
+            }
+            catch
+            {
+                // Hiding in the active view is cosmetic; the host face remains valid.
+            }
+
+            forms.Add(tab);
+            return tab;
+        }
+
+        private static double ConnectorValue(Num? value, double fallback, CoreParameterSet parameters)
+        {
+            if (value == null) return fallback;
+            var number = value.Value;
+            if (!number.IsExpression) return number.Value;
+            try { return Expression.Evaluate(number.Expression, parameters.Lookup); }
+            catch { return fallback; }
+        }
+
+        private static void ResolveConnectorFrame(
+            MepConnector connector,
+            CoreParameterSet parameters,
+            out XYZ origin,
+            out XYZ direction,
+            out XYZ widthAxis,
+            out double widthMm,
+            out double heightMm,
+            out bool isRound)
+        {
+            origin = new XYZ(
+                Ft(ConnectorValue(connector.Origin.X, 0, parameters)),
+                Ft(ConnectorValue(connector.Origin.Y, 0, parameters)),
+                Ft(ConnectorValue(connector.Origin.Z, 0, parameters)));
+            direction = new XYZ(
+                ConnectorValue(connector.DirectionVector.X, 0, parameters),
+                ConnectorValue(connector.DirectionVector.Y, 0, parameters),
+                ConnectorValue(connector.DirectionVector.Z, -1, parameters));
+            if (direction.GetLength() < 1e-9) direction = new XYZ(0, 0, -1);
+            direction = direction.Normalize();
+
+            isRound = !string.Equals(
+                connector.Shape, "rectangular", StringComparison.OrdinalIgnoreCase);
+            widthMm = isRound
+                ? ConnectorValue(connector.Diameter, 50, parameters)
+                : ConnectorValue(connector.Width, 200, parameters);
+            heightMm = isRound
+                ? widthMm
+                : ConnectorValue(connector.Height, 200, parameters);
+
+            var up = Math.Abs(direction.Z) < 0.9 ? XYZ.BasisZ : XYZ.BasisY;
+            widthAxis = up.CrossProduct(direction);
+            if (widthAxis.GetLength() < 1e-9)
+            {
+                widthAxis = XYZ.BasisX.CrossProduct(direction);
+            }
+            if (widthAxis.GetLength() < 1e-9) widthAxis = XYZ.BasisY;
+            widthAxis = widthAxis.Normalize();
+
+            // The face width axis must stay the same for both connector directions
+            // on the same plane; do not flip it with the flow sign.
+            if (Math.Abs(widthAxis.X) >= Math.Abs(widthAxis.Y) &&
+                Math.Abs(widthAxis.X) >= Math.Abs(widthAxis.Z))
+            {
+                if (widthAxis.X < 0) widthAxis = -widthAxis;
+            }
+            else if (Math.Abs(widthAxis.Y) >= Math.Abs(widthAxis.Z))
+            {
+                if (widthAxis.Y < 0) widthAxis = -widthAxis;
+            }
+            else if (widthAxis.Z < 0)
+            {
+                widthAxis = -widthAxis;
+            }
+        }
+
+        /// <summary>
+        /// Revit reports ConnectorElement.Origin either as the profile centre or as one of
+        /// its four corners, and which one depends on the host face. Try every reading and
+        /// keep the one closest to where the connector is supposed to sit.
+        /// </summary>
+        private static XYZ ProfileCentre(
+            ConnectorElement element,
+            bool isRound,
+            XYZ widthAxis,
+            XYZ heightAxis,
+            double halfWidth,
+            double halfHeight,
+            XYZ target,
+            out string reading)
+        {
+            reading = "centre";
+            if (element == null) return target;
+
+            var best = element.Origin;
+            var bestDistance = best.DistanceTo(target);
+            if (isRound) return best;
+
+            foreach (var sx in new[] { -1.0, 1.0 })
+            {
+                foreach (var sy in new[] { -1.0, 1.0 })
+                {
+                    var point = element.Origin +
+                                widthAxis * (sx * halfWidth) +
+                                heightAxis * (sy * halfHeight);
+                    var distance = point.DistanceTo(target);
+                    if (distance >= bestDistance - 1e-9) continue;
+
+                    best = point;
+                    bestDistance = distance;
+                    reading = sx > 0 ? (sy > 0 ? "corner++" : "corner+-") : (sy > 0 ? "corner-+" : "corner--");
+                }
+            }
+
+            return best;
+        }
+
+        private static string FormatPoint(XYZ point)
+        {
+            if (point == null) return "?";
+
+            return $"{Math.Round(point.X * MmPerFoot, 1)}, " +
+                   $"{Math.Round(point.Y * MmPerFoot, 1)}, " +
+                   $"{Math.Round(point.Z * MmPerFoot, 1)}";
+        }
+
+        private static string ConnectorKey(MepConnector connector)
+        {
+            var key = connector?.Id;
+            if (string.IsNullOrWhiteSpace(key)) key = connector?.Name;
+            return key ?? string.Empty;
+        }
+
+        /// <summary>
+        /// Builds one hidden host tab per connector and returns it by connector id. The
+        /// connector step must use ITS OWN tab: searching every form for the nearest face
+        /// attaches connectors to the flange or rung that happens to be closer.
+        /// </summary>
+        private static Dictionary<string, Element> CreateConnectorHosts(
+            Document document,
+            FamilySpec spec,
+            CoreParameterSet parameters,
+            IList<Element> forms,
+            IDictionary<long, ResolvedPart> partByForm,
+            List<string> warnings)
+        {
+            var hosts = new Dictionary<string, Element>(StringComparer.OrdinalIgnoreCase);
+            if (spec.Connectors == null || spec.Connectors.Count == 0) return hosts;
+
+            foreach (var connector in spec.Connectors)
+            {
+                try
+                {
+                    ResolveConnectorFrame(
+                        connector, parameters, out var origin, out var direction,
+                        out var widthAxis, out var widthMm, out var heightMm, out _);
+
+                    // Build the tab on the spec centre. CreateConnectors measures where
+                    // Revit anchors the profile and moves the tab itself.
+                    var tab = CreateConnectorHostTab(
+                        document, origin, direction, widthMm, heightMm, forms, false);
+                    if (tab == null)
+                    {
+                        warnings.Add(
+                            $"Connector \"{connector.Id ?? connector.Name}\" host stub could not be built");
+                        continue;
+                    }
+
+                    if (partByForm != null)
+                    {
+                        partByForm[tab.Id.Value] = new ResolvedPart
+                        {
+                            Id = "connector-host-" + (connector.Id ?? connector.Name),
+                            Name = "Connector Host",
+                            Cuts = new List<ResolvedSolid>(),
+                        };
+                    }
+
+                    hosts[ConnectorKey(connector)] = tab;
+                }
+                catch (Exception ex)
+                {
+                    warnings.Add($"Connector host \"{connector.Id ?? connector.Name}\" failed: {ex.Message}");
+                }
+            }
+
+            return hosts;
+        }
+
+        /// <summary>
+        /// Planar faces of the connector's own tab, ordered by how close their plane is to
+        /// the spec origin along the flow direction: the near face first, the opposite one
+        /// second, so the caller can fall back without touching any other form.
+        /// </summary>
+        private static List<PlanarFace> ConnectorFacesOf(
+            Element tab,
+            XYZ origin,
+            XYZ direction,
+            out string diagnosis)
+        {
+            var faces = new List<PlanarFace>();
+            diagnosis = "no host tab";
+
+            var solid = tab == null ? null : SolidOf(tab);
+            if (solid == null) return faces;
+
+            var seen = new List<PlanarFace>();
+            var parallel = 0;
+            foreach (Face candidate in solid.Faces)
+            {
+                var face = candidate as PlanarFace;
+                if (face == null || face.Reference == null) continue;
+
+                var normal = face.FaceNormal;
+                if (normal.GetLength() < 1e-9) continue;
+
+                if (Math.Abs(normal.Normalize().DotProduct(direction)) < 0.95) continue;
+                parallel += 1;
+                seen.Add(face);
+            }
+
+            faces = seen
+                .OrderBy(face => Math.Abs(face.Origin.Subtract(origin).DotProduct(direction)))
+                .ToList();
+
+            diagnosis =
+                $"tabFaces={solid.Faces.Size}, parallel={parallel}, " +
+                $"nearest={Math.Round(Math.Abs(faces[0].Origin.Subtract(origin).DotProduct(direction)) * MmPerFoot, 2)}mm";
+            return faces;
+        }
+
         private static int CreateConnectors(
             Document document,
             FamilySpec spec,
             CoreParameterSet parameters,
             IList<Element> forms,
+            IDictionary<string, Element> hosts,
             List<string> warnings)
         {
             if (spec.Connectors == null || spec.Connectors.Count == 0) return 0;
-
-            double Value(Num? value, double fallback)
-            {
-                if (value == null) return fallback;
-                var number = value.Value;
-                if (!number.IsExpression) return number.Value;
-                try { return Expression.Evaluate(number.Expression, parameters.Lookup); }
-                catch { return fallback; }
-            }
 
             var created = 0;
             using (var transaction = SilentTransaction(
@@ -2436,79 +2869,130 @@ namespace FamilyAgent.Addin
                 {
                     try
                     {
-                        var origin = new XYZ(
-                            Ft(Value(connector.Origin.X, 0)),
-                            Ft(Value(connector.Origin.Y, 0)),
-                            Ft(Value(connector.Origin.Z, 0)));
-                        var direction = new XYZ(
-                            Value(connector.DirectionVector.X, 0),
-                            Value(connector.DirectionVector.Y, 0),
-                            Value(connector.DirectionVector.Z, -1));
-                        if (direction.GetLength() < 1e-9) direction = new XYZ(0, 0, -1);
-                        direction = direction.Normalize();
+                        ResolveConnectorFrame(
+                            connector, parameters, out var origin, out var direction,
+                            out var widthAxis, out var widthMm, out var heightMm, out var isRound);
 
-                        string diagnosis;
-                        var hostPlane = CreateConnectorHostPlane(
-                            document, origin, direction, out diagnosis);
-
-                        Reference reference = hostPlane?.GetReference();
-                        PlanarFace face = null;
-                        var usedFaceFallback = false;
-                        if (reference == null)
+                        // Use the connector's own hidden tab, placed on the spec origin.
+                        // The tab is a plain box built from the spec centre; no width/2
+                        // pre-shift, because where Revit anchors the profile is measured
+                        // below instead of assumed.
+                        hosts.TryGetValue(ConnectorKey(connector), out var tab);
+                        if (tab == null)
                         {
-                            face = FindConnectorFace(
-                                forms, origin, direction, out _, out var faceDiagnosis);
-                            diagnosis = string.IsNullOrEmpty(diagnosis)
-                                ? faceDiagnosis
-                                : diagnosis + "; " + faceDiagnosis;
-                            reference = face?.Reference;
-                            usedFaceFallback = reference != null;
+                            tab = CreateConnectorHostTab(
+                                document, origin, direction, widthMm, heightMm, forms, false);
                         }
 
-                        if (reference == null)
+                        if (tab == null)
                         {
                             warnings.Add(
-                                $"Connector \"{connector.Id ?? connector.Name}\" found no host at its origin ({diagnosis})");
+                                $"Connector \"{connector.Id ?? connector.Name}\" has no host tab");
                             continue;
                         }
 
-                        var shape = string.Equals(
-                            connector.Shape, "rectangular", StringComparison.OrdinalIgnoreCase)
-                            ? ConnectorProfileType.Rectangular
-                            : ConnectorProfileType.Round;
+                        document.Regenerate();
 
-                        var element = CreateConnectorElement(
-                            document, connector.SystemType, shape, reference);
+                        var shape = isRound
+                            ? ConnectorProfileType.Round
+                            : ConnectorProfileType.Rectangular;
 
-                        if (element == null && hostPlane != null)
+                        var candidates = ConnectorFacesOf(tab, origin, direction, out var diagnosis);
+                        if (candidates.Count == 0)
                         {
-                            // Revit rejected the reference plane; fall back to a real face
-                            // (for example an explicit host tab) rather than losing the port.
-                            face = FindConnectorFace(
-                                forms, origin, direction, out _, out var faceDiagnosis);
-                            diagnosis = string.IsNullOrEmpty(diagnosis)
-                                ? faceDiagnosis
-                                : diagnosis + "; " + faceDiagnosis;
-                            if (face != null)
-                            {
-                                element = CreateConnectorElement(
-                                    document, connector.SystemType, shape, face.Reference);
-                                usedFaceFallback = element != null;
-                            }
-                            TryDelete(document, hostPlane);
+                            warnings.Add(
+                                $"Connector \"{connector.Id ?? connector.Name}\" found no host face on its tab ({diagnosis})");
+                            continue;
                         }
 
-                        if (element == null)
+                        // Put the face origin exactly on the spec origin first.
+                        var align = origin.Subtract(candidates[0].Origin);
+                        if (align.GetLength() > 1e-9)
+                        {
+                            ElementTransformUtils.MoveElement(document, tab.Id, align);
+                            document.Regenerate();
+                            candidates = ConnectorFacesOf(tab, origin, direction, out diagnosis);
+                            if (candidates.Count == 0)
+                            {
+                                warnings.Add(
+                                    $"Connector \"{connector.Id ?? connector.Name}\" lost its tab face after moving ({diagnosis})");
+                                continue;
+                            }
+                        }
+
+                        // Probe once to learn where Revit anchors the profile: on the face
+                        // origin (centre case) or at a profile corner (rectangle case).
+                        var probe = CreateConnectorElement(
+                            document, connector.SystemType, shape, candidates[0].Reference);
+                        if (probe == null)
                         {
                             warnings.Add(
                                 $"Connector \"{connector.Id ?? connector.Name}\" was rejected by Revit ({diagnosis})");
                             continue;
                         }
 
-                        if (usedFaceFallback)
+                        // Read where Revit actually put the profile: it reports either the
+                        // centre or one of the four corners, and the choice depends on the
+                        // host face, so measure all five readings and keep the closest.
+                        var faceOrigin = candidates[0].Origin;
+                        var heightAxisUnit = direction.CrossProduct(widthAxis);
+                        if (heightAxisUnit.GetLength() < 1e-9) heightAxisUnit = direction.CrossProduct(XYZ.BasisZ);
+                        heightAxisUnit = heightAxisUnit.Normalize();
+
+                        var halfWidth = Ft(widthMm / 2.0);
+                        var halfHeight = Ft(heightMm / 2.0);
+
+                        var element = probe;
+                        var connectorCenter = ProfileCentre(
+                            element, isRound, widthAxis, heightAxisUnit, halfWidth, halfHeight,
+                            origin, out var anchorKind);
+                        var bestOffset = connectorCenter.DistanceTo(origin);
+                        var probeOrigin = probe.Origin;
+                        var correction = 0.0;
+
+                        if (bestOffset > 1.0 / MmPerFoot)
+                        {
+                            // Move the hidden tab by the measured error and rebuild once.
+                            var move = origin.Subtract(connectorCenter);
+                            correction = move.GetLength() * MmPerFoot;
+                            TryDelete(document, probe);
+                            ElementTransformUtils.MoveElement(document, tab.Id, move);
+                            document.Regenerate();
+
+                            candidates = ConnectorFacesOf(tab, origin, direction, out diagnosis);
+                            if (candidates.Count == 0)
+                            {
+                                warnings.Add(
+                                    $"Connector \"{connector.Id ?? connector.Name}\" lost its tab face after the correction move ({diagnosis})");
+                                continue;
+                            }
+
+                            element = CreateConnectorElement(
+                                document, connector.SystemType, shape, candidates[0].Reference);
+                            if (element == null)
+                            {
+                                warnings.Add(
+                                    $"Connector \"{connector.Id ?? connector.Name}\" was rejected by Revit after the correction move ({diagnosis})");
+                                continue;
+                            }
+
+                            connectorCenter = ProfileCentre(
+                                element, isRound, widthAxis, heightAxisUnit, halfWidth, halfHeight,
+                                origin, out anchorKind);
+                            bestOffset = connectorCenter.DistanceTo(origin);
+                        }
+
+                        if (bestOffset > 1.0 / MmPerFoot)
                         {
                             warnings.Add(
-                                $"Connector \"{connector.Id ?? connector.Name}\" used a solid face because a reference plane was unavailable/rejected ({diagnosis})");
+                                $"Connector \"{connector.Id ?? connector.Name}\" host is offset " +
+                                $"{Math.Round(bestOffset * MmPerFoot, 1)} mm from the spec origin " +
+                                $"(reading={anchorKind}, " +
+                                $"correction={Math.Round(correction, 1)}mm, " +
+                                $"spec=({FormatPoint(origin)}), " +
+                                $"face=({FormatPoint(faceOrigin)}), " +
+                                $"element=({FormatPoint(element.Origin)}), " +
+                                $"tried=({FormatPoint(probeOrigin)}), {diagnosis})");
                         }
 
                         // Associate connector dimensions and MEP properties to Family Parameters
@@ -2563,74 +3047,6 @@ namespace FamilyAgent.Addin
             }
 
             return created;
-        }
-
-        private static PlanarFace FindConnectorFace(
-            IList<Element> forms,
-            XYZ origin,
-            XYZ direction,
-            out Element host,
-            out string diagnosis)
-        {
-            host = null;
-            PlanarFace best = null;
-            var bestDist = double.PositiveInfinity;
-            var bestAlong = double.NegativeInfinity;
-            var maxDistance = 300.0 / MmPerFoot;
-            var faces = 0;
-            var noReference = 0;
-            var alignedCount = 0;
-            var inRange = 0;
-
-            foreach (var form in forms)
-            {
-                var solid = SolidOf(form);
-                if (solid == null) continue;
-
-                foreach (Face candidate in solid.Faces)
-                {
-                    faces += 1;
-                    var face = candidate as PlanarFace;
-                    if (face == null) continue;
-                    if (face.Reference == null)
-                    {
-                        noReference += 1;
-                        continue;
-                    }
-
-                    var normal = face.FaceNormal;
-                    if (normal.GetLength() < 1e-9) continue;
-                    normal = normal.Normalize();
-
-                    // Connector direction must be parallel/aligned with face normal
-                    var alignment = Math.Abs(normal.DotProduct(direction));
-                    if (alignment < 0.95) continue;
-                    alignedCount += 1;
-
-                    // Signed distance from face origin to connector origin along direction
-                    var along = face.Origin.Subtract(origin).DotProduct(direction);
-                    if (along < -1.0 / MmPerFoot || along > maxDistance) continue;
-                    inRange += 1;
-
-                    // Distance from connector origin to the face plane
-                    var distToPlane = Math.Abs(along);
-
-                    // Prioritize face closest to connector origin (|along| smallest).
-                    // If multiple faces are equally close, pick the one pointing in the connector direction.
-                    if (distToPlane < bestDist - 1e-5 || (Math.Abs(distToPlane - bestDist) <= 1e-5 && along > bestAlong))
-                    {
-                        best = face;
-                        bestDist = distToPlane;
-                        bestAlong = along;
-                        host = form;
-                    }
-                }
-            }
-
-            diagnosis =
-                $"faces={faces}, noRef={noReference}, aligned={alignedCount}, inRange={inRange}, " +
-                $"bestAlong={Math.Round(bestAlong * MmPerFoot, 2)}mm, bestDist={Math.Round(bestDist * MmPerFoot, 2)}mm";
-            return best;
         }
 
         private static string NormalizeSystemType(string value)
@@ -2715,6 +3131,8 @@ namespace FamilyAgent.Addin
                 case "electrical":
                     return ConnectorElement.CreateElectricalConnector(
                         document, ElectricalSystemType.PowerCircuit, reference);
+                case "cabletray":
+                    return ConnectorElement.CreateCableTrayConnector(document, reference);
                 default:
                     return ConnectorElement.CreateDuctConnector(
                         document, DuctSystemType.SupplyAir, shape, reference);

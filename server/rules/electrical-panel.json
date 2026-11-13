@@ -1,0 +1,153 @@
+{
+  "productType": "electrical-panel",
+  "aliases": [
+    "tủ điện",
+    "hộp điện",
+    "electrical panel",
+    "enclosure",
+    "db board",
+    "tủ điều khiển"
+  ],
+  "category": "Electrical Equipment",
+  "matchers": {
+    "keywords": [
+      "tủ điện",
+      "hộp điện",
+      "electrical panel",
+      "enclosure",
+      "tủ điều khiển",
+      "db"
+    ],
+    "codePatterns": [
+      "^EP-",
+      "^EN-"
+    ]
+  },
+  "parameters": [
+    {
+      "name": "Panel Width",
+      "group": "Dimensions",
+      "unit": "mm",
+      "default": 800,
+      "range": [
+        200,
+        2400
+      ],
+      "fromEvidence": [
+        "Width"
+      ],
+      "remember": false
+    },
+    {
+      "name": "Panel Height",
+      "group": "Dimensions",
+      "unit": "mm",
+      "default": 1200,
+      "range": [
+        200,
+        2400
+      ],
+      "fromEvidence": [
+        "Height"
+      ],
+      "remember": false
+    },
+    {
+      "name": "Panel Depth",
+      "group": "Dimensions",
+      "unit": "mm",
+      "default": 300,
+      "range": [
+        120,
+        800
+      ],
+      "fromEvidence": [
+        "Depth"
+      ],
+      "remember": false
+    },
+    {
+      "name": "Sheet Thickness",
+      "group": "Dimensions",
+      "unit": "mm",
+      "default": 1.5,
+      "range": [
+        1,
+        3
+      ],
+      "fromEvidence": [
+        "Thickness"
+      ],
+      "remember": true
+    },
+    {
+      "name": "Door Count",
+      "group": "Data",
+      "unit": "",
+      "default": 2,
+      "range": [
+        1,
+        4
+      ],
+      "fromEvidence": [],
+      "remember": false
+    },
+    {
+      "name": "Gland Plate Width",
+      "group": "Dimensions",
+      "unit": "mm",
+      "formula": "[Panel Width] - 120",
+      "fromEvidence": [],
+      "remember": false
+    },
+    {
+      "name": "DIN Rail Length",
+      "group": "Dimensions",
+      "unit": "mm",
+      "formula": "[Panel Width] - 160",
+      "fromEvidence": [],
+      "remember": false
+    }
+  ],
+  "components": [
+    {
+      "kind": "enclosure",
+      "required": true,
+      "countFormula": "1"
+    },
+    {
+      "kind": "door",
+      "required": true,
+      "countFormula": "1"
+    },
+    {
+      "kind": "din-rail",
+      "required": true,
+      "countFormula": "2"
+    },
+    {
+      "kind": "gland-plate",
+      "required": true,
+      "countFormula": "1"
+    },
+    {
+      "kind": "cable-gland",
+      "required": false,
+      "countFormula": "4"
+    }
+  ],
+  "connectors": [],
+  "materials": [
+    {
+      "name": "Powder Coated Steel",
+      "color": "#d7d7d7",
+      "finish": "RAL 7035"
+    }
+  ],
+  "checks": [
+    {
+      "expr": "Sheet Thickness >= 1",
+      "message": "Chiều dày vỏ tủ phải ≥ 1 mm"
+    }
+  ]
+}

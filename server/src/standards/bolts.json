@@ -1,0 +1,18 @@
+{
+  "unit": "mm",
+  "rows": {
+    "M3": { "d": 3, "hole": 3.4, "across": 5.5, "head": 2, "nut": 5.5 },
+    "M4": { "d": 4, "hole": 4.5, "across": 7, "head": 2.8, "nut": 7 },
+    "M5": { "d": 5, "hole": 5.5, "across": 8, "head": 3.5, "nut": 8 },
+    "M6": { "d": 6, "hole": 6.6, "across": 10, "head": 4, "nut": 10 },
+    "M8": { "d": 8, "hole": 9, "across": 13, "head": 5.3, "nut": 13 },
+    "M10": { "d": 10, "hole": 11, "across": 16, "head": 6.4, "nut": 16 },
+    "M12": { "d": 12, "hole": 13.5, "across": 18, "head": 7.5, "nut": 18 },
+    "M16": { "d": 16, "hole": 18, "across": 24, "head": 10, "nut": 24 },
+    "M20": { "d": 20, "hole": 22, "across": 30, "head": 12.5, "nut": 30 },
+    "M24": { "d": 24, "hole": 26, "across": 36, "head": 15, "nut": 36 },
+    "M27": { "d": 27, "hole": 30, "across": 41, "head": 17, "nut": 41 },
+    "M30": { "d": 30, "hole": 33, "across": 46, "head": 18.7, "nut": 46 },
+    "M36": { "d": 36, "hole": 39, "across": 55, "head": 22.5, "nut": 55 }
+  }
+}

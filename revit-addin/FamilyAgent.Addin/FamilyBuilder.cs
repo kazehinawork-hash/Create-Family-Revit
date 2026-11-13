@@ -20,6 +20,8 @@ namespace FamilyAgent.Addin
         public List<string> Warnings { get; set; } = new List<string>();
         public string Error { get; set; }
         public object Stats { get; set; }
+        /** Family Types created from spec.types. */
+        public int Types { get; set; }
     }
 
     internal static partial class FamilyBuilder
@@ -30,18 +32,496 @@ namespace FamilyAgent.Addin
         /// <summary>
         /// Reference planes and reference dimensions are always created so every parameter
         /// has a visible, movable reference plane in the RFA.
-        /// Direct face/radial locking on complex solids is disabled by default so changing
-        /// parameters never triggers "Constraints are not satisfied"; instead, the add-in
-        /// automatically rebuilds the 3D geometry from the embedded spec whenever any
-        /// parameter or family type changes (just like Localhost).
-        /// Set FAMILY_AGENT_LOCK_GEOMETRY=1 to opt into hard face locking.
+        /// Face/radial locking is enabled by default so type parameters flex the geometry
+        /// natively inside a project, without the studio add-in. Set
+        /// FAMILY_AGENT_LOCK_GEOMETRY=0 to fall back to baked geometry + auto-rebuild.
         /// </summary>
         public static bool IncludeConstraints = true;
         public static bool LockFacesToPlanes =
-            string.Equals(
+            !string.Equals(
                 Environment.GetEnvironmentVariable("FAMILY_AGENT_LOCK_GEOMETRY"),
-                "1",
+                "0",
                 StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// Baked multi-size build: every row of spec.types gets its own resolved geometry and
+        /// its own "Show &lt;type&gt;" visibility switch. A project shows one set per type, so
+        /// picking a type changes the shape without any constraint stretching a sketch — the
+        /// failure mode that used to delete mitre extrusions ("Base sketch is invalid").
+        /// </summary>
+        public static BuildResult BuildBakedMulti(Application app, string json)
+        {
+            var started = DateTime.UtcNow;
+            var result = new BuildResult { RevitVersion = app.VersionNumber };
+            Document document = null;
+            var stage = "reading the spec";
+            var buildFailures = new FailureCollector();
+
+            try
+            {
+                var spec = SpecLoader.Load(json);
+                if (spec.Types == null || spec.Types.Count == 0)
+                {
+                    throw new InvalidOperationException("spec.types is empty; nothing to build.");
+                }
+
+                var baseParameters = ParameterResolver.Resolve(spec);
+                var materials = MaterialLookup(spec);
+                var formulaKeys = new HashSet<string>(
+                    (spec.Parameters ?? new List<FamilyAgent.Core.FamilyParameter>())
+                        .Where(parameter => !string.IsNullOrWhiteSpace(parameter.Formula))
+                        .Select(parameter => (parameter.Name ?? string.Empty).Trim().ToLowerInvariant()),
+                    StringComparer.Ordinal);
+
+                stage = "opening the family template";
+                var template = TemplateCatalog.Resolve(app, spec);
+                document = app.NewFamilyDocument(template);
+
+                var showParameters = new List<Autodesk.Revit.DB.FamilyParameter>();
+                var typeNames = new List<string>();
+                var firstForms = new List<Element>();
+                var firstPartByForm = new Dictionary<long, ResolvedPart>();
+                var firstParameters = baseParameters;
+
+                stage = "building the baked sizes";
+                using (var transaction = SilentTransaction(
+                           document, "Family Agent — build baked sizes", buildFailures))
+                {
+                    transaction.Start();
+                    var manager = document.FamilyManager;
+                    CreateFamilyType(manager, spec);
+                    CreateParameters(document, manager, baseParameters, result.Warnings, populateOtherTypes: false);
+
+                    for (var index = 0; index < spec.Types.Count; index += 1)
+                    {
+                        var row = spec.Types[index];
+                        var name = (row?.Name ?? string.Empty).Trim();
+                        if (name.Length == 0) name = $"Type {index + 1}";
+                        typeNames.Add(name);
+
+                        var overrides = (row?.Values ?? new Dictionary<string, double>())
+                            .Where(pair => !formulaKeys.Contains((pair.Key ?? string.Empty).Trim().ToLowerInvariant()))
+                            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.OrdinalIgnoreCase);
+
+                        var parameters = ParameterResolver.Resolve(spec, overrides);
+                        var model = GeometryResolver.Resolve(spec, parameters);
+                        var partByForm = new Dictionary<long, ResolvedPart>();
+                        var failedParts = new List<string>();
+
+                        var forms = CreateGeometry(
+                            document, model, materials, result.Warnings, partByForm, failedParts);
+                        if (failedParts.Count > 0)
+                        {
+                            result.Warnings.Add($"Type \"{name}\": {failedParts.Count} part(s) could not be built");
+                        }
+
+                        var show = manager.AddParameter(
+                            "Show " + name, GroupFor("Graphics"), SpecFor("YesNo"), false);
+                        if (show == null)
+                        {
+                            result.Warnings.Add($"Type \"{name}\": visibility parameter could not be created");
+                            continue;
+                        }
+
+                        showParameters.Add(show);
+
+                        foreach (var form in forms)
+                        {
+                            try
+                            {
+                                var visible = form.get_Parameter(BuiltInParameter.IS_VISIBLE_PARAM);
+                                if (visible != null)
+                                {
+                                    manager.AssociateElementParameterToFamilyParameter(visible, show);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                result.Warnings.Add(
+                                    $"Type \"{name}\": visibility of \"{form.Name}\" failed: {ex.Message}");
+                            }
+                        }
+
+                        if (index == 0)
+                        {
+                            firstForms = forms;
+                            firstPartByForm = partByForm;
+                            firstParameters = parameters;
+                        }
+                    }
+
+                    var status = transaction.Commit();
+                    if (status != TransactionStatus.Committed)
+                    {
+                        throw new InvalidOperationException(
+                            $"Revit rolled the family back ({status}): {string.Join(" ", buildFailures.Messages.Take(5))}");
+                    }
+                }
+
+                foreach (var message in buildFailures.Messages.Take(5)) result.Warnings.Add(message);
+
+                stage = "creating the family types";
+                var typeWarnings = new FailureCollector();
+                using (var transaction = SilentTransaction(
+                           document, "Family Agent — baked types", typeWarnings))
+                {
+                    transaction.Start();
+                    var manager = document.FamilyManager;
+                    var created = new List<FamilyType>();
+
+                    for (var index = 0; index < typeNames.Count && index < showParameters.Count; index += 1)
+                    {
+                        // The template's first type may already carry this name (spec.typeName).
+                        FamilyType familyType;
+                        try
+                        {
+                            familyType = manager.NewType(typeNames[index]);
+                        }
+                        catch
+                        {
+                            familyType = manager.Types
+                                .Cast<FamilyType>()
+                                .FirstOrDefault(type => string.Equals(
+                                    type.Name, typeNames[index], StringComparison.OrdinalIgnoreCase));
+                        }
+
+                        if (familyType == null)
+                        {
+                            result.Warnings.Add($"Type \"{typeNames[index]}\" could not be created");
+                            continue;
+                        }
+
+                        manager.CurrentType = familyType;
+                        created.Add(familyType);
+
+                        for (var other = 0; other < showParameters.Count; other += 1)
+                        {
+                            try { manager.Set(showParameters[other], other == index ? 1 : 0); }
+                            catch (Exception ex)
+                            {
+                                result.Warnings.Add($"Type \"{typeNames[index]}\" visibility: {ex.Message}");
+                            }
+                        }
+
+                        foreach (var pair in spec.Types[index].Values ?? new Dictionary<string, double>())
+                        {
+                            if (formulaKeys.Contains((pair.Key ?? string.Empty).Trim().ToLowerInvariant())) continue;
+                            var parameter = FindParameter(manager, pair.Key);
+                            if (parameter == null) continue;
+                            try { manager.Set(parameter, pair.Value / MmPerFoot); }
+                            catch { /* informational only */ }
+                        }
+                    }
+
+                    // Template types carry no geometry here; drop the ones we did not create.
+                    // FamilyManager can only delete the current type, so switch first.
+                    var wanted = new HashSet<string>(
+                        typeNames.Take(showParameters.Count), StringComparer.OrdinalIgnoreCase);
+
+                    foreach (var existing in manager.Types.Cast<FamilyType>().ToList())
+                    {
+                        if (existing == null) continue;
+                        if (wanted.Contains(existing.Name ?? string.Empty)) continue;
+                        if (manager.Types.Size <= 1) break;
+
+                        try
+                        {
+                            manager.CurrentType = existing;
+                            manager.DeleteCurrentType();
+                        }
+                        catch
+                        {
+                            // Revit keeps the last type; nothing else to do.
+                        }
+                    }
+
+                    var firstCreated = manager.Types.Cast<FamilyType>()
+                        .FirstOrDefault(type => wanted.Contains(type.Name ?? string.Empty));
+                    if (firstCreated != null) manager.CurrentType = firstCreated;
+
+                    var status = transaction.Commit();
+                    if (status != TransactionStatus.Committed)
+                    {
+                        result.Warnings.Add($"Family types were rolled back ({status}).");
+                    }
+                }
+
+                foreach (var message in typeWarnings.Messages.Take(3)) result.Warnings.Add(message);
+
+                if (firstForms.Count > 0)
+                {
+                    stage = "creating MEP connectors";
+                    var connectorFailures = new FailureCollector();
+                    IDictionary<string, Element> firstHosts = new Dictionary<string, Element>();
+                    using (var transaction = SilentTransaction(
+                               document, "Family Agent — MEP connectors", connectorFailures))
+                    {
+                        transaction.Start();
+                        firstHosts = CreateConnectorHosts(
+                            document, spec, firstParameters, firstForms, firstPartByForm, result.Warnings);
+                        if (transaction.Commit() != TransactionStatus.Committed)
+                        {
+                            result.Warnings.Add(
+                                "MEP connector hosts were rolled back: " +
+                                string.Join(" ", connectorFailures.Messages.Take(2)));
+                        }
+                    }
+
+                    CreateConnectors(
+                        document, spec, firstParameters, firstForms, firstHosts, result.Warnings);
+
+                    result.Warnings.Add(
+                        "MEP connectors were built for the first type only; the other types reuse them.");
+                }
+
+                stage = "preparing views";
+                PrepareViews(document, spec.Lod);
+
+                stage = "storing the spec";
+                using (var transaction = new Transaction(document, "Family Agent — store spec"))
+                {
+                    transaction.Start();
+                    SpecStore.Save(document, json);
+                    SpecStore.SaveMode(document, "baked-multi");
+                    transaction.Commit();
+                }
+
+                stage = "saving the family";
+                var directory = OutputDirectory();
+                Directory.CreateDirectory(directory);
+                var path = Path.Combine(directory, Slug(spec.Name) + ".rfa");
+                document.SaveAs(path, new SaveAsOptions { OverwriteExistingFile = true, MaximumBackups = 1 });
+
+                result.Path = path;
+                result.Types = typeNames.Count;
+                result.Stats = new
+                {
+                    mode = "baked-multi",
+                    types = typeNames,
+                    showParameters = showParameters.Count,
+                    elapsedMs = (int)(DateTime.UtcNow - started).TotalMilliseconds,
+                };
+                result.Ok = true;
+            }
+            catch (Exception ex)
+            {
+                result.Ok = false;
+                result.Error = $"{stage}: {ex.Message}" +
+                               (buildFailures.Messages.Count > 0
+                                   ? " (" + string.Join(" ", buildFailures.Messages.Take(3)) + ")"
+                                   : string.Empty);
+            }
+            finally
+            {
+                if (document != null)
+                {
+                    try { document.Close(false); }
+                    catch { /* leave the document open rather than lose the result */ }
+                }
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Diagnostic: loads the built .rfa into an empty project and drives its type
+        /// parameters, which is the only place a family can lose geometry ("Can't make
+        /// Extrusion"). Reports, per parameter set, the failures Revit raised and the
+        /// bounding box in millimetres so it can be compared with the studio preview.
+        /// </summary>
+        public static object InspectProject(
+            UIApplication uiApp,
+            string path,
+            IList<KeyValuePair<string, double>> values,
+            IList<string> typeNames = null)
+        {
+            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
+                throw new FileNotFoundException("Family not found", path);
+
+            var started = DateTime.UtcNow;
+            Document project = null;
+
+            try
+            {
+                project = uiApp.Application.NewProjectDocument(UnitSystem.Metric);
+
+                Family loaded = null;
+                using (var transaction = SilentTransaction(
+                           project, "Family Agent — load family", new FailureCollector()))
+                {
+                    transaction.Start();
+                    project.LoadFamily(path, out loaded);
+                    transaction.Commit();
+                }
+
+                var symbols = loaded == null
+                    ? new List<FamilySymbol>()
+                    : loaded.GetFamilySymbolIds()
+                        .Select(id => project.GetElement(id) as FamilySymbol)
+                        .Where(symbol => symbol != null)
+                        .ToList();
+
+                // The family only regenerates its geometry once an instance exists; that is
+                // also the moment Revit reports "Can't make Extrusion".
+                var loadFailures = new FailureCollector();
+                FamilyInstance instance = null;
+                if (symbols.Count > 0)
+                {
+                    using (var transaction = SilentTransaction(
+                               project, "Family Agent — place instance", loadFailures))
+                    {
+                        transaction.Start();
+                        try
+                        {
+                            if (!symbols[0].IsActive) symbols[0].Activate();
+                            instance = project.Create.NewFamilyInstance(
+                                XYZ.Zero, symbols[0], Autodesk.Revit.DB.Structure.StructuralType.NonStructural);
+                            project.Regenerate();
+                        }
+                        catch (Exception ex)
+                        {
+                            loadFailures.Messages.Add(ex.Message);
+                        }
+
+                        transaction.Commit();
+                    }
+                }
+
+                var runs = new List<object>();
+
+                // Baked multi-size families are verified by switching the instance type:
+                // the shape is per type, not per parameter value.
+                foreach (var typeName in typeNames ?? new List<string>())
+                {
+                    var failures = new FailureCollector();
+                    var symbol = symbols.FirstOrDefault(candidate =>
+                        string.Equals(candidate.Name, typeName, StringComparison.OrdinalIgnoreCase));
+                    try
+                    {
+                        using (var transaction = SilentTransaction(
+                                   project, "Family Agent — switch to " + typeName, failures))
+                        {
+                            transaction.Start();
+                            if (symbol == null)
+                            {
+                                failures.Messages.Add($"Type \"{typeName}\" not found");
+                            }
+                            else
+                            {
+                                if (!symbol.IsActive) symbol.Activate();
+                                if (instance != null) instance.Symbol = symbol;
+                                project.Regenerate();
+                            }
+
+                            transaction.Commit();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        failures.Messages.Add(ex.Message);
+                    }
+
+                    runs.Add(new
+                    {
+                        parameter = typeName,
+                        valueMm = 0.0,
+                        applied = new List<string> { symbol == null ? "missing" : "switch" },
+                        failures = failures.Messages,
+                        failureCount = failures.Messages.Count,
+                        bounds = InstanceBounds(instance),
+                    });
+                }
+
+                foreach (var entry in values)
+                {
+                    var failures = new FailureCollector();
+                    var applied = new List<string>();
+                    try
+                    {
+                        using (var transaction = SilentTransaction(
+                                   project, "Family Agent — drive " + entry.Key, failures))
+                        {
+                            transaction.Start();
+
+                            foreach (var symbol in symbols)
+                            {
+                                var parameter = symbol.LookupParameter(entry.Key);
+                                if (parameter == null)
+                                {
+                                    applied.Add($"{symbol.Name}: parameter missing");
+                                    continue;
+                                }
+
+                                var ok = parameter.Set(entry.Value / MmPerFoot);
+                                applied.Add($"{symbol.Name}: set={ok}");
+                            }
+
+                            project.Regenerate();
+                            transaction.Commit();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        failures.Messages.Add(ex.Message);
+                    }
+
+                    runs.Add(new
+                    {
+                        parameter = entry.Key,
+                        valueMm = entry.Value,
+                        applied,
+                        failures = failures.Messages,
+                        failureCount = failures.Messages.Count,
+                        bounds = InstanceBounds(instance),
+                    });
+                }
+
+                return new
+                {
+                    ok = true,
+                    runs,
+                    symbols = symbols.Count,
+                    instance = instance != null,
+                    loadFailures = loadFailures.Messages,
+                    elapsedMs = (int)(DateTime.UtcNow - started).TotalMilliseconds,
+                };
+            }
+            finally
+            {
+                try
+                {
+                    project?.Close(false);
+                }
+                catch
+                {
+                    // Keep the harness from masking the result.
+                }
+            }
+        }
+
+        /// <summary>Bounding extents of the placed instance, in millimetres.</summary>
+        private static object InstanceBounds(FamilyInstance instance)
+        {
+            if (instance == null) return new { x = 0.0, y = 0.0, z = 0.0, forms = 0 };
+
+            try
+            {
+                var box = instance.get_BoundingBox(null);
+                if (box == null) return new { x = 0.0, y = 0.0, z = 0.0, forms = 0 };
+
+                return new
+                {
+                    x = Math.Round((box.Max.X - box.Min.X) * MmPerFoot),
+                    y = Math.Round((box.Max.Y - box.Min.Y) * MmPerFoot),
+                    z = Math.Round((box.Max.Z - box.Min.Z) * MmPerFoot),
+                    forms = 1,
+                };
+            }
+            catch
+            {
+                return new { x = 0.0, y = 0.0, z = 0.0, forms = 0 };
+            }
+        }
 
         /// <summary>
         /// Diagnostic: opens a built .rfa, changes one parameter and reports whether the
@@ -85,6 +565,19 @@ namespace FamilyAgent.Addin
                     }
                 }
 
+                // Connector origins let a test compare the built family with the spec.
+                var connectorOrigins = new FilteredElementCollector(document)
+                    .OfClass(typeof(ConnectorElement))
+                    .Cast<ConnectorElement>()
+                    .Select(element => new
+                    {
+                        name = element.Name,
+                        x = Math.Round(element.Origin.X * MmPerFoot, 1),
+                        y = Math.Round(element.Origin.Y * MmPerFoot, 1),
+                        z = Math.Round(element.Origin.Z * MmPerFoot, 1),
+                    })
+                    .ToList();
+
                 var parameterNames = new List<string>();
                 foreach (Autodesk.Revit.DB.FamilyParameter candidate in manager.Parameters)
                 {
@@ -118,8 +611,9 @@ namespace FamilyAgent.Addin
                 var before = ModelSignature(document);
                 var moved = false;
                 var commit = "n/a";
+                var failures = new FailureCollector();
 
-                using (var transaction = new Transaction(document, "Family Agent — inspect"))
+                using (var transaction = SilentTransaction(document, "Family Agent — inspect", failures))
                 {
                     transaction.Start();
                     manager.Set(familyParameter, current * (1.0 + percent / 100.0) + 0.001);
@@ -133,15 +627,19 @@ namespace FamilyAgent.Addin
                     ok = true,
                     parameter,
                     valueMm = Math.Round(current * MmPerFoot, 1),
+                    changedToMm = Math.Round((current * (1.0 + percent / 100.0)) * MmPerFoot, 1),
                     percent,
                     commit,
                     moved,
+                    failures = failures.Messages,
+                    failureCount = failures.Messages.Count,
                     planes = planes.Count,
                     pinned = planes.Count(plane => plane.Pinned),
                     dimensions = dimensions.Count,
                     labelled,
                     labelledNames,
                     parameterNames,
+                    connectors = connectorOrigins,
                 };
             }
             finally
@@ -197,6 +695,7 @@ namespace FamilyAgent.Addin
                 PlaneSkeleton skeleton = null;
                 List<Element> forms;
                 var partByForm = new Dictionary<long, ResolvedPart>();
+                IDictionary<string, Element> connectorHosts = new Dictionary<string, Element>();
                 var joins = 0;
                 var failedParts = new List<string>();
 
@@ -216,6 +715,8 @@ namespace FamilyAgent.Addin
                         document, model, materials, result.Warnings, partByForm, failedParts);
                     joins = JoinOverlappingForms(
                         document, forms, partByForm, materials, result.Warnings);
+                    connectorHosts = CreateConnectorHosts(
+                        document, spec, parameters, forms, partByForm, result.Warnings);
 
                     var status = transaction.Commit();
                     if (status != TransactionStatus.Committed)
@@ -233,39 +734,71 @@ namespace FamilyAgent.Addin
                 var radialDimensions = 0;
                 var inert = new List<string>();
                 var flex = string.Empty;
+                var constraintMode = "rebuild";
+                var probeFailures = 0;
 
                 if (IncludeConstraints && skeleton != null)
                 {
-                    stage = "dimensioning the reference planes";
-                    refDimensions = CreateDimensions(document, skeleton.Dimensions, result.Warnings);
+                    var lockedFormAxes = new HashSet<string>(StringComparer.Ordinal);
+                    var solvedFaces = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
                     if (LockFacesToPlanes)
                     {
                         stage = "locking the geometry to the reference planes";
                         locks = LockGeometry(
-                            document, skeleton, forms, partByForm, out var lockedFormAxes, result.Warnings);
+                            document, skeleton, forms, partByForm, out lockedFormAxes, result.Warnings);
+                    }
 
+                    // Planes are dimensioned after the locks, so a formula parameter never
+                    // labels a plane a form is already aligned to.
+                    stage = "dimensioning the reference planes";
+                    refDimensions = CreateDimensions(document, skeleton, skeleton.Dimensions, result.Warnings);
+
+                    if (LockFacesToPlanes)
+                    {
                         stage = "dimensioning the part faces";
                         faceDimensions = CreateFaceDimensions(
-                            document, skeleton, forms, parameters, lockedFormAxes, out var solvedFaces, result.Warnings);
+                            document, spec, skeleton, forms, partByForm, parameters,
+                            lockedFormAxes, out solvedFaces, result.Warnings);
                         radialDimensions = CreateRadialDimensions(
                             document, skeleton, forms, parameters, solvedFaces, result.Warnings);
-                        inert = skeleton.Inert().Where(name => !solvedFaces.Contains(name)).ToList();
+                    }
 
-                        stage = "self-checking the parameters";
-                        try
-                        {
-                            flex = SelfCheck(document, parameters);
-                        }
-                        catch (Exception ex)
-                        {
-                            flex = "error: " + ex.Message;
-                        }
+                    // Revit is the judge: flex every driver and drop whatever it refuses, so
+                    // the saved family always stays editable when loaded into a project.
+                    stage = "validating the constraints";
+                    try
+                    {
+                        flex = ValidateConstraints(
+                            document, parameters, result.Warnings, LockFacesToPlanes,
+                            out constraintMode, out probeFailures);
+                    }
+                    catch (Exception ex)
+                    {
+                        constraintMode = "rebuild";
+                        flex = "error: " + ex.Message;
+                    }
 
-                        if (flex.Contains("still") || flex.Contains("X "))
-                        {
-                            result.Warnings.Add("Flex check: " + flex);
-                        }
+                    // Inert means "labelled but shapes nothing": a formula parameter only
+                    // reports, and a dimension on a void cut cannot drive it, yet both still
+                    // size real geometry. Only parameters absent from every part expression
+                    // are truly inert.
+                    var formulaNames = new HashSet<string>(
+                        parameters.Ordered
+                            .Where(parameter => !string.IsNullOrWhiteSpace(parameter.Formula))
+                            .Select(parameter => parameter.Name),
+                        StringComparer.OrdinalIgnoreCase);
+                    var drivenParts = ParameterPartDependencies(spec);
+                    inert = skeleton.Inert()
+                        .Where(name => !solvedFaces.Contains(name) && !formulaNames.Contains(name))
+                        .Where(name => !(drivenParts.TryGetValue(name, out var parts) && parts.Count > 0))
+                        .ToList();
+
+                    if (constraintMode != "constraints")
+                    {
+                        locks = 0;
+                        faceDimensions = 0;
+                        radialDimensions = 0;
                     }
                 }
 
@@ -276,7 +809,8 @@ namespace FamilyAgent.Addin
                 }
 
                 stage = "creating MEP connectors";
-                var connectors = CreateConnectors(document, spec, parameters, forms, result.Warnings);
+                var connectors = CreateConnectors(
+                    document, spec, parameters, forms, connectorHosts, result.Warnings);
 
                 result.Stats = new
                 {
@@ -286,10 +820,20 @@ namespace FamilyAgent.Addin
                     lofts = forms.Count(f => f.GetType() == typeof(Form)),
                     sweptBlends = forms.Count(f => f is SweptBlend),
                     freeforms = forms.Count(f => f is FreeFormElement),
+                    freeformParts = forms
+                        .Where(form => form is FreeFormElement)
+                        .Select(form => partByForm != null &&
+                                        partByForm.TryGetValue(form.Id.Value, out var source)
+                            ? source.Id
+                            : form.Name)
+                        .ToList(),
                     voids = forms.Count(f => f is Extrusion extrusion && !extrusion.IsSolid),
                     refPlanes = skeleton?.Created ?? 0,
                     refDimensions,
                     locks,
+                    mode = constraintMode,
+                    qaPass = constraintMode == "constraints" && probeFailures == 0 && failedParts.Count == 0,
+                    probeFailures,
                     joins,
                     totalForms = forms.Count,
                     missingForms = Math.Max(0, model.Instances - forms.Count),
@@ -321,6 +865,7 @@ namespace FamilyAgent.Addin
                 {
                     transaction.Start();
                     SpecStore.Save(document, json);
+                    SpecStore.SaveMode(document, constraintMode);
                     transaction.Commit();
                 }
 
@@ -421,6 +966,7 @@ namespace FamilyAgent.Addin
                 PlaneSkeleton skeleton = null;
                 List<Element> forms;
                 var partByForm = new Dictionary<long, ResolvedPart>();
+                IDictionary<string, Element> connectorHosts = new Dictionary<string, Element>();
                 var joins = 0;
                 var failedParts = new List<string>();
 
@@ -444,6 +990,8 @@ namespace FamilyAgent.Addin
                         document, model, materials, result.Warnings, partByForm, failedParts);
                     joins = JoinOverlappingForms(
                         document, forms, partByForm, materials, result.Warnings);
+                    connectorHosts = CreateConnectorHosts(
+                        document, spec, parameters, forms, partByForm, result.Warnings);
 
                     var status = transaction.Commit();
                     if (status != TransactionStatus.Committed)
@@ -461,39 +1009,71 @@ namespace FamilyAgent.Addin
                 var radialDimensions = 0;
                 var inert = new List<string>();
                 var flex = string.Empty;
+                var constraintMode = "rebuild";
+                var probeFailures = 0;
 
                 if (IncludeConstraints && skeleton != null)
                 {
-                    stage = "dimensioning the reference planes";
-                    refDimensions = CreateDimensions(document, skeleton.Dimensions, result.Warnings);
+                    var lockedFormAxes = new HashSet<string>(StringComparer.Ordinal);
+                    var solvedFaces = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
                     if (LockFacesToPlanes)
                     {
                         stage = "locking the geometry to the reference planes";
                         locks = LockGeometry(
-                            document, skeleton, forms, partByForm, out var lockedFormAxes, result.Warnings);
+                            document, skeleton, forms, partByForm, out lockedFormAxes, result.Warnings);
+                    }
 
+                    // Planes are dimensioned after the locks, so a formula parameter never
+                    // labels a plane a form is already aligned to.
+                    stage = "dimensioning the reference planes";
+                    refDimensions = CreateDimensions(document, skeleton, skeleton.Dimensions, result.Warnings);
+
+                    if (LockFacesToPlanes)
+                    {
                         stage = "dimensioning the part faces";
                         faceDimensions = CreateFaceDimensions(
-                            document, skeleton, forms, parameters, lockedFormAxes, out var solvedFaces, result.Warnings);
+                            document, spec, skeleton, forms, partByForm, parameters,
+                            lockedFormAxes, out solvedFaces, result.Warnings);
                         radialDimensions = CreateRadialDimensions(
                             document, skeleton, forms, parameters, solvedFaces, result.Warnings);
-                        inert = skeleton.Inert().Where(name => !solvedFaces.Contains(name)).ToList();
+                    }
 
-                        stage = "self-checking the parameters";
-                        try
-                        {
-                            flex = SelfCheck(document, parameters);
-                        }
-                        catch (Exception ex)
-                        {
-                            flex = "error: " + ex.Message;
-                        }
+                    // Revit is the judge: flex every driver and drop whatever it refuses, so
+                    // the saved family always stays editable when loaded into a project.
+                    stage = "validating the constraints";
+                    try
+                    {
+                        flex = ValidateConstraints(
+                            document, parameters, result.Warnings, LockFacesToPlanes,
+                            out constraintMode, out probeFailures);
+                    }
+                    catch (Exception ex)
+                    {
+                        constraintMode = "rebuild";
+                        flex = "error: " + ex.Message;
+                    }
 
-                        if (flex.Contains("still") || flex.Contains("X "))
-                        {
-                            result.Warnings.Add("Flex check: " + flex);
-                        }
+                    // Inert means "labelled but shapes nothing": a formula parameter only
+                    // reports, and a dimension on a void cut cannot drive it, yet both still
+                    // size real geometry. Only parameters absent from every part expression
+                    // are truly inert.
+                    var formulaNames = new HashSet<string>(
+                        parameters.Ordered
+                            .Where(parameter => !string.IsNullOrWhiteSpace(parameter.Formula))
+                            .Select(parameter => parameter.Name),
+                        StringComparer.OrdinalIgnoreCase);
+                    var drivenParts = ParameterPartDependencies(spec);
+                    inert = skeleton.Inert()
+                        .Where(name => !solvedFaces.Contains(name) && !formulaNames.Contains(name))
+                        .Where(name => !(drivenParts.TryGetValue(name, out var parts) && parts.Count > 0))
+                        .ToList();
+
+                    if (constraintMode != "constraints")
+                    {
+                        locks = 0;
+                        faceDimensions = 0;
+                        radialDimensions = 0;
                     }
                 }
 
@@ -504,7 +1084,8 @@ namespace FamilyAgent.Addin
                 }
 
                 stage = "creating MEP connectors";
-                var connectors = CreateConnectors(document, spec, parameters, forms, result.Warnings);
+                var connectors = CreateConnectors(
+                    document, spec, parameters, forms, connectorHosts, result.Warnings);
 
                 result.Stats = new
                 {
@@ -514,10 +1095,20 @@ namespace FamilyAgent.Addin
                     lofts = forms.Count(f => f.GetType() == typeof(Form)),
                     sweptBlends = forms.Count(f => f is SweptBlend),
                     freeforms = forms.Count(f => f is FreeFormElement),
+                    freeformParts = forms
+                        .Where(form => form is FreeFormElement)
+                        .Select(form => partByForm != null &&
+                                        partByForm.TryGetValue(form.Id.Value, out var source)
+                            ? source.Id
+                            : form.Name)
+                        .ToList(),
                     voids = forms.Count(f => f is Extrusion extrusion && !extrusion.IsSolid),
                     refPlanes = skeleton?.Created ?? 0,
                     refDimensions,
                     locks,
+                    mode = constraintMode,
+                    qaPass = constraintMode == "constraints" && probeFailures == 0 && failedParts.Count == 0,
+                    probeFailures,
                     joins,
                     totalForms = forms.Count,
                     missingForms = Math.Max(0, model.Instances - forms.Count),
@@ -549,6 +1140,7 @@ namespace FamilyAgent.Addin
                 {
                     transaction.Start();
                     SpecStore.Save(document, json);
+                    SpecStore.SaveMode(document, constraintMode);
                     transaction.Commit();
                 }
 
@@ -585,6 +1177,63 @@ namespace FamilyAgent.Addin
                 }
             }
             return volume;
+        }
+
+        /// <summary>
+        /// True when a parameter edit cannot be carried by the native constraint graph, so
+        /// the family has to re-solve its stored spec to stay identical to the studio:
+        /// geometry that lost its parameters (boolean, sweep and loft results become
+        /// FreeFormElements), or a derived parameter that no dimension carries (a miter
+        /// offset measured to a fold edge instead of to a face, for example).
+        /// </summary>
+        public static bool NeedsGeometryRebuild(Document document)
+        {
+            if (document == null || !document.IsFamilyDocument) return false;
+
+            // A baked multi-size family carries one geometry set per type and must not rebuild.
+            var storedMode = SpecStore.LoadMode(document);
+            if (string.Equals(storedMode, "baked-multi", StringComparison.OrdinalIgnoreCase)) return false;
+            if (!string.IsNullOrWhiteSpace(storedMode) &&
+                !string.Equals(storedMode, "constraints", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            try
+            {
+                if (new FilteredElementCollector(document).OfClass(typeof(FreeFormElement)).Any())
+                {
+                    return true;
+                }
+            }
+            catch
+            {
+                // A collector failure is not a reason to force a rebuild.
+            }
+
+            try
+            {
+                var labelled = LabelledParameters(document);
+                foreach (Autodesk.Revit.DB.FamilyParameter parameter in document.FamilyManager.Parameters)
+                {
+                    try
+                    {
+                        if (!string.IsNullOrWhiteSpace(parameter.Formula) && !labelled.Contains(parameter.Id))
+                        {
+                            return true;
+                        }
+                    }
+                    catch
+                    {
+                        // Reporting/shared parameters can refuse a formula read; they drive nothing.
+                    }
+                }
+            }
+            catch
+            {
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -932,7 +1581,12 @@ namespace FamilyAgent.Addin
             {
                 try
                 {
-                    manager.SetFormula(target, parameter.Formula);
+                    // The studio expression language accepts a "mm" unit suffix,
+                    // Revit formulas do not. Strip it so e.g. "Count + 1mm" works.
+                    var formula = System.Text.RegularExpressions.Regex.Replace(
+                        parameter.Formula, @"(?<=\d)\s*mm\b", string.Empty,
+                        System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    manager.SetFormula(target, formula);
                     return;
                 }
                 catch (Exception ex)
@@ -1052,12 +1706,14 @@ namespace FamilyAgent.Addin
             public View Elevation;
             public int Created;
             public readonly List<SkeletonPlane> Planes = new List<SkeletonPlane>();
-            public readonly List<PlaneDimension> Dimensions = new List<PlaneDimension>();
+            public readonly List<IPlaneDimension> Dimensions = new List<IPlaneDimension>();
             public readonly List<string> Driving = new List<string>();
             public readonly List<string> Unlabelled = new List<string>();
             /** Parameter name -> the plane its dimension drives, so we can tell if it moves anything. */
             public readonly Dictionary<string, SkeletonPlane> DrivenPlanes =
                 new Dictionary<string, SkeletonPlane>(StringComparer.OrdinalIgnoreCase);
+            /** Shared constraint graph: a second dimension between connected nodes overconstrains. */
+            public readonly ConstraintGraph Constraints = new ConstraintGraph();
 
             public SkeletonPlane FindEntry(PlaneAxis axis, double coordinate)
             {
@@ -1087,6 +1743,25 @@ namespace FamilyAgent.Addin
                 }
 
                 return inert;
+            }
+
+            /// <summary>
+            /// True when a form face is already aligned to this plane. A formula parameter
+            /// must not label a locked plane: Revit refuses to change it and rolls the
+            /// dimension back.
+            /// </summary>
+            public bool IsUsed(ReferencePlane plane)
+            {
+                if (plane == null) return false;
+
+                foreach (var entry in Planes)
+                {
+                    if (entry?.Plane == null) continue;
+                    if (!string.Equals(entry.Plane.UniqueId, plane.UniqueId, StringComparison.Ordinal)) continue;
+                    if (entry.Used) return true;
+                }
+
+                return false;
             }
 
             public ReferencePlane Find(PlaneAxis axis, double coordinate)
@@ -1320,6 +1995,17 @@ namespace FamilyAgent.Addin
                 var key = $"{from.UniqueId}|{to.UniqueId}|{view.Id}";
                 if (!usedPairs.Add(key)) return;
 
+                var fromKey = ConstraintGraph.PlaneKey(from);
+                var toKey = ConstraintGraph.PlaneKey(to);
+                if (skeleton.Constraints.WouldOverconstrain(fromKey, toKey))
+                {
+                    warnings.Add(
+                        $"Skipped overconstraining dimension \"{label.Definition?.Name}\" " +
+                        $"({from.Name} ↔ {to.Name})");
+                    return;
+                }
+                skeleton.Constraints.Connect(fromKey, toKey);
+
                 skeleton.Dimensions.Add(new PlaneDimension(view, from, to, start, end, label));
             }
 
@@ -1344,11 +2030,10 @@ namespace FamilyAgent.Addin
 
                 var familyParameter = FindParameter(manager, parameter.Name);
 
-                // Formula parameters are excluded: Revit rejects them as driving labels in
-                // this family context, and the build then rolls back.
-                var label = familyParameter != null &&
-                            string.IsNullOrWhiteSpace(parameter.Formula) &&
-                            labelled.Add(familyParameter.Id)
+                // A derived coordinate still needs one defining dimension. The dimension is
+                // plane-to-plane, so a formula parameter reports the value it computes
+                // instead of driving a form face; the union-find below rejects duplicates.
+                var label = familyParameter != null && labelled.Add(familyParameter.Id)
                     ? familyParameter
                     : null;
 
@@ -1436,6 +2121,17 @@ namespace FamilyAgent.Addin
 
                 Dim(skeleton.Plan, low, high, lowPoint, highPoint, label);
                 if (label != null) Track(parameter.Name, axis, highOffset);
+
+                // A pair sitting symmetrically around the centre gets an EQ chain, so both
+                // halves stay equal and the width cannot drift off-centre when it changes.
+                var centerPlaneForAxis = axis == PlaneAxis.X ? centerLeftRight : centerFrontBack;
+                var pairCenter = (lowOffset + highOffset) / 2;
+                if (label != null && centerPlaneForAxis != null && Math.Abs(pairCenter) <= 0.05 / MmPerFoot)
+                {
+                    var middlePoint = new XYZ(centerX, centerY, 0);
+                    skeleton.Dimensions.Add(new EqualPlaneDimension(
+                        skeleton.Plan, low, centerPlaneForAxis, high, lowPoint, middlePoint, highPoint));
+                }
             }
 
             return skeleton;
@@ -1470,6 +2166,16 @@ namespace FamilyAgent.Addin
                 foreach (var failure in failuresAccessor.GetFailureMessages())
                 {
                     var text = failure.GetDescriptionText();
+                    try
+                    {
+                        var id = failure.GetFailureDefinitionId();
+                        if (id != null) text = $"{text} [{id.Guid}]";
+                    }
+                    catch
+                    {
+                        // Older Revit builds can omit the definition id; the text is enough.
+                    }
+
                     if (!string.IsNullOrWhiteSpace(text) && !Messages.Contains(text))
                         Messages.Add(text);
 

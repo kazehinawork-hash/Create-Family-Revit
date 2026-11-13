@@ -2,6 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Text;
+using Autodesk.Revit.DB;
 using Autodesk.Revit.DB.Events;
 using Autodesk.Revit.UI;
 using Autodesk.Revit.UI.Events;
@@ -15,9 +18,54 @@ namespace FamilyAgent.Addin
         private static readonly HashSet<int> _dirtyDocHashes = new HashSet<int>();
         private static readonly Dictionary<int, string> _lastSignatures = new Dictionary<int, string>();
 
+        private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        private static extern bool EnumWindows(EnumWindowsProc callback, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        private static extern bool IsWindowVisible(IntPtr hWnd);
+
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+        private static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
+
+        /// <summary>
+        /// Rebuilding family geometry while the modal Family Types dialog is open makes
+        /// Revit regenerate the extrusions behind it and show "Can't make Extrusion".
+        /// Defer auto-sync until that dialog closes.
+        /// </summary>
+        private static bool FamilyTypesDialogOpen()
+        {
+            var found = false;
+            EnumWindows((hWnd, _) =>
+            {
+                if (!IsWindowVisible(hWnd)) return true;
+                var title = new StringBuilder(256);
+                GetWindowText(hWnd, title, title.Capacity);
+                var text = title.ToString();
+                if (text.IndexOf("Family Types", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    text.IndexOf("Family Type", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    found = true;
+                    return false;
+                }
+                return true;
+            }, IntPtr.Zero);
+            return found;
+        }
+
         public Result OnStartup(UIControlledApplication application)
         {
             AppDomain.CurrentDomain.AssemblyResolve += ResolveLocalAssembly;
+
+            // Native constraints keep axis-aligned drivers live, but baked geometry
+            // (boolean/sweep/loft results) and derived parameters no dimension carries can
+            // only follow a parameter edit by re-solving the stored spec. That is decided per
+            // family in OnIdling; FAMILY_AGENT_AUTOSYNC=0 disables it entirely.
+            AutoSyncEnabled = !string.Equals(
+                Environment.GetEnvironmentVariable("FAMILY_AGENT_AUTOSYNC"),
+                "0",
+                StringComparison.OrdinalIgnoreCase);
 
             CreateRibbon(application);
 
@@ -97,8 +145,13 @@ namespace FamilyAgent.Addin
             var doc = uiApp?.ActiveUIDocument?.Document;
             if (doc == null || !doc.IsFamilyDocument || doc.IsModifiable) return;
 
+            // Do not rebuild behind the open Family Types dialog; wait until it closes.
+            if (FamilyTypesDialogOpen()) return;
+
             var docHash = doc.GetHashCode();
             if (!_dirtyDocHashes.Remove(docHash)) return;
+
+            if (!NeedsRebuild(doc)) return;
 
             try
             {
@@ -122,6 +175,12 @@ namespace FamilyAgent.Addin
                 _rebuilding = true;
                 try
                 {
+                    if (FamilyBuilder.LockFacesToPlanes)
+                    {
+                        LogAutoSync(
+                            "Rebuild from the stored spec (baked geometry / derived parameters): " + doc.Title);
+                    }
+
                     var result = FamilyBuilder.Rebuild(doc);
                     if (result.Ok)
                     {
@@ -148,6 +207,24 @@ namespace FamilyAgent.Addin
                 _rebuilding = false;
                 LogAutoSync("Auto-sync exception: " + ex);
             }
+        }
+
+        /// <summary>
+        /// A rebuild is only worth its cost when the constraint graph cannot carry the edit:
+        /// locking is disabled, or the family holds baked geometry and derived parameters that
+        /// no dimension drives. Otherwise the native constraints already move the geometry.
+        /// </summary>
+        private static bool NeedsRebuild(Document doc)
+        {
+            // A baked multi-size family already carries one geometry set per type; rebuilding
+            // it would collapse every size onto the current one.
+            if (string.Equals(SpecStore.LoadMode(doc), "baked-multi", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (!FamilyBuilder.LockFacesToPlanes) return true;
+            return FamilyBuilder.NeedsGeometryRebuild(doc);
         }
 
         /// <summary>

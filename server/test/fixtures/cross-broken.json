@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "1.0",
+  "name": "Cable Ladder Mitered Cross (rungs only)",
+  "typeName": "TP-CLT-MX 400x400x100",
+  "category": "Electrical Equipment",
+  "units": "mm",
+  "description": "Spec lỗi do model nhỏ trả về: chỉ có bậc thang, thiếu 4 thành góc và 4 connector.",
+  "parameters": [
+    { "name": "Ladder Width 1", "type": "Length", "group": "Dimensions", "instance": false, "value": 400 },
+    { "name": "Ladder Width 2", "type": "Length", "group": "Dimensions", "instance": false, "value": 400 },
+    { "name": "Ladder Height", "type": "Length", "group": "Dimensions", "instance": false, "value": 100 },
+    { "name": "Sheet Thickness", "type": "Length", "group": "Dimensions", "instance": false, "value": 1.8 },
+    { "name": "Tangent Length", "type": "Length", "group": "Dimensions", "instance": false, "value": 120 },
+    { "name": "Miter Offset", "type": "Length", "group": "Dimensions", "instance": false, "value": 150 },
+    { "name": "Rung Width", "type": "Length", "group": "Dimensions", "instance": false, "value": 35 },
+    { "name": "Rung Height", "type": "Length", "group": "Dimensions", "instance": false, "value": 15 },
+    { "name": "Rung Thickness", "type": "Length", "group": "Dimensions", "instance": false, "value": 1.5 }
+  ],
+  "materials": [
+    { "name": "ThinhPhat_PowderCoated_RAL7035", "color": "#d7d7d7", "metalness": 0.2, "roughness": 0.6 },
+    { "name": "ThinhPhat_Galvanized_HotDip", "color": "#b8c0c8", "metalness": 0.75, "roughness": 0.35 }
+  ],
+  "parts": [
+    { "id": "rung-1-web", "name": "Rung 1 Web", "material": "ThinhPhat_Galvanized_HotDip", "solid": { "kind": "box", "origin": { "x": -350, "y": 0, "z": 8.4 }, "size": { "x": 35, "y": 400, "z": 15 } }, "cuts": [] },
+    { "id": "rung-1-front-lip", "name": "Rung 1 Front Lip", "material": "ThinhPhat_Galvanized_HotDip", "solid": { "kind": "box", "origin": { "x": -350, "y": 195, "z": 8.4 }, "size": { "x": 35, "y": 1.5, "z": 15 } }, "cuts": [] },
+    { "id": "rung-1-back-lip", "name": "Rung 1 Back Lip", "material": "ThinhPhat_Galvanized_HotDip", "solid": { "kind": "box", "origin": { "x": -350, "y": -195, "z": 8.4 }, "size": { "x": 35, "y": 1.5, "z": 15 } }, "cuts": [] },
+    { "id": "rung-2-web", "name": "Rung 2 Web", "material": "ThinhPhat_Galvanized_HotDip", "solid": { "kind": "box", "origin": { "x": -210, "y": 0, "z": 8.4 }, "size": { "x": 35, "y": 400, "z": 15 } }, "cuts": [] },
+    { "id": "rung-2-front-lip", "name": "Rung 2 Front Lip", "material": "ThinhPhat_Galvanized_HotDip", "solid": { "kind": "box", "origin": { "x": -210, "y": 195, "z": 8.4 }, "size": { "x": 35, "y": 1.5, "z": 15 } }, "cuts": [] },
+    { "id": "rung-2-back-lip", "name": "Rung 2 Back Lip", "material": "ThinhPhat_Galvanized_HotDip", "solid": { "kind": "box", "origin": { "x": -210, "y": -195, "z": 8.4 }, "size": { "x": 35, "y": 1.5, "z": 15 } }, "cuts": [] },
+    { "id": "rung-3-web", "name": "Rung 3 Web", "material": "ThinhPhat_Galvanized_HotDip", "solid": { "kind": "box", "origin": { "x": -70, "y": 0, "z": 8.4 }, "size": { "x": 35, "y": 400, "z": 15 } }, "cuts": [] },
+    { "id": "rung-3-front-lip", "name": "Rung 3 Front Lip", "material": "ThinhPhat_Galvanized_HotDip", "solid": { "kind": "box", "origin": { "x": -70, "y": 195, "z": 8.4 }, "size": { "x": 35, "y": 1.5, "z": 15 } }, "cuts": [] },
+    { "id": "rung-3-back-lip", "name": "Rung 3 Back Lip", "material": "ThinhPhat_Galvanized_HotDip", "solid": { "kind": "box", "origin": { "x": -70, "y": -195, "z": 8.4 }, "size": { "x": 35, "y": 1.5, "z": 15 } }, "cuts": [] },
+    { "id": "rung-4-web", "name": "Rung 4 Web", "material": "ThinhPhat_Galvanized_HotDip", "solid": { "kind": "box", "origin": { "x": 70, "y": 0, "z": 8.4 }, "size": { "x": 35, "y": 400, "z": 15 } }, "cuts": [] },
+    { "id": "rung-4-front-lip", "name": "Rung 4 Front Lip", "material": "ThinhPhat_Galvanized_HotDip", "solid": { "kind": "box", "origin": { "x": 70, "y": 195, "z": 8.4 }, "size": { "x": 35, "y": 1.5, "z": 15 } }, "cuts": [] },
+    { "id": "rung-4-back-lip", "name": "Rung 4 Back Lip", "material": "ThinhPhat_Galvanized_HotDip", "solid": { "kind": "box", "origin": { "x": 70, "y": -195, "z": 8.4 }, "size": { "x": 35, "y": 1.5, "z": 15 } }, "cuts": [] },
+    { "id": "rung-5-web", "name": "Rung 5 Web", "material": "ThinhPhat_Galvanized_HotDip", "solid": { "kind": "box", "origin": { "x": 210, "y": 0, "z": 8.4 }, "size": { "x": 35, "y": 400, "z": 15 } }, "cuts": [] },
+    { "id": "rung-5-front-lip", "name": "Rung 5 Front Lip", "material": "ThinhPhat_Galvanized_HotDip", "solid": { "kind": "box", "origin": { "x": 210, "y": 195, "z": 8.4 }, "size": { "x": 35, "y": 1.5, "z": 15 } }, "cuts": [] },
+    { "id": "rung-5-back-lip", "name": "Rung 5 Back Lip", "material": "ThinhPhat_Galvanized_HotDip", "solid": { "kind": "box", "origin": { "x": 210, "y": -195, "z": 8.4 }, "size": { "x": 35, "y": 1.5, "z": 15 } }, "cuts": [] },
+    { "id": "rung-6-web", "name": "Rung 6 Web", "material": "ThinhPhat_Galvanized_HotDip", "solid": { "kind": "box", "origin": { "x": 350, "y": 0, "z": 8.4 }, "size": { "x": 35, "y": 400, "z": 15 } }, "cuts": [] },
+    { "id": "rung-6-front-lip", "name": "Rung 6 Front Lip", "material": "ThinhPhat_Galvanized_HotDip", "solid": { "kind": "box", "origin": { "x": 350, "y": 195, "z": 8.4 }, "size": { "x": 35, "y": 1.5, "z": 15 } }, "cuts": [] },
+    { "id": "rung-6-back-lip", "name": "Rung 6 Back Lip", "material": "ThinhPhat_Galvanized_HotDip", "solid": { "kind": "box", "origin": { "x": 350, "y": -195, "z": 8.4 }, "size": { "x": 35, "y": 1.5, "z": 15 } }, "cuts": [] }
+  ],
+  "connectors": [],
+  "notes": ["Model chỉ trả về bậc thang; thiếu toàn bộ thành góc và connector."]
+}

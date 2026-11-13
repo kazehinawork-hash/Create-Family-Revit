@@ -258,7 +258,18 @@ export interface FamilySpec {
   parts: FamilyPart[];
   connectors?: MepConnector[];
   materials?: MaterialDef[];
+  /** Family types exported together with the family, one row per size. */
+  types?: FamilyTypeEntry[];
   notes?: string[];
+}
+
+/** One row of the Types tab: a family type and the driver values it sets. */
+export interface FamilyTypeEntry {
+  name: string;
+  /** Parameter name -> value in the spec unit (mm for Length). */
+  values: Record<string, number>;
+  /** True while the name is generated from the values and follows them. */
+  autoName?: boolean;
 }
 
 export interface Issue {

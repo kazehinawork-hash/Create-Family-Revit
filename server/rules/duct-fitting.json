@@ -1,0 +1,144 @@
+{
+  "productType": "duct-fitting",
+  "aliases": [
+    "ống gió",
+    "duct",
+    "elbow",
+    "tee",
+    "reducer",
+    "transition",
+    "côn",
+    "chạc ba",
+    "cút"
+  ],
+  "category": "Duct Fitting",
+  "matchers": {
+    "keywords": [
+      "ống gió",
+      "duct",
+      "cút",
+      "chạc",
+      "reducer",
+      "transition",
+      "vcd",
+      "van gió"
+    ],
+    "codePatterns": [
+      "^D-",
+      "DF-"
+    ]
+  },
+  "parameters": [
+    {
+      "name": "Duct Width",
+      "group": "Dimensions",
+      "unit": "mm",
+      "default": 400,
+      "range": [
+        100,
+        2000
+      ],
+      "fromEvidence": [
+        "Width"
+      ],
+      "remember": false
+    },
+    {
+      "name": "Duct Height",
+      "group": "Dimensions",
+      "unit": "mm",
+      "default": 300,
+      "range": [
+        100,
+        1200
+      ],
+      "fromEvidence": [
+        "Height"
+      ],
+      "remember": false
+    },
+    {
+      "name": "Sheet Thickness",
+      "group": "Dimensions",
+      "unit": "mm",
+      "default": 1.2,
+      "range": [
+        0.8,
+        3
+      ],
+      "fromEvidence": [
+        "Thickness"
+      ],
+      "remember": true
+    },
+    {
+      "name": "Flange Width",
+      "group": "Dimensions",
+      "unit": "mm",
+      "default": 20,
+      "range": [
+        15,
+        40
+      ],
+      "fromEvidence": [],
+      "remember": true
+    },
+    {
+      "name": "Bend Radius",
+      "group": "Dimensions",
+      "unit": "mm",
+      "formula": "[Duct Width] * 0.75",
+      "fromEvidence": [],
+      "remember": false
+    },
+    {
+      "name": "Branch Width",
+      "group": "Dimensions",
+      "unit": "mm",
+      "formula": "[Duct Width] * 0.6",
+      "fromEvidence": [],
+      "remember": false
+    },
+    {
+      "name": "Branch Height",
+      "group": "Dimensions",
+      "unit": "mm",
+      "formula": "[Duct Height] * 0.8",
+      "fromEvidence": [],
+      "remember": false
+    }
+  ],
+  "components": [
+    {
+      "kind": "body",
+      "required": true,
+      "countFormula": "1"
+    },
+    {
+      "kind": "flange",
+      "required": true,
+      "countFormula": "2",
+      "placement": "both ends"
+    }
+  ],
+  "connectors": [
+    {
+      "domain": "duct",
+      "sizeFrom": "Duct Width",
+      "placement": "each open end"
+    }
+  ],
+  "materials": [
+    {
+      "name": "Galvanized Sheet",
+      "color": "#b9bec2",
+      "finish": "galvanized"
+    }
+  ],
+  "checks": [
+    {
+      "expr": "Sheet Thickness >= 1",
+      "message": "Chiều dày ống gió phải ≥ 1 mm"
+    }
+  ]
+}

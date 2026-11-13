@@ -1,0 +1,43 @@
+{
+  "cableGlands": {
+    "unit": "mm",
+    "rows": {
+      "M16": { "hole": 16.2, "cableMin": 4, "cableMax": 8, "across": 20 },
+      "M20": { "hole": 20.2, "cableMin": 6, "cableMax": 12, "across": 24 },
+      "M25": { "hole": 25.2, "cableMin": 10, "cableMax": 16, "across": 30 },
+      "M32": { "hole": 32.2, "cableMin": 14, "cableMax": 22, "across": 38 },
+      "M40": { "hole": 40.2, "cableMin": 18, "cableMax": 28, "across": 46 },
+      "M50": { "hole": 50.2, "cableMin": 24, "cableMax": 34, "across": 56 },
+      "M63": { "hole": 63.2, "cableMin": 32, "cableMax": 44, "across": 70 }
+    }
+  },
+  "duct": {
+    "unit": "mm",
+    "widths": [100, 150, 200, 250, 300, 400, 500, 600, 700, 800, 900, 1000, 1200, 1400, 1600, 1800, 2000],
+    "heights": [100, 150, 200, 250, 300, 400, 500, 600, 700, 800, 900, 1000, 1200],
+    "tdcFlange": 20,
+    "tdfFlange": 30,
+    "gauge": { "small": 1.0, "medium": 1.2, "large": 1.5 }
+  },
+  "sheetGauge": {
+    "unit": "mm",
+    "rows": { "1.0": 1.0, "1.2": 1.2, "1.5": 1.5, "1.8": 1.8, "2.0": 2.0, "2.5": 2.5, "3.0": 3.0, "4.0": 4.0, "5.0": 5.0, "6.0": 6.0 }
+  },
+  "steelSections": {
+    "unit": "mm",
+    "angle": [{ "size": "L30x30x3", "a": 30, "t": 3 }, { "size": "L40x40x4", "a": 40, "t": 4 }, { "size": "L50x50x5", "a": 50, "t": 5 }, { "size": "L63x63x6", "a": 63, "t": 6 }],
+    "channel": [{ "size": "U50", "h": 50, "b": 38, "t": 5 }, { "size": "U75", "h": 75, "b": 40, "t": 4.8 }, { "size": "U100", "h": 100, "b": 48, "t": 5.3 }],
+    "box": [{ "size": "25x25x1.5", "a": 25, "t": 1.5 }, { "size": "30x30x2", "a": 30, "t": 2 }, { "size": "40x40x2", "a": 40, "t": 2 }, { "size": "50x50x2", "a": 50, "t": 2 }]
+  },
+  "dinRail": {
+    "unit": "mm",
+    "rows": {
+      "TS35": { "width": 35, "thickness": 1.0, "height": 7.5 },
+      "TS35-deep": { "width": 35, "thickness": 1.5, "height": 15 }
+    }
+  },
+  "doors": {
+    "unit": "mm",
+    "enclosure": { "gasket": 5, "hingeWidth": 25, "handleWidth": 30, "handleHeight": 60, "handleOffset": 30 }
+  }
+}

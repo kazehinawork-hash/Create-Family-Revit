@@ -2,8 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using Autodesk.Revit.DB;
 using FamilyAgent.Core;
+using Newtonsoft.Json;
 using CoreParameterSet = FamilyAgent.Core.ParameterSet;
 
 namespace FamilyAgent.Addin
@@ -17,13 +19,40 @@ namespace FamilyAgent.Addin
         /// </summary>
         private static int CreateDimensions(
             Document document,
-            List<PlaneDimension> pending,
+            PlaneSkeleton skeleton,
+            List<IPlaneDimension> pending,
             List<string> warnings)
         {
             if (pending == null || pending.Count == 0) return 0;
 
-            // Fast path: the whole skeleton in one transaction. Normally nothing fails and
-            // this is several times quicker than a subtransaction per dimension.
+            // A formula parameter may only label a free plane: Revit refuses to change a
+            // parameter that a form is already aligned to and rolls the dimension back.
+            if (skeleton != null)
+            {
+                var allowed = new List<IPlaneDimension>(pending.Count);
+                foreach (var dimension in pending)
+                {
+                    var plane = dimension as PlaneDimension;
+                    var label = plane?.Label;
+                    if (label != null &&
+                        !string.IsNullOrWhiteSpace(label.Formula) &&
+                        (skeleton.IsUsed(plane.From) || skeleton.IsUsed(plane.To)))
+                    {
+                        warnings.Add(
+                            $"Skipped formula dimension \"{label.Definition?.Name}\": its plane is locked to a form.");
+                        continue;
+                    }
+
+                    allowed.Add(dimension);
+                }
+
+                pending = allowed;
+                if (pending.Count == 0) return 0;
+            }
+
+            // Fast path: the whole skeleton in one transaction. Revit rejects a dimension
+            // whose label is a formula parameter, and one rejection rolls the whole batch
+            // back, so a failure here falls through to the per-dimension path below.
             var fast = new FailureCollector();
             var fastCreated = 0;
 
@@ -47,55 +76,39 @@ namespace FamilyAgent.Addin
                 // Fall through to the one-by-one path below.
             }
 
-            var failures = new FailureCollector();
             var created = 0;
-
-            try
+            foreach (var dimension in pending)
             {
-                using (var transaction = SilentTransaction(document, "Family Agent — reference dimensions", failures))
+                // One transaction per dimension: a label Revit refuses then costs only that
+                // dimension instead of rolling the whole plane skeleton back.
+                var failures = new FailureCollector();
+                try
                 {
-                    transaction.Start();
-
-                    foreach (var dimension in pending)
+                    using (var transaction = SilentTransaction(
+                               document, "Family Agent — reference dimension", failures))
                     {
-                        // One transaction per dimension: a single unsatisfiable constraint then
-                        // drops only that dimension instead of the whole skeleton.
-                        try
+                        transaction.Start();
+
+                        var scratch = new List<string>();
+                        var added = dimension.Create(document, scratch);
+                        var status = transaction.Commit();
+
+                        if (!added || status != TransactionStatus.Committed)
                         {
-                            using (var step = new SubTransaction(document))
-                            {
-                                step.Start();
-
-                                if (!dimension.Create(document, warnings))
-                                {
-                                    step.RollBack();
-                                    continue;
-                                }
-
-                                if (step.Commit() == TransactionStatus.Committed) created += 1;
-                            }
+                            var reason = failures.Messages.FirstOrDefault() ?? status.ToString();
+                            warnings.Add($"Dimension \"{dimension.Name}\" was rejected: {reason}");
+                            continue;
                         }
-                        catch (Exception ex)
-                        {
-                            warnings.Add($"Dimension \"{dimension.Name}\" was rejected: {ex.Message}");
-                        }
-                    }
 
-                    var status = transaction.Commit();
-                    if (status != TransactionStatus.Committed)
-                    {
-                        warnings.Add(
-                            $"Reference dimensions were rolled back ({status}): {string.Join(" ", failures.Messages.Take(3))}");
-                        return 0;
+                        created += 1;
                     }
                 }
-            }
-            catch (Exception ex)
-            {
-                warnings.Add($"Reference dimensions stopped: {ex.Message}");
+                catch (Exception ex)
+                {
+                    warnings.Add($"Dimension \"{dimension.Name}\" was rejected: {ex.Message}");
+                }
             }
 
-            foreach (var message in failures.Messages.Take(3)) warnings.Add(message);
             return created;
         }
 
@@ -140,25 +153,56 @@ namespace FamilyAgent.Addin
                     ResolvedPart part = null;
                     if (partByForm != null) partByForm.TryGetValue(form.Id.Value, out part);
 
+                    // The connector-host tab is a 2 mm plate that only carries the connector
+                    // coordinate system. Aligning its faces makes Revit report "Base sketch
+                    // for extrusion is invalid" as soon as a driver moves, so leave it free.
+                    if (part != null && !string.IsNullOrEmpty(part.Id) &&
+                        part.Id.StartsWith("connector-host-", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
                     foreach (PlaneAxis axis in new[] { PlaneAxis.X, PlaneAxis.Y, PlaneAxis.Z })
                     {
-                        var best = ChooseFace(faces, axis, part?.Anchor);
-                        if (best == null) continue;
-
                         var view = axis == PlaneAxis.Z ? skeleton.Elevation : skeleton.Plan;
                         if (view == null) continue;
 
-                        try
+                        var onAxis = faces
+                            .Where(face => face.Axis == axis && face.Plane != null && face.Face?.Reference != null)
+                            .ToList();
+                        if (onAxis.Count < 2) continue;
+
+                        // Lock BOTH extremes, not only the outer face. A slanted edge only
+                        // follows its parameters when both of its end planes are attached;
+                        // constraining one side leaves the sketch the wrong size, and Revit
+                        // then deletes the extrusion ("Base sketch for extrusion is invalid").
+                        var low = onAxis.OrderBy(face => face.Coordinate).First();
+                        var high = onAxis.OrderByDescending(face => face.Coordinate).First();
+
+                        foreach (var candidate in new[] { low, high })
                         {
-                            document.FamilyCreate.NewAlignment(view, best.Plane.GetReference(), best.Face.Reference);
-                            best.Entry.Used = true;
-                            lockedFormAxes.Add($"{form.Id.Value}:{axis}");
-                            locked += 1;
-                        }
-                        catch (Exception ex)
-                        {
-                            // One stubborn face must not cost the whole family its constraints.
-                            if (failures.Messages.Count < 3) warnings.Add($"Lock \"{form.Name}\": {ex.Message}");
+                            var planeKey = ConstraintGraph.PlaneKey(candidate.Plane);
+                            var faceKey = ConstraintGraph.FaceKey(document, candidate.Face.Reference);
+                            if (skeleton.Constraints.WouldOverconstrain(planeKey, faceKey))
+                            {
+                                warnings.Add($"Skipped overconstraining lock \"{form.Name}\" ({axis})");
+                                continue;
+                            }
+
+                            try
+                            {
+                                document.FamilyCreate.NewAlignment(
+                                    view, candidate.Plane.GetReference(), candidate.Face.Reference);
+                                skeleton.Constraints.Connect(planeKey, faceKey);
+                                candidate.Entry.Used = true;
+                                lockedFormAxes.Add($"{form.Id.Value}:{axis}");
+                                locked += 1;
+                            }
+                            catch (Exception ex)
+                            {
+                                // One stubborn face must not cost the whole family its constraints.
+                                if (failures.Messages.Count < 3) warnings.Add($"Lock \"{form.Name}\": {ex.Message}");
+                            }
                         }
                     }
                 }
@@ -185,28 +229,161 @@ namespace FamilyAgent.Addin
         }
 
         /// <summary>
+        /// Union-find over plane/face constraints. A dimension or alignment may only join
+        /// two components that are not connected yet; joining the same component is the
+        /// "Dimension overconstrains the Family" cycle Revit reports in Family Types.
+        /// </summary>
+        private sealed class ConstraintGraph
+        {
+            private readonly Dictionary<string, string> _parent =
+                new Dictionary<string, string>(StringComparer.Ordinal);
+
+            public static string PlaneKey(ReferencePlane plane) => "plane:" + plane.UniqueId;
+
+            public static string FaceKey(Document document, Reference reference)
+            {
+                try
+                {
+                    return "face:" + reference.ConvertToStableRepresentation(document);
+                }
+                catch
+                {
+                    return "face:" + reference.ElementId.Value;
+                }
+            }
+
+            private string Find(string key)
+            {
+                if (!_parent.TryGetValue(key, out var parent))
+                {
+                    _parent[key] = key;
+                    return key;
+                }
+
+                if (parent == key) return key;
+                var root = Find(parent);
+                _parent[key] = root;
+                return root;
+            }
+
+            public bool WouldOverconstrain(string a, string b)
+            {
+                return Find(a) == Find(b);
+            }
+
+            public void Connect(string a, string b)
+            {
+                var ra = Find(a);
+                var rb = Find(b);
+                if (ra != rb) _parent[ra] = rb;
+            }
+        }
+
+        /// <summary>
         /// Dimensions between two faces of the same solid whose distance equals a parameter,
         /// labelled with that parameter. Thicknesses and local widths ("Glass Thickness",
         /// "Door Width") never sit on a datum plane, so this is the only way they can drive
         /// geometry. Only same-solid pairs are used: cross-part dimensions would fight the
         /// alignment locks and make Revit roll the rebuild back.
         /// </summary>
+        /// <summary>
+        /// Maps each parameter to the parts/cuts whose expressions reference it, then
+        /// propagates through formula parameters. Without this map a face dimension can
+        /// label the first face pair with the same value, e.g. Rung Height on a flange.
+        /// </summary>
+        private static Dictionary<string, HashSet<string>> ParameterPartDependencies(FamilySpec spec)
+        {
+            var map = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var part in spec.Parts ?? new List<FamilyPart>())
+            {
+                if (part == null || string.IsNullOrWhiteSpace(part.Id)) continue;
+
+                var json = JsonConvert.SerializeObject(new
+                {
+                    part.Solid,
+                    part.Cuts,
+                    part.Array,
+                    part.Anchor,
+                });
+
+                foreach (Match match in Regex.Matches(json, @"\[([^\]]+)\]"))
+                {
+                    var name = match.Groups[1].Value.Trim();
+                    if (name.Length == 0) continue;
+
+                    if (!map.TryGetValue(name, out var parts))
+                    {
+                        parts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                        map[name] = parts;
+                    }
+                    parts.Add(part.Id);
+                }
+            }
+
+            var formulas = (spec.Parameters ?? new List<FamilyAgent.Core.FamilyParameter>())
+                .Where(parameter => parameter != null && !string.IsNullOrWhiteSpace(parameter.Formula))
+                .ToList();
+
+            var changed = true;
+            var guard = 0;
+            while (changed && guard < 20)
+            {
+                changed = false;
+                guard += 1;
+
+                foreach (var parameter in formulas)
+                {
+                    if (!map.TryGetValue(parameter.Name, out var parts) || parts.Count == 0) continue;
+
+                    List<string> dependencies;
+                    try
+                    {
+                        dependencies = Expression.Dependencies(parameter.Formula);
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+
+                    foreach (var dependency in dependencies)
+                    {
+                        if (!map.TryGetValue(dependency, out var target))
+                        {
+                            target = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                            map[dependency] = target;
+                        }
+
+                        foreach (var part in parts)
+                        {
+                            if (target.Add(part)) changed = true;
+                        }
+                    }
+                }
+            }
+
+            return map;
+        }
+
         private static int CreateFaceDimensions(
             Document document,
+            FamilySpec spec,
             PlaneSkeleton skeleton,
             IList<Element> forms,
+            IDictionary<long, ResolvedPart> partByForm,
             CoreParameterSet parameters,
             HashSet<string> lockedFormAxes,
             out HashSet<string> solved,
             List<string> warnings)
         {
             solved = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (skeleton == null || forms == null || forms.Count == 0) return 0;
+            if (skeleton.Plan == null && skeleton.Elevation == null) return 0;
 
-            var inert = skeleton.Inert();
-            if (inert.Count == 0 || forms == null || forms.Count == 0) return 0;
-
+            var graph = skeleton.Constraints ?? new ConstraintGraph();
             var options = new Options { ComputeReferences = true, DetailLevel = ViewDetailLevel.Fine };
-            var perForm = new List<(long Id, Dictionary<PlaneAxis, List<FaceCandidate>> Faces)>();
+            var dependencies = ParameterPartDependencies(spec);
+            var perForm = new List<(long Id, string PartId, Dictionary<PlaneAxis, List<FaceCandidate>> Faces)>();
 
             foreach (var form in forms)
             {
@@ -223,7 +400,23 @@ namespace FamilyAgent.Addin
                 };
 
                 CollectAllFaces(solidForm, options, byAxis);
-                if (byAxis.Values.Any(list => list.Count > 1)) perForm.Add((form.Id.Value, byAxis));
+                if (byAxis.Values.Any(list => list.Count > 1))
+                {
+                    var partId = partByForm != null &&
+                                 partByForm.TryGetValue(form.Id.Value, out var sourcePart)
+                        ? sourcePart.Id
+                        : null;
+
+                    // The connector stub is already dimensioned by its host-plane locks.
+                    // A second face dimension on its width would be a duplicate constraint.
+                    if (!string.IsNullOrEmpty(partId) &&
+                        partId.StartsWith("connector-host-", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    perForm.Add((form.Id.Value, partId, byAxis));
+                }
             }
 
             if (perForm.Count == 0) return 0;
@@ -237,55 +430,135 @@ namespace FamilyAgent.Addin
                 {
                     transaction.Start();
 
-                    foreach (var name in inert)
+                    foreach (var parameter in parameters.Ordered)
                     {
-                        var parameter = parameters.Ordered.FirstOrDefault(candidate =>
-                            string.Equals(candidate.Name, name, StringComparison.OrdinalIgnoreCase));
-                        if (parameter == null || !parameter.Number.HasValue) continue;
+                        if (!IsType(parameter.Type, "Length")) continue;
+                        if (!parameter.Number.HasValue) continue;
+                        if (solved.Contains(parameter.Name)) continue;
 
                         var value = Math.Abs(parameter.Number.Value);
                         if (value < 1) continue;
 
-                        var familyParameter = FindParameter(document.FamilyManager, name);
-                        if (familyParameter == null) continue;
-
-                        var axis = AxisFor(parameter.Name, parameter.Axis);
-
-                        var done = false;
-                        foreach (var candidateAxis in new[] { axis, PlaneAxis.X, PlaneAxis.Y, PlaneAxis.Z })
+                        // One unlabelable parameter must not stop the rest: Revit throws null
+                        // reference and overconstraint failures per form, and the outer catch
+                        // used to abort every remaining parameter.
+                        try
                         {
-                            if (done) break;
+                            var familyParameter = FindParameter(document.FamilyManager, parameter.Name);
+                            if (familyParameter == null) continue;
 
-                            var view = candidateAxis == PlaneAxis.Z ? skeleton.Elevation : skeleton.Plan;
-                            if (view == null) continue;
-
-                            foreach (var form in perForm)
+                            // The plane-to-plane dimension already drives this parameter; a
+                            // face dimension on the same value is the duplicate Revit reports
+                            // as "overconstrains the Family".
+                            if (skeleton.Driving.Contains(parameter.Name, StringComparer.OrdinalIgnoreCase))
                             {
-                                // A form already locked on this axis would end up with two
-                                // constraints on the same direction: editing either parameter
-                                // then fails with "Dimension over-constrains the family".
-                                if (lockedFormAxes.Contains($"{form.Id}:{candidateAxis}")) continue;
+                                continue;
+                            }
 
-                                var faces = form.Faces[candidateAxis];
+                            var axis = AxisFor(parameter.Name, parameter.Axis);
+                            dependencies.TryGetValue(parameter.Name, out var targetParts);
 
-                                for (var i = 0; i < faces.Count && !done; i += 1)
+                            var searchForms = perForm;
+                            if (targetParts != null && targetParts.Count > 0)
+                            {
+                                // Prefer the parts whose expressions reference this parameter,
+                                // but keep every other form as a fallback: the value may live
+                                // on a derived/split form that the expression map cannot see.
+                                var preferred = perForm
+                                    .Where(form => !string.IsNullOrEmpty(form.PartId) &&
+                                                   targetParts.Contains(form.PartId))
+                                    .ToList();
+                                var others = perForm.Except(preferred).ToList();
+                                searchForms = preferred.Concat(others).ToList();
+                            }
+
+                            var done = false;
+                            foreach (var candidateAxis in new[] { axis, PlaneAxis.X, PlaneAxis.Y, PlaneAxis.Z })
+                            {
+                                if (done) break;
+
+                                var view = candidateAxis == PlaneAxis.Z ? skeleton.Elevation : skeleton.Plan;
+                                if (view == null) continue;
+
+                                foreach (var form in searchForms)
                                 {
-                                    for (var j = i + 1; j < faces.Count && !done; j += 1)
-                                    {
-                                        var distance = Math.Abs(faces[j].Coordinate - faces[i].Coordinate);
-                                        if (Math.Abs(distance - Ft(value)) > 0.05 / MmPerFoot) continue;
+                                    if (!form.Faces.TryGetValue(candidateAxis, out var faces)) continue;
+                                    if (faces == null || faces.Count < 2) continue;
 
-                                        if (TryLabelPair(document, view, faces[i], faces[j], familyParameter, warnings))
+                                    for (var i = 0; i < faces.Count && !done; i += 1)
+                                    {
+                                        for (var j = i + 1; j < faces.Count && !done; j += 1)
                                         {
-                                            created += 1;
-                                            solved.Add(name);
-                                            done = true;
+                                            var distance = Math.Abs(faces[j].Coordinate - faces[i].Coordinate);
+                                            if (Math.Abs(distance - Ft(value)) > 0.05 / MmPerFoot) continue;
+
+                                            if (TryLabelPair(
+                                                    document, view, faces[i], faces[j],
+                                                    familyParameter, graph, warnings))
+                                            {
+                                                created += 1;
+                                                solved.Add(parameter.Name);
+                                                done = true;
+                                            }
+                                        }
+                                    }
+
+                                    if (done) break;
+                                }
+                            }
+
+                            // Cross-part parameters (relief gap, rung height, upper run) live
+                            // between two forms. Only use forms whose part expressions name
+                            // this parameter: a global fallback attaches the label to an
+                            // unrelated form and locks the wrong geometry.
+                            if (!done && targetParts != null && targetParts.Count > 0)
+                            {
+                                var targetForms = perForm
+                                    .Where(form => !string.IsNullOrEmpty(form.PartId) &&
+                                                   targetParts.Contains(form.PartId))
+                                    .ToList();
+
+                                foreach (var candidateAxis in new[] { axis, PlaneAxis.X, PlaneAxis.Y, PlaneAxis.Z })
+                                {
+                                    if (done) break;
+
+                                    var view = candidateAxis == PlaneAxis.Z ? skeleton.Elevation : skeleton.Plan;
+                                    if (view == null) continue;
+
+                                    var flat = new List<(long FormId, FaceCandidate Face)>();
+                                    foreach (var form in targetForms)
+                                    {
+                                        if (!form.Faces.TryGetValue(candidateAxis, out var faces)) continue;
+                                        if (faces == null) continue;
+                                        foreach (var face in faces) flat.Add((form.Id, face));
+                                    }
+
+                                    for (var i = 0; i < flat.Count && !done; i += 1)
+                                    {
+                                        for (var j = i + 1; j < flat.Count && !done; j += 1)
+                                        {
+                                            if (flat[i].FormId == flat[j].FormId) continue;
+
+                                            var distance = Math.Abs(
+                                                flat[j].Face.Coordinate - flat[i].Face.Coordinate);
+                                            if (Math.Abs(distance - Ft(value)) > 0.05 / MmPerFoot) continue;
+
+                                            if (TryLabelPair(
+                                                    document, view, flat[i].Face, flat[j].Face,
+                                                    familyParameter, graph, warnings))
+                                            {
+                                                created += 1;
+                                                solved.Add(parameter.Name);
+                                                done = true;
+                                            }
                                         }
                                     }
                                 }
-
-                                if (done) break;
                             }
+                        }
+                        catch (Exception ex)
+                        {
+                            warnings.Add($"Face dimension \"{parameter.Name}\" failed: {ex.Message}");
                         }
                     }
 
@@ -313,7 +586,7 @@ namespace FamilyAgent.Addin
             HashSet<string> solved,
             List<string> warnings)
         {
-            if (skeleton.Plan == null || forms == null || forms.Count == 0) return 0;
+            if (skeleton == null || skeleton.Plan == null || forms == null || forms.Count == 0) return 0;
 
             var candidates = parameters.Ordered
                 .Where(parameter =>
@@ -485,10 +758,24 @@ namespace FamilyAgent.Addin
             FaceCandidate a,
             FaceCandidate b,
             Autodesk.Revit.DB.FamilyParameter label,
+            ConstraintGraph graph,
             List<string> warnings)
         {
+            if (document == null || view == null || label == null || graph == null) return false;
+            if (a?.Face == null || b?.Face == null) return false;
+            if (a.Face.Reference == null || b.Face.Reference == null) return false;
+
             var from = a.Coordinate <= b.Coordinate ? a : b;
             var to = from == a ? b : a;
+
+            var fromKey = ConstraintGraph.FaceKey(document, from.Face.Reference);
+            var toKey = ConstraintGraph.FaceKey(document, to.Face.Reference);
+            if (graph.WouldOverconstrain(fromKey, toKey))
+            {
+                warnings.Add(
+                    $"Skipped overconstraining face dimension \"{label.Definition?.Name}\"");
+                return false;
+            }
 
             var start = from.Axis switch
             {
@@ -527,10 +814,16 @@ namespace FamilyAgent.Addin
                         return false;
                     }
 
+                    // Catch an overconstraint immediately instead of leaving it for the
+                    // first Family Types edit to fail with 29 modal errors.
+                    document.Regenerate();
+
                     if (step.Commit() != TransactionStatus.Committed)
                     {
                         return false;
                     }
+
+                    graph.Connect(fromKey, toKey);
                 }
 
                 return true;
@@ -634,24 +927,86 @@ namespace FamilyAgent.Addin
         }
 
         /// <summary>
-        /// Build-time proof that the parameters work: changes each base length by 10%, asks
-        /// Revit to regenerate, and reports whether the geometry followed. Setting the
-        /// family parameter is the same edit the user makes in the type dialog, so it tests
-        /// plane dimensions and face dimensions alike. The transaction is rolled back.
+        /// Flexes every driver the way the user would in the type dialog and keeps only the
+        /// constraints Revit can honour. A family that cannot maintain its locks or faces
+        /// must not ship: it would fail to load, or refuse every parameter edit in a project.
+        /// Returns the probe report and the mode that survived.
         /// </summary>
-        private static string SelfCheck(Document document, CoreParameterSet parameters)
+        private static string ValidateConstraints(
+            Document document,
+            CoreParameterSet parameters,
+            List<string> warnings,
+            bool formLocked,
+            out string mode,
+            out int probeFailures)
         {
             var report = new StringBuilder();
+            probeFailures = 0;
+
+            report.Append(ProbeFlex(document, parameters, out var failed));
+            probeFailures = failed.Count;
+            if (failed.Count == 0)
+            {
+                mode = formLocked ? "constraints" : "planes";
+                return report.ToString();
+            }
+
+            // Face locks and face dimensions move form geometry. When Revit refuses them the
+            // failure surfaces as "Unable to maintain shape offsets" or an invalid base
+            // sketch, so drop those constraints and keep the plane dimensions.
+            var firstFailed = new List<string>(failed);
+            var droppedForms = RemoveDimensions(document, warnings, dimension => ReferencesForm(document, dimension));
+            report.Append("dropped-form-dims=").Append(droppedForms).Append("; ");
+
+            report.Append(ProbeFlex(document, parameters, out failed));
+            probeFailures = failed.Count;
+            if (failed.Count == 0)
+            {
+                if (droppedForms > 0)
+                {
+                    warnings.Add(
+                        $"Revit không giữ được hình khi đổi {string.Join(", ", firstFailed.Take(4))}: " +
+                        $"đã bỏ {droppedForms} ràng buộc mặt, giữ dimension theo reference plane.");
+                }
+
+                mode = "planes";
+                return report.ToString();
+            }
+
+            warnings.Add(
+                "Revit không dựng lại được hình khi đổi " + string.Join(", ", failed.Take(5)) +
+                ": đã bỏ toàn bộ dimension, family chỉ cập nhật qua rebuild từ spec.");
+            RemoveDimensions(document, warnings, dimension => true);
+            mode = "rebuild";
+            return report.ToString();
+        }
+
+        /// <summary>
+        /// Runs every driver through the full factor range and reports the ones Revit could
+        /// not regenerate: a resolved warning ("automatically resolved", "Can't make
+        /// Extrusion") counts as a failure, because Revit gets there by deleting geometry.
+        /// Each probe is rolled back, so the family keeps its values.
+        /// </summary>
+        private static string ProbeFlex(
+            Document document,
+            CoreParameterSet parameters,
+            out List<string> failed)
+        {
+            var report = new StringBuilder();
+            failed = new List<string>();
+
             var manager = document.FamilyManager;
             var currentType = manager.CurrentType;
             if (currentType == null) return "no current type; ";
 
             var before = ModelSignature(document);
-            var tried = 0;
+
+            // Every driver must survive the full range the type dialog can produce, not just
+            // a gentle nudge: 300 -> 600 doubles it, 400 -> 300 shrinks it by a quarter.
+            var factors = new[] { 0.5, 0.67, 1.5, 2.0 };
 
             foreach (var parameter in parameters.Ordered)
             {
-                if (tried >= 4) break;
                 if (!IsType(parameter.Type, "Length")) continue;
                 if (!string.IsNullOrWhiteSpace(parameter.Formula)) continue;
                 if (!parameter.Number.HasValue) continue;
@@ -661,36 +1016,179 @@ namespace FamilyAgent.Addin
 
                 var current = currentType.AsDouble(familyParameter);
                 if (!current.HasValue || Math.Abs(current.Value) < 1e-9) continue;
-                tried += 1;
 
                 var label = parameter.Name + ": ";
+                var moved = false;
+                var probeFailures = new List<string>();
 
-                try
+                foreach (var factor in factors)
                 {
-                    using (var transaction = SilentTransaction(document, "self-check", new FailureCollector()))
+                    var failures = new FailureCollector();
+                    try
                     {
-                        transaction.Start();
-                        manager.Set(familyParameter, current.Value * 1.1 + 0.001);
-                        document.Regenerate();
-
-                        report.Append(label)
-                            .Append(Math.Abs(before - ModelSignature(document)) > 1e-9 ? "MOVE; " : "still; ");
-
-                        // Roll back: the probe only measures, the saved family keeps its values.
-                        var status = transaction.RollBack();
-                        if (status != TransactionStatus.RolledBack)
+                        using (var transaction = SilentTransaction(
+                                   document, "Family Agent — flex probe", failures))
                         {
-                            report.Append("rollback=").Append(status).Append("; ");
+                            transaction.Start();
+                            manager.Set(familyParameter, current.Value * factor + 0.001);
+                            document.Regenerate();
+
+                            if (Math.Abs(before - ModelSignature(document)) > 1e-9) moved = true;
+
+                            // Roll back: the probe only measures, the family keeps its values.
+                            var status = transaction.RollBack();
+                            if (status != TransactionStatus.RolledBack)
+                            {
+                                probeFailures.Add($"rollback={status}");
+                            }
                         }
                     }
+                    catch (Exception ex)
+                    {
+                        probeFailures.Add(ex.Message);
+                    }
+
+                    foreach (var message in failures.Messages)
+                    {
+                        probeFailures.Add(message);
+                    }
                 }
-                catch (Exception ex)
+
+                report.Append(label).Append(moved ? "MOVE" : "still");
+
+                if (probeFailures.Count > 0)
                 {
-                    report.Append(label).Append("X ").Append(ex.Message).Append("; ");
+                    failed.Add(parameter.Name);
+                    report.Append(" failures=").Append(probeFailures.Count)
+                        .Append(' ').Append(string.Join(" | ", probeFailures.Take(2)));
                 }
+
+                report.Append("; ");
             }
 
             return report.ToString();
+        }
+
+        /// <summary>Deletes the dimensions matching the filter, in one silent transaction.</summary>
+        private static int RemoveDimensions(
+            Document document,
+            List<string> warnings,
+            Func<Dimension, bool> predicate)
+        {
+            var ids = new List<ElementId>();
+            foreach (var dimension in new FilteredElementCollector(document)
+                         .OfClass(typeof(Dimension))
+                         .Cast<Dimension>())
+            {
+                try
+                {
+                    if (!predicate(dimension)) continue;
+                    ids.Add(dimension.Id);
+                }
+                catch
+                {
+                    // Template dimensions can refuse a read; they are left untouched.
+                }
+            }
+
+            if (ids.Count == 0) return 0;
+
+            var deleted = 0;
+            try
+            {
+                using (var transaction = SilentTransaction(
+                           document, "Family Agent — drop rejected dimensions", new FailureCollector()))
+                {
+                    transaction.Start();
+                    foreach (var id in ids)
+                    {
+                        try
+                        {
+                            if (document.GetElement(id) == null) continue;
+                            document.Delete(id);
+                            deleted += 1;
+                        }
+                        catch
+                        {
+                            // A template-owned dimension may be undeletable; keep going.
+                        }
+                    }
+                    transaction.Commit();
+                }
+            }
+            catch (Exception ex)
+            {
+                warnings.Add("Could not drop rejected dimensions: " + ex.Message);
+            }
+
+            return deleted;
+        }
+
+        /// <summary>
+        /// Three-reference dimension with AreSegmentsEqual on: Revit's "EQ" constraint,
+        /// which keeps a centred parameter symmetric about the middle reference plane.
+        /// </summary>
+        private static bool AddEqualDimension(
+            Document document,
+            View view,
+            ReferencePlane low,
+            ReferencePlane center,
+            ReferencePlane high,
+            XYZ start,
+            XYZ middle,
+            XYZ end,
+            List<string> warnings)
+        {
+            if (document == null || view == null || low == null || center == null || high == null) return false;
+
+            try
+            {
+                using (var step = new SubTransaction(document))
+                {
+                    step.Start();
+
+                    var references = new ReferenceArray();
+                    references.Append(low.GetReference());
+                    references.Append(center.GetReference());
+                    references.Append(high.GetReference());
+
+                    var dimension = document.FamilyCreate.NewDimension(
+                        view, Line.CreateBound(start, end), references);
+                    if (dimension == null)
+                    {
+                        step.RollBack();
+                        return false;
+                    }
+
+                    dimension.AreSegmentsEqual = true;
+                    document.Regenerate();
+
+                    if (step.Commit() != TransactionStatus.Committed) return false;
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                if (warnings.Count < 40) warnings.Add($"EQ dimension \"{low.Name} / {high.Name}\": {ex.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// True when a dimension ties form geometry (a face or an edge) instead of two
+        /// reference planes — those are the ones Revit cannot always honour on baked forms.
+        /// </summary>
+        private static bool ReferencesForm(Document document, Dimension dimension)
+        {
+            foreach (var item in dimension.References)
+            {
+                var reference = item as Reference;
+                if (reference == null) continue;
+
+                var element = document.GetElement(reference.ElementId);
+                if (element != null && !(element is ReferencePlane)) return true;
+            }
+            return false;
         }
 
         private static double ModelSignature(Document document)
@@ -744,7 +1242,14 @@ namespace FamilyAgent.Addin
             return signature;
         }
 
-        private sealed class PlaneDimension
+        /// <summary>A queued reference-plane dimension, created after the locks exist.</summary>
+        private interface IPlaneDimension
+        {
+            string Name { get; }
+            bool Create(Document document, List<string> warnings);
+        }
+
+        private sealed class PlaneDimension : IPlaneDimension
         {
             private readonly View _view;
             private readonly ReferencePlane _from;
@@ -771,9 +1276,56 @@ namespace FamilyAgent.Addin
 
             public string Name => $"{_from.Name} → {_to.Name}";
 
+            public Autodesk.Revit.DB.FamilyParameter Label => _label;
+            public ReferencePlane From => _from;
+            public ReferencePlane To => _to;
+
             public bool Create(Document document, List<string> warnings)
             {
                 return AddDimension(document, _view, _from, _to, _start, _end, _label, warnings);
+            }
+        }
+
+        /// <summary>
+        /// An unlabelled EQ chain across three planes. Paired with the labelled overall
+        /// dimension it keeps a symmetric parameter centred instead of letting one side
+        /// drift, and because it only touches reference planes it can never overconstrain
+        /// the form faces.
+        /// </summary>
+        private sealed class EqualPlaneDimension : IPlaneDimension
+        {
+            private readonly View _view;
+            private readonly ReferencePlane _low;
+            private readonly ReferencePlane _center;
+            private readonly ReferencePlane _high;
+            private readonly XYZ _start;
+            private readonly XYZ _middle;
+            private readonly XYZ _end;
+
+            public EqualPlaneDimension(
+                View view,
+                ReferencePlane low,
+                ReferencePlane center,
+                ReferencePlane high,
+                XYZ start,
+                XYZ middle,
+                XYZ end)
+            {
+                _view = view;
+                _low = low;
+                _center = center;
+                _high = high;
+                _start = start;
+                _middle = middle;
+                _end = end;
+            }
+
+            public string Name => $"{_low.Name} = {_high.Name} (EQ)";
+
+            public bool Create(Document document, List<string> warnings)
+            {
+                return AddEqualDimension(
+                    document, _view, _low, _center, _high, _start, _middle, _end, warnings);
             }
         }
 

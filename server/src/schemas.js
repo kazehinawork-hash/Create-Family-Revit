@@ -20,6 +20,8 @@ export const designRequest = z.object({
   spec: z.unknown().nullish(),
   lod: z.coerce.number().int().optional(),
   model: z.string().trim().max(160).optional(),
+  /** Keep the selected model even when the provider is overloaded (no fallback). */
+  lockModel: z.boolean().optional(),
   customApiConfig: customApiConfig.optional(),
   attachments: z
     .array(z.object({ path: z.string().min(1), name: z.string().optional() }))

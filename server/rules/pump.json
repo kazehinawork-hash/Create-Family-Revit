@@ -1,0 +1,149 @@
+{
+  "productType": "pump",
+  "aliases": [
+    "bơm",
+    "pump",
+    "bơm ly tâm",
+    "centrifugal pump",
+    "bơm nước"
+  ],
+  "category": "Mechanical Equipment",
+  "matchers": {
+    "keywords": [
+      "bơm",
+      "pump",
+      "centrifugal",
+      "ly tâm"
+    ],
+    "codePatterns": [
+      "^P-",
+      "PU-"
+    ]
+  },
+  "parameters": [
+    {
+      "name": "Nominal Size",
+      "group": "Dimensions",
+      "unit": "mm",
+      "default": 50,
+      "range": [
+        15,
+        300
+      ],
+      "fromEvidence": [
+        "Nominal Size"
+      ],
+      "remember": false
+    },
+    {
+      "name": "Motor Power",
+      "group": "Data",
+      "unit": "kW",
+      "default": 2.2,
+      "range": [
+        0.2,
+        90
+      ],
+      "fromEvidence": [
+        "Motor Power"
+      ],
+      "remember": false
+    },
+    {
+      "name": "Flow Rate",
+      "group": "Data",
+      "unit": "m3/h",
+      "default": 20,
+      "range": [
+        1,
+        500
+      ],
+      "fromEvidence": [
+        "Flow"
+      ],
+      "remember": false
+    },
+    {
+      "name": "Base Length",
+      "group": "Dimensions",
+      "unit": "mm",
+      "formula": "[Nominal Size] * 3 + 200",
+      "fromEvidence": [],
+      "remember": false
+    },
+    {
+      "name": "Base Width",
+      "group": "Dimensions",
+      "unit": "mm",
+      "formula": "[Nominal Size] * 1.4 + 120",
+      "fromEvidence": [],
+      "remember": false
+    },
+    {
+      "name": "Casing Diameter",
+      "group": "Dimensions",
+      "unit": "mm",
+      "formula": "[Nominal Size] * 1.9 + 40",
+      "fromEvidence": [],
+      "remember": false
+    },
+    {
+      "name": "Motor Frame Size",
+      "group": "Data",
+      "unit": "",
+      "default": "100L",
+      "fromEvidence": [
+        "Motor Frame"
+      ],
+      "remember": false
+    }
+  ],
+  "components": [
+    {
+      "kind": "base",
+      "required": true,
+      "countFormula": "1"
+    },
+    {
+      "kind": "casing",
+      "required": true,
+      "countFormula": "1"
+    },
+    {
+      "kind": "motor",
+      "required": true,
+      "countFormula": "1"
+    },
+    {
+      "kind": "flange",
+      "required": true,
+      "countFormula": "2",
+      "placement": "suction and discharge"
+    }
+  ],
+  "connectors": [
+    {
+      "domain": "pipe",
+      "sizeFrom": "Nominal Size",
+      "placement": "suction and discharge"
+    }
+  ],
+  "materials": [
+    {
+      "name": "Cast Iron Casing",
+      "color": "#4b5257",
+      "finish": "painted"
+    },
+    {
+      "name": "Steel Base",
+      "color": "#6b7280",
+      "finish": "painted"
+    }
+  ],
+  "checks": [
+    {
+      "expr": "Base Length > Casing Diameter",
+      "message": "Đế bơm phải dài hơn thân bơm"
+    }
+  ]
+}

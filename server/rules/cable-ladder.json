@@ -1,0 +1,223 @@
+{
+  "productType": "cable-ladder",
+  "aliases": [
+    "thang cáp",
+    "cable ladder",
+    "cable tray",
+    "máng cáp",
+    "mitered tee",
+    "mitered cross",
+    "mitered elbow"
+  ],
+  "category": "Electrical Equipment",
+  "matchers": {
+    "keywords": [
+      "thang cáp",
+      "cable ladder",
+      "cable tray",
+      "máng cáp",
+      "ngã tư",
+      "ngã ba",
+      "mitered"
+    ],
+    "codePatterns": [
+      "TP-LC",
+      "CL-"
+    ]
+  },
+  "parameters": [
+    {
+      "name": "Ladder Width 1",
+      "group": "Dimensions",
+      "unit": "mm",
+      "default": 400,
+      "range": [
+        100,
+        1200
+      ],
+      "fromEvidence": [
+        "Width"
+      ],
+      "remember": false
+    },
+    {
+      "name": "Ladder Width 2",
+      "group": "Dimensions",
+      "unit": "mm",
+      "default": 400,
+      "range": [
+        100,
+        1200
+      ],
+      "fromEvidence": [
+        "Width",
+        "Depth"
+      ],
+      "remember": false
+    },
+    {
+      "name": "Ladder Height",
+      "group": "Dimensions",
+      "unit": "mm",
+      "default": 100,
+      "range": [
+        50,
+        200
+      ],
+      "fromEvidence": [
+        "Height"
+      ],
+      "remember": false
+    },
+    {
+      "name": "Sheet Thickness",
+      "group": "Dimensions",
+      "unit": "mm",
+      "default": 1.8,
+      "range": [
+        1,
+        4
+      ],
+      "fromEvidence": [
+        "Thickness"
+      ],
+      "remember": true
+    },
+    {
+      "name": "Flange Width",
+      "group": "Dimensions",
+      "unit": "mm",
+      "default": 15,
+      "range": [
+        8,
+        40
+      ],
+      "fromEvidence": [],
+      "remember": true
+    },
+    {
+      "name": "Safety Lip",
+      "group": "Dimensions",
+      "unit": "mm",
+      "default": 5,
+      "range": [
+        3,
+        15
+      ],
+      "fromEvidence": [],
+      "remember": true
+    },
+    {
+      "name": "Rung Width",
+      "group": "Dimensions",
+      "unit": "mm",
+      "default": 35,
+      "range": [
+        20,
+        60
+      ],
+      "fromEvidence": [],
+      "remember": true
+    },
+    {
+      "name": "Rung Height",
+      "group": "Dimensions",
+      "unit": "mm",
+      "default": 15,
+      "range": [
+        8,
+        30
+      ],
+      "fromEvidence": [],
+      "remember": true
+    },
+    {
+      "name": "Rung Thickness",
+      "group": "Dimensions",
+      "unit": "mm",
+      "default": 1.5,
+      "range": [
+        1,
+        4
+      ],
+      "fromEvidence": [],
+      "remember": true
+    },
+    {
+      "name": "Rung Pitch",
+      "group": "Dimensions",
+      "unit": "mm",
+      "default": 300,
+      "range": [
+        150,
+        600
+      ],
+      "fromEvidence": [],
+      "remember": true
+    },
+    {
+      "name": "Tangent Length",
+      "group": "Dimensions",
+      "unit": "mm",
+      "default": 120,
+      "range": [
+        50,
+        400
+      ],
+      "fromEvidence": [],
+      "remember": true
+    },
+    {
+      "name": "Miter Offset",
+      "group": "Dimensions",
+      "unit": "mm",
+      "default": 150,
+      "range": [
+        50,
+        400
+      ],
+      "fromEvidence": [],
+      "remember": true
+    }
+  ],
+  "components": [
+    {
+      "kind": "corner-rail",
+      "required": true,
+      "countFormula": "4",
+      "placement": "quadrants ±X ±Y"
+    },
+    {
+      "kind": "rung",
+      "required": true,
+      "countFormula": "6",
+      "placement": "even pitch"
+    }
+  ],
+  "connectors": [
+    {
+      "domain": "CableTray",
+      "sizeFrom": "Ladder Width 1",
+      "placement": "±Total Length / 2"
+    }
+  ],
+  "materials": [
+    {
+      "name": "ThinhPhat_PowderCoated_RAL7035",
+      "color": "#d7d7d7",
+      "finish": "powder coated"
+    },
+    {
+      "name": "ThinhPhat_Galvanized_HotDip",
+      "color": "#b8c0c8",
+      "finish": "hot dip galvanized"
+    }
+  ],
+  "checks": [
+    {
+      "expr": "Sheet Thickness >= 1",
+      "message": "Chiều dày thép tấm phải ≥ 1 mm"
+    }
+  ],
+  "template": "cable-ladder"
+}

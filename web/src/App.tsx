@@ -1,10 +1,11 @@
-import { useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   analyzeSpec,
   paramKey,
   validateSpec,
   type FamilyParameter,
   type FamilySpec,
+  type FamilyTypeEntry,
   type Issue,
   type ParameterType,
 } from "@family/spec-core";
@@ -19,6 +20,8 @@ import { Viewer } from "./components/Viewer";
 import {
   buildFamily,
   downloadPortablePackage,
+  exportMultiType,
+  fetchDesignJob,
   fetchHealth,
   pingServer,
   streamDesign,
@@ -28,6 +31,7 @@ import {
   fetchModelHistory,
   fetchModelRevision,
   saveModel,
+  renameModel,
   deleteSavedModel,
   fetchLatestExternalSpec,
   subscribeExternalSpecStream,
@@ -37,12 +41,43 @@ import {
   type UploadedDocument,
   type SavedModelMeta,
   type SavedModelRevision,
+  type DesignJob,
+  type DesignStats,
 } from "./lib/api";
 import { formatDuration, type Units } from "./lib/format";
 
 function newId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+/**
+ * The server keeps a design run as a job, so a dropped stream is recoverable.
+ * Polls every 3 s for up to 10 minutes; null-ish answers tell the caller why it failed.
+ */
+async function waitForDesignJob(
+  jobId: string,
+  signal: AbortSignal,
+): Promise<DesignJob | "missing" | "timeout"> {
+  const deadline = Date.now() + 10 * 60 * 1000;
+
+  while (Date.now() < deadline) {
+    if (signal.aborted) return "timeout";
+
+    let job: DesignJob | null | undefined;
+    try {
+      job = await fetchDesignJob(jobId);
+    } catch {
+      job = undefined; // transient network error: keep polling
+    }
+
+    if (job === null) return "missing";
+    if (job && job.status !== "running") return job;
+
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+  }
+
+  return "timeout";
 }
 
 interface StageState {
@@ -119,12 +154,18 @@ export function App() {
   const [runStartedAt, setRunStartedAt] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [building, setBuilding] = useState(false);
+  const [exportingTypes, setExportingTypes] = useState(false);
+  const [previewTypeValues, setPreviewTypeValues] = useState<Record<string, number> | null>(null);
   const [exportingPortable, setExportingPortable] = useState(false);
   const [native, setNative] = useState(false);
   const [units, setUnits] = useState<Units>("mm");
   const [revitVersion, setRevitVersion] = useState("2024");
   const [lod, setLod] = useState<Lod>(readStoredLod);
   const [model, setModel] = useState<string>(readStoredModel);
+  /** Model calls spent in this browser session, per model (the quota table). */
+  const [sessionUsage, setSessionUsage] = useState<Record<string, number>>({});
+  /** Missing requirement items of the current spec, or null when it is complete. */
+  const [incomplete, setIncomplete] = useState<string[] | null>(null);
   const [attachments, setAttachments] = useState<UploadedDocument[]>([]);
   const [uploading, setUploading] = useState(false);
   const [showGrid, setShowGrid] = useState(true);
@@ -137,17 +178,22 @@ export function App() {
   const [hiddenPartIds, setHiddenPartIds] = useState<string[]>([]);
   const [transparentPartIds, setTransparentPartIds] = useState<string[]>([]);
   const [health, setHealth] = useState<Health | null>(null);
-  const [_serverOnline, setServerOnline] = useState<boolean | null>(null); void _serverOnline;
-  const [_agentReady, setAgentReady] = useState<boolean | null>(null); void _agentReady;
+  const [serverOnline, setServerOnline] = useState<boolean | null>(null);
+  const serverOnlineRef = useRef<boolean | null>(null);
   const [lastBeatAt, setLastBeatAt] = useState<number | null>(null); void lastBeatAt;
   const [toast, setToast] = useState<ToastState | null>(null);
   const [currentModelId, setCurrentModelId] = useState<string | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [savedList, setSavedList] = useState<SavedModelMeta[]>([]);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+  const renameCancelled = useRef(false);
   const [historyModelId, setHistoryModelId] = useState<string | null>(null);
   const [revisions, setRevisions] = useState<SavedModelRevision[]>([]);
   const [revisionsLoading, setRevisionsLoading] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  /** Last brief, so the chat's "Gửi lại" button can resend it. */
+  const lastPromptRef = useRef("");
 
   // Undo/redo stack for spec edits (parameter typing, handles, agent rewrites).
   const specRef = useRef<FamilySpec | null>(null);
@@ -219,6 +265,21 @@ export function App() {
 
   const analysis = useMemo(() => (spec ? analyzeSpec(spec) : null), [spec]);
 
+  // A Types row previews in the viewport without touching the saved spec.
+  const previewAnalysis = useMemo(() => {
+    if (!spec || !previewTypeValues) return null;
+
+    return analyzeSpec({
+      ...spec,
+      parameters: spec.parameters.map((parameter) => {
+        const value = previewTypeValues[parameter.name];
+        return value === undefined ? parameter : { ...parameter, value, formula: undefined };
+      }),
+    });
+  }, [spec, previewTypeValues]);
+
+  const previewModel = useDeferredValue(previewAnalysis?.model ?? null);
+
   useEffect(() => {
     setHighlightPartIds([]);
   }, [spec]);
@@ -238,30 +299,73 @@ export function App() {
   const deferredModel = useDeferredValue(analysis?.model ?? null);
   const deferredParameters = useDeferredValue(spec?.parameters);
 
+  const applyHealth = useCallback((result: Health) => {
+    setHealth(result);
+    // Keep the user's remembered choice; only auto-pick when nothing is selected
+    // or the stored model no longer exists on this machine.
+    const available = result.models ?? [];
+    setModel((current) => {
+      if (current && available.some((entry) => entry.id === current)) return current;
+      if (result.agent?.model && available.some((entry) => entry.id === result.agent.model)) {
+        return result.agent.model;
+      }
+      return available[0]?.id ?? "";
+    });
+  }, []);
+
+  /** Returns the health payload, or null when the API is unreachable. */
+  const refreshHealth = useCallback(async () => {
+    const result = await fetchHealth();
+    if (result) applyHealth(result);
+    return result;
+  }, [applyHealth]);
+
+  // Health: retry with backoff while the API is down, then refresh every ~60 s.
   useEffect(() => {
     let alive = true;
+    let timer: number | null = null;
+    let delay = 2000;
 
-    // Heavy endpoint: only once, for the model list.
-    void fetchHealth().then((result) => {
-      if (!alive || !result) return;
-      setHealth(result);
-      // Keep the user's remembered choice; only auto-pick when nothing is selected
-      // or the stored model no longer exists on this machine.
-      const available = result.models ?? [];
-      setModel((current) => {
-        if (current && available.some((entry) => entry.id === current)) return current;
-        if (result.agent?.model && available.some((entry) => entry.id === result.agent.model)) {
-          return result.agent.model;
-        }
-        return available[0]?.id ?? "";
-      });
-    });
+    const attempt = async () => {
+      if (!alive) return;
+      const result = await refreshHealth();
+      if (!alive) return;
+
+      if (result) {
+        delay = 2000;
+        timer = window.setTimeout(attempt, 60000);
+        return;
+      }
+
+      timer = window.setTimeout(attempt, delay);
+      delay = Math.min(delay * 2, 30000);
+    };
+
+    void attempt();
+
+    return () => {
+      alive = false;
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [refreshHealth]);
+
+  // Liveness probe. A false -> true transition means the API restarted, so the
+  // cached health (model list, backends) has to be reloaded without a page refresh.
+  useEffect(() => {
+    let alive = true;
 
     const probe = async () => {
       const ping = await pingServer();
       if (!alive) return;
-      setServerOnline(Boolean(ping?.ok));
-      if (ping) setAgentReady(Boolean(ping.agent?.ready));
+
+      const online = Boolean(ping?.ok);
+      const wasOnline = serverOnlineRef.current;
+      serverOnlineRef.current = online;
+      setServerOnline(online);
+
+      if (online && wasOnline === false) {
+        void refreshHealth();
+      }
     };
 
     void probe();
@@ -274,7 +378,7 @@ export function App() {
       window.clearInterval(timer);
       window.removeEventListener("focus", onFocus);
     };
-  }, []);
+  }, [refreshHealth]);
 
   useEffect(() => {
     if (!running) return;
@@ -488,9 +592,11 @@ export function App() {
     }
   };
 
-  const handleSend = async (text: string) => {
+  const handleSend = async (text: string, specOverride?: FamilySpec) => {
     if (running || uploading) return;
-    const hadSpec = Boolean(spec);
+    lastPromptRef.current = text;
+    const baseSpec = specOverride ?? spec;
+    const hadSpec = Boolean(baseSpec);
     const docs = attachments;
     pushEntry({ role: "user", text, attachments: docs.length > 0 ? docs : undefined });
     setRunning(true);
@@ -501,6 +607,7 @@ export function App() {
     let failed = false;
     let stalled = false;
     let receivedSpec = false;
+    let jobId: string | null = null;
     let lastBeat = Date.now();
 
     const controller = new AbortController();
@@ -508,8 +615,7 @@ export function App() {
     setLastBeatAt(Date.now());
 
     // A restarted server (npm run dev reloads on every file change) leaves the SSE
-    // connection open with no data. Abort instead of waiting forever. Keep this above
-    // the server's AGENT_TIMEOUT (10 min by default) so a slow model is not cut off.
+    // connection open with no data. Abort instead of waiting forever.
     const watchdog = window.setInterval(() => {
       if (Date.now() - lastBeat > 900000 && !controller.signal.aborted) {
         stalled = true;
@@ -517,17 +623,114 @@ export function App() {
       }
     }, 5000);
 
+    const pushSpecEntry = (
+      specValue: FamilySpec,
+      stats: DesignStats,
+      prefix = "",
+    ) => {
+      const dims = stats.bounds ? `${stats.bounds.x} × ${stats.bounds.y} × ${stats.bounds.z} mm` : "";
+      const fast = stats.fastEdit;
+      const fastUnit = fast?.type === "Length" ? " mm" : fast?.type === "Angle" ? "°" : "";
+      const fastLine = fast
+        ? `\n⚡ Local edit: ${fast.name} → ${fast.value}${fastUnit} · ${1 + (fast.affectedParameters?.length ?? 0)} parameter, ${fast.affectedParts?.length ?? 0} part · 0 token`
+        : "";
+      const stepLine =
+        Array.isArray(stats.steps) && stats.steps.length > 1
+          ? `\n${stats.steps
+              .map((step: { label: string; ms: number; ok: boolean; error?: string }) =>
+                `${step.ok ? "✓" : "⚠"} ${step.label}: ${formatDuration(step.ms)}${step.error ? ` (${step.error})` : ""}`,
+              )
+              .join(" · ")}`
+          : "";
+
+      const tierLine =
+        stats.tier != null
+          ? ` · tầng ${stats.tier}${stats.tierLabel ? ` (${stats.tierLabel})` : ""}` +
+            ` · ${stats.model ?? "không gọi model"} · ${stats.modelCalls ?? 0} lượt` +
+            ` · prompt ${((stats.promptChars ?? 0) / 1000).toFixed(1)}k`
+          : "";
+      const savedLine = stats.savedCalls ? ` · tiết kiệm ${stats.savedCalls} lượt` : "";
+      const isIncomplete = stats.complete === false;
+      setIncomplete(isIncomplete ? (stats.missing ?? ["Không rõ hạng mục thiếu"]) : null);
+
+      setSessionUsage((current) => {
+        const calls =
+          stats.calls?.length
+            ? stats.calls
+            : stats.model
+              ? [{ model: stats.model, modelCalls: stats.modelCalls ?? 1 }]
+              : [];
+        if (calls.length === 0) return current;
+
+        const next = { ...current };
+        for (const call of calls) {
+          if (!call.model) continue;
+          next[call.model] = (next[call.model] ?? 0) + (call.modelCalls ?? 1);
+        }
+        return next;
+      });
+
+      pushEntry({
+        role: "agent",
+        tone: isIncomplete ? "error" : "normal",
+        text:
+          (isIncomplete
+            ? `⚠ Chưa đầy đủ — ${specValue.name}\n${(stats.missing ?? [])
+                .map((item) => `• ${item}`)
+                .join("\n")}\n\n`
+            : "") +
+          `${prefix}${hadSpec ? "Đã cập nhật" : "Đã tạo"} ${specValue.name}.\n` +
+          `${stats.parts} chi tiết · ${stats.parameters} tham số${stats.lod ? ` · LOD ${stats.lod}` : ""}` +
+          `${dims ? ` · ${dims}` : ""}${fastLine}${stepLine}`,
+        notes: [...(specValue.notes ?? []), ...((stats.warnings as string[] | undefined) ?? [])],
+        resolution: Array.isArray(stats.resolution)
+          ? (stats.resolution as {
+              name: string;
+              value: unknown;
+              level?: number;
+              source?: string;
+            }[])
+          : undefined,
+        meta: fast
+          ? `⚡ local · ${formatDuration(stats.elapsedMs)}${savedLine}`
+          : stats.cached
+            ? `⚡ cached · 0 token${savedLine}`
+            : `${formatDuration(stats.elapsedMs)}${tierLine}${savedLine}`,
+      });
+    };
+
     try {
       await streamDesign(
         {
           prompt: text,
-          spec,
+          spec: baseSpec,
           lod,
           model: model || undefined,
           customApiConfig: model === 'custom:api' ? (() => { try { const raw = localStorage.getItem('custom_api_config'); return raw ? JSON.parse(raw) : undefined; } catch { return undefined; } })() : undefined,
           attachments: docs.length > 0 ? docs.map((d) => ({ path: d.path, name: d.name })) : undefined,
         },
         (event) => {
+          if (event.type === "job") {
+            jobId = event.jobId;
+            return;
+          }
+
+          if (event.type === "suggestion") {
+            pushEntry({
+              role: "agent",
+              text:
+                `Có family đã lưu gần giống: ${event.sample.name} (khớp ${Math.round(
+                  event.sample.score * 100,
+                )}%).\nBắt đầu từ mẫu này sẽ rẻ hơn tạo mới — chỉ cần sửa lại theo yêu cầu.`,
+              action: {
+                label: "Bắt đầu từ mẫu gần nhất",
+                kind: "use-sample",
+                sampleId: event.sample.id,
+              },
+            });
+            return;
+          }
+
           if (event.type === "stage") {
             setStage({ stage: event.stage, message: event.message, issues: event.issues });
             return;
@@ -536,32 +739,33 @@ export function App() {
           if (event.type === "error") {
             failed = true;
             setStage(null);
-            pushEntry({ role: "agent", text: event.message, tone: "error" });
+            pushEntry({
+              role: "agent",
+              text:
+                event.message +
+                (event.retryable === false ? "" : "\nGợi ý: đổi sang model nhanh hơn hoặc bấm Gửi lại."),
+              tone: "error",
+              details: event.details,
+              action: { label: "Gửi lại" },
+            });
             return;
           }
 
           const { stats } = event;
-          receivedSpec = true;
           applySpec(event.spec);
           setNative(false);
-          const dims = stats.bounds ? `${stats.bounds.x} × ${stats.bounds.y} × ${stats.bounds.z} mm` : "";
-          const fast = stats.fastEdit;
-          const fastUnit = fast?.type === "Length" ? " mm" : fast?.type === "Angle" ? "°" : "";
-          const fastLine = fast
-            ? `\n⚡ Local edit: ${fast.name} → ${fast.value}${fastUnit} · ${1 + (fast.affectedParameters?.length ?? 0)} parameter, ${fast.affectedParts?.length ?? 0} part · 0 token`
-            : "";
 
-          pushEntry({
-            role: "agent",
-            text: `${hadSpec ? "Đã cập nhật" : "Đã tạo"} ${event.spec.name}.\n${stats.parts} chi tiết · ${stats.parameters} tham số${stats.lod ? ` · LOD ${stats.lod}` : ""}${dims ? ` · ${dims}` : ""}${fastLine}`,
-            notes: event.spec.notes,
-            meta: fast
-              ? `⚡ local · ${formatDuration(stats.elapsedMs)}`
-              : stats.cached
-                ? "⚡ cached · 0 token"
-                : `${formatDuration(stats.elapsedMs)}${stats.attempts > 1 ? ` · ${stats.attempts} lượt` : ""}${stats.usage?.total_tokens ? ` · ${Math.round(stats.usage.total_tokens / 1000)}k tokens` : ""}`,
-            issues: [...event.errors, ...event.issues.filter((issue) => issue.severity === "warning")].slice(0, 12),
-          });
+          // A split run sends one spec per step; only the last one is a finished answer.
+          if (stats.step?.partial) {
+            setStage({
+              stage: "step",
+              message: `${stats.step.label} xong — đang làm bước ${stats.step.index + 1}/${stats.step.total}`,
+            });
+            return;
+          }
+
+          receivedSpec = true;
+          pushSpecEntry(event.spec, stats);
         },
         controller.signal,
         () => {
@@ -570,12 +774,65 @@ export function App() {
         },
       );
 
-      if (!receivedSpec && !stalled) {
+      if (!receivedSpec && !stalled && jobId) {
+        // The socket died but the server kept working: fetch the stored result.
+        setStage({ stage: "recovering", message: "Mất kết nối, đang lấy lại kết quả…" });
+
+        const recovered = await waitForDesignJob(jobId, controller.signal);
+        if (recovered === "missing") {
+          setStage(null);
+          pushEntry({
+            role: "agent",
+            tone: "error",
+            text:
+              "Server đã restart và không còn job này, nên kết quả bị mất.\n" +
+              "Gửi lại yêu cầu — nếu prompt rất dài, hãy tách phần connector và bảng màu ra, hoặc chọn model nhanh hơn.",
+            action: { label: "Gửi lại" },
+          });
+        } else if (recovered === "timeout") {
+          setStage(null);
+          pushEntry({
+            role: "agent",
+            tone: "error",
+            text:
+              "Đã chờ 10 phút nhưng job vẫn chưa xong, nên tạm dừng lấy kết quả.\n" +
+              "Bấm Gửi lại (job cũ vẫn có thể xong sau), hoặc tách yêu cầu thành phần khung → connector → vật liệu.",
+            action: { label: "Gửi lại" },
+          });
+        } else if (recovered.spec) {
+          receivedSpec = true;
+          setStage(null);
+          applySpec(recovered.spec);
+          setNative(false);
+          pushSpecEntry(
+            recovered.spec,
+            recovered.stats ?? {
+              parameters: recovered.spec.parameters?.length ?? 0,
+              parts: recovered.spec.parts?.length ?? 0,
+              instances: recovered.spec.parts?.length ?? 0,
+              materials: recovered.spec.materials?.length ?? 0,
+              bounds: null,
+              attempts: 0,
+              elapsedMs: 0,
+            },
+            "Đã lấy lại kết quả sau khi mất kết nối.\n",
+          );
+        } else {
+          setStage(null);
+          pushEntry({
+            role: "agent",
+            tone: "error",
+            text: `Job kết thúc với lỗi: ${recovered.error ?? "không rõ nguyên nhân"}.`,
+            action: { label: "Gửi lại" },
+          });
+        }
+      } else if (!receivedSpec && !stalled) {
         failed = true;
         pushEntry({
           role: "agent",
           text: "Server đóng kết nối mà chưa trả về spec — có thể API vừa restart. Bấm gửi lại yêu cầu.",
           tone: "error",
+          action: { label: "Gửi lại" },
         });
       }
     } catch (error) {
@@ -587,6 +844,7 @@ export function App() {
             "Không nhận được phản hồi từ server quá 15 phút nên đã dừng.\n" +
             "Thường là do API vừa restart (`npm run dev` reload khi có file thay đổi) — kiểm tra pill trạng thái rồi gửi lại.",
           tone: "error",
+          action: { label: "Gửi lại" },
         });
       } else if (error instanceof Error && error.name === "AbortError") {
         pushEntry({ role: "agent", text: "Stopped." });
@@ -639,6 +897,48 @@ export function App() {
 
   const handleResetTransparent = () => {
     setTransparentPartIds([]);
+  };
+
+  const handleChangeTypes = (types: FamilyTypeEntry[]) => {
+    const current = specRef.current;
+    if (!current) return;
+    applySpec({ ...current, types });
+    setNative(false);
+  };
+
+  const handlePreviewType = (values: Record<string, number> | null) => {
+    setPreviewTypeValues(values ? { ...values } : null);
+  };
+
+  const handleExportTypes = async () => {
+    const current = specRef.current;
+    if (!current || !analysis?.ok) return;
+    const types = current.types ?? [];
+    if (types.length === 0) return;
+
+    setExportingTypes(true);
+    setToast({
+      text: `Đang xuất ${types.length} type trong một file RFA…`,
+      sub: "Revit dựng family rồi tạo từng Family Type từ danh sách.",
+      tone: "ok",
+    });
+
+    try {
+      const result = await exportMultiType({ ...current, revitVersion });
+      setToast({
+        text: `Đã xuất ${types.length} type trong một file .rfa`,
+        sub: result.path ? `${result.path} · ${result.types ?? types.length} type` : undefined,
+        tone: "ok",
+      });
+    } catch (error) {
+      setToast({
+        text: "Xuất nhiều type thất bại",
+        sub: error instanceof Error ? error.message : String(error),
+        tone: "error",
+      });
+    } finally {
+      setExportingTypes(false);
+    }
   };
 
   const handleUpdateParameter = (name: string, value: number | string) => {
@@ -735,8 +1035,16 @@ export function App() {
         const failedParts = result.stats?.failedParts ?? [];
         const missingForms = result.stats?.missingForms ?? 0;
         const qa = result.qa;
+        const buildMode = result.stats?.mode;
+        const rebuildMode = buildMode === "planes" || buildMode === "rebuild";
         const notes = [
           ...(result.warnings ?? []),
+          ...(buildMode === "planes"
+            ? ["Revit giữ được dimension theo reference plane nhưng không giữ được ràng buộc mặt: hình cập nhật bằng rebuild."]
+            : []),
+          ...(buildMode === "rebuild"
+            ? ["Family chạy chế độ rebuild: đổi tham số sẽ giải lại spec, dimension chỉ để tham chiếu."]
+            : []),
           ...(missingForms > 0
             ? [`Thiếu ${missingForms} part/copy khi build — xem danh sách bên dưới.`]
             : []),
@@ -759,23 +1067,34 @@ export function App() {
             `${qa ? ` · QA ${qa.ok ? "pass" : `${qa.warnings.length} cảnh báo`}` : ""}`,
           notes: notes.length > 0 ? notes : undefined,
           meta: result.path,
-          tone: driving.length === 0 || missingForms > 0 ? "error" : undefined,
+          tone: (driving.length === 0 && !rebuildMode) || missingForms > 0 ? "error" : undefined,
         });
 
         setToast({
           text:
             missingForms > 0
               ? `Build xong nhưng thiếu ${missingForms} part/copy`
-              : qa?.rebuildRequired
-                ? "Build xong — cần Rebuild from spec khi đổi tham số"
-                : "Revit family built successfully!",
+              : rebuildMode
+                ? "Revit family built — rebuild-from-spec"
+                : qa?.rebuildRequired
+                  ? "Build xong — cần Rebuild from spec khi đổi tham số"
+                  : "Revit family built successfully!",
           sub:
             missingForms > 0
               ? "Xem notes hoặc Documents\\FamilyAgent\\logs\\autosync.log để biết part nào lỗi."
-              : driving.length === 0
-                ? "Cảnh báo: chưa có tham số nào được gắn nhãn dimension — đổi thông số sẽ không đổi hình."
-                : `${driving.length} tham số dẫn động hình học · ${result.path}`,
-          tone: driving.length === 0 || missingForms > 0 ? "error" : qa?.rebuildRequired ? "warn" : "ok",
+              : rebuildMode
+                ? "Đổi tham số trong Revit sẽ tự giải lại spec, ra đúng hình như localhost."
+                : driving.length === 0
+                  ? "Cảnh báo: chưa có tham số nào được gắn nhãn dimension — đổi thông số sẽ không đổi hình."
+                  : `${driving.length} tham số dẫn động hình học · ${result.path}`,
+          tone:
+            missingForms > 0 || (driving.length === 0 && !rebuildMode)
+              ? "error"
+              : rebuildMode
+                ? "ok"
+                : qa?.rebuildRequired
+                  ? "warn"
+                  : "ok",
         });
         // Automatically trigger download of the .rfa file
         const link = document.createElement("a");
@@ -920,6 +1239,61 @@ export function App() {
     } catch (error) {
       setToast({
         text: `Không thể mở mô hình: ${error instanceof Error ? error.message : String(error)}`,
+        tone: "error",
+      });
+    }
+  };
+
+  const beginRenameModel = (item: SavedModelMeta) => {
+    renameCancelled.current = false;
+    setRenamingId(item.id);
+    setRenameDraft(item.name);
+  };
+
+  const cancelRenameModel = () => {
+    renameCancelled.current = true;
+    setRenamingId(null);
+  };
+
+  const commitRenameModel = async (item: SavedModelMeta) => {
+    if (renameCancelled.current) {
+      renameCancelled.current = false;
+      return;
+    }
+    if (renamingId !== item.id) return;
+
+    const name = renameDraft.trim().replace(/\s+/g, " ");
+    setRenamingId(null);
+
+    if (!name) {
+      setToast({ text: "Tên mô hình không được để trống", tone: "error" });
+      return;
+    }
+
+    try {
+      const result = await renameModel(item.id, name);
+      const renamed = result.name ?? name;
+
+      setSavedList((current) =>
+        current.map((entry) => (entry.id === item.id ? { ...entry, name: renamed } : entry)),
+      );
+
+      if (currentModelId === item.id) {
+        // Only the name changes: unsaved edits in the open spec are kept.
+        setSpec((current) => {
+          if (!current) return current;
+          const next: FamilySpec = { ...current, name: renamed };
+          if (current.typeName && current.typeName.trim() === item.name.trim()) {
+            next.typeName = renamed;
+          }
+          return next;
+        });
+      }
+
+      setToast({ text: "Đã đổi tên mô hình", tone: "ok" });
+    } catch (error) {
+      setToast({
+        text: `Đổi tên thất bại: ${error instanceof Error ? error.message : String(error)}`,
         tone: "error",
       });
     }
@@ -1221,6 +1595,25 @@ export function App() {
           uploading={uploading}
           onAttach={handleAttach}
           onRemoveAttachment={handleRemoveAttachment}
+          onRetry={() => {
+            if (lastPromptRef.current) void handleSend(lastPromptRef.current);
+          }}
+          onAction={(action) => {
+            if (action.kind === "use-sample" && action.sampleId) {
+              void (async () => {
+                const loaded = await fetchSavedModelDetail(action.sampleId!);
+                const sampleSpec = (loaded?.spec ?? null) as FamilySpec | null;
+                if (!sampleSpec) return;
+                applySpec(sampleSpec);
+                void handleSend(lastPromptRef.current, sampleSpec);
+              })();
+              return;
+            }
+            if (lastPromptRef.current) void handleSend(lastPromptRef.current);
+          }}
+          sessionUsage={sessionUsage}
+          incomplete={incomplete}
+          serverOnline={serverOnline}
         />
 
         <div
@@ -1240,7 +1633,7 @@ export function App() {
         />
 
         <Viewer
-          model={deferredModel}
+          model={previewModel ?? deferredModel}
           parameters={deferredParameters}
           materials={spec?.materials ?? []}
           units={units}
@@ -1299,6 +1692,12 @@ export function App() {
             onAddParameter={handleAddParameter}
             onHighlightParts={setHighlightPartIds}
             onUpdateConnectorHost={handleUpdateConnectorHost}
+            types={spec.types ?? []}
+            onChangeTypes={handleChangeTypes}
+            onPreviewType={handlePreviewType}
+            onExportTypes={handleExportTypes}
+            exportingTypes={exportingTypes}
+            previewTypeActive={Boolean(previewTypeValues)}
           />
         ) : (
           <section className="pane right">
@@ -1401,11 +1800,29 @@ export function App() {
                     <div
                       key={item.id}
                       className={`saved-model-card ${currentModelId === item.id ? "active" : ""}`}
-                      onClick={() => handleLoadModel(item.id)}
+                      onClick={() => {
+                        if (renamingId === item.id) return;
+                        void handleLoadModel(item.id);
+                      }}
                     >
                       <div className="card-top">
                         <span className="model-cat">{item.category}</span>
                         <div className="card-actions">
+                          <button
+                            type="button"
+                            className="btn-rename-model"
+                            title="Đổi tên mô hình"
+                            data-testid={`rename-${item.id}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              beginRenameModel(item);
+                            }}
+                          >
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M12 20h9" />
+                              <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                            </svg>
+                          </button>
                           <button
                             type="button"
                             className="btn-history-model"
@@ -1433,7 +1850,32 @@ export function App() {
                           </button>
                         </div>
                       </div>
-                      <h4 className="model-name">{item.name}</h4>
+                      {renamingId === item.id ? (
+                        <input
+                          className="model-name-input"
+                          value={renameDraft}
+                          autoFocus
+                          data-testid={`rename-input-${item.id}`}
+                          aria-label={`Tên mới cho ${item.name}`}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => setRenameDraft(e.target.value)}
+                          onFocus={(e) => e.currentTarget.select()}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              e.currentTarget.blur();
+                            } else if (e.key === "Escape") {
+                              e.preventDefault();
+                              cancelRenameModel();
+                            }
+                          }}
+                          onBlur={() => {
+                            void commitRenameModel(item);
+                          }}
+                        />
+                      ) : (
+                        <h4 className="model-name">{item.name}</h4>
+                      )}
                       <div className="model-meta">
                         <span>{item.partsCount} parts</span>
                         <span>·</span>

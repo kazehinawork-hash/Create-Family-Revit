@@ -1,0 +1,113 @@
+{
+  "productType": "pipe-support",
+  "aliases": [
+    "giá đỡ",
+    "support",
+    "hanger",
+    "treo ống",
+    "thanh treo",
+    "bracket"
+  ],
+  "category": "Specialty Equipment",
+  "matchers": {
+    "keywords": [
+      "giá đỡ",
+      "support",
+      "hanger",
+      "treo ống",
+      "bracket",
+      "thanh treo"
+    ],
+    "codePatterns": [
+      "^S-",
+      "HS-"
+    ]
+  },
+  "parameters": [
+    {
+      "name": "Pipe Size",
+      "group": "Dimensions",
+      "unit": "mm",
+      "default": 100,
+      "range": [
+        15,
+        600
+      ],
+      "fromEvidence": [
+        "Nominal Size"
+      ],
+      "remember": false
+    },
+    {
+      "name": "Rod Diameter",
+      "group": "Dimensions",
+      "unit": "mm",
+      "formula": "[Pipe Size] * 0.09 + 5",
+      "fromEvidence": [],
+      "remember": false
+    },
+    {
+      "name": "Bracket Width",
+      "group": "Dimensions",
+      "unit": "mm",
+      "formula": "[Pipe OD] + 80",
+      "fromEvidence": [],
+      "remember": false
+    },
+    {
+      "name": "Support Spacing",
+      "group": "Data",
+      "unit": "mm",
+      "default": 3000,
+      "range": [
+        1000,
+        6000
+      ],
+      "fromEvidence": [],
+      "remember": true
+    },
+    {
+      "name": "Drop Length",
+      "group": "Dimensions",
+      "unit": "mm",
+      "default": 500,
+      "range": [
+        100,
+        3000
+      ],
+      "fromEvidence": [],
+      "remember": true
+    }
+  ],
+  "components": [
+    {
+      "kind": "bracket",
+      "required": true,
+      "countFormula": "1"
+    },
+    {
+      "kind": "rod",
+      "required": true,
+      "countFormula": "2"
+    },
+    {
+      "kind": "clamp",
+      "required": true,
+      "countFormula": "1"
+    }
+  ],
+  "connectors": [],
+  "materials": [
+    {
+      "name": "Galvanized Steel",
+      "color": "#9aa1a6",
+      "finish": "hot dip galvanized"
+    }
+  ],
+  "checks": [
+    {
+      "expr": "Rod Diameter >= 6",
+      "message": "Thanh treo phải ≥ M6"
+    }
+  ]
+}

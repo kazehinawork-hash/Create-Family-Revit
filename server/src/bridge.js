@@ -53,6 +53,36 @@ function queuedResponse(spec, detail) {
   };
 }
 
+export async function buildMultiType(spec) {
+  let response;
+  try {
+    response = await fetch(`${config.bridge.url}/build-multi`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(config.bridge.token ? { "X-Family-Token": config.bridge.token } : {}),
+      },
+      body: JSON.stringify(spec),
+      signal: AbortSignal.timeout(config.bridge.timeoutMs),
+    });
+  } catch (error) {
+    return { ok: false, error: `Revit bridge unreachable: ${error.message}` };
+  }
+
+  const payload = await response.json().catch(() => ({}));
+  if (response.ok && payload.ok !== false) rememberBuildOutput(payload.path);
+
+  if (!response.ok || payload.ok === false) {
+    return {
+      ok: false,
+      error: payload.error || `The Revit bridge returned ${response.status}`,
+      warnings: payload.warnings || [],
+    };
+  }
+
+  return { ok: true, path: payload.path, types: payload.types, warnings: payload.warnings || [] };
+}
+
 export async function buildFamily(spec) {
   const started = Date.now();
 
