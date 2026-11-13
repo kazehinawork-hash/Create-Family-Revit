@@ -5,7 +5,8 @@ import path from "node:path";
 import test, { beforeEach } from "node:test";
 
 import { checkCompleteness, extractChecklistHeuristic } from "../src/checklist.js";
-import { design } from "../src/designer.js";
+import { config } from "../src/config.js";
+import { design, turnTimeoutMs } from "../src/designer.js";
 import { clearCachedResults } from "../src/result-cache.js";
 
 process.env.AGENT_EXPERIMENTAL_PIPELINE = "0";
@@ -392,6 +393,76 @@ test("a supplement turn that times out reports the incomplete spec, not an error
   assert.equal(result.stats.complete, false);
   assert.ok(result.stats.missing.some((item) => /bậc thang/.test(item)));
   assert.ok(result.stats.warnings.some((item) => item.startsWith("Chưa đầy đủ:")));
+});
+
+test("one model turn never exceeds the hard ceiling, whatever .env says", () => {
+  const original = { step: config.agent.stepTimeoutMs, max: config.agent.maxTurnTimeoutMs };
+
+  try {
+    config.agent.maxTurnTimeoutMs = 300000;
+    config.agent.stepTimeoutMs = 600000;
+
+    assert.equal(turnTimeoutMs({ hasCurrentSpec: false }), 300000, "600 s in .env is capped");
+    assert.equal(turnTimeoutMs({ hasCurrentSpec: false, remainingMs: 42000 }), 42000);
+    assert.equal(turnTimeoutMs({ hasCurrentSpec: false, remainingMs: 1000 }), 5000, "floor");
+
+    config.agent.stepTimeoutMs = 240000;
+    assert.equal(turnTimeoutMs({ hasCurrentSpec: false }), 240000);
+    assert.ok(turnTimeoutMs({ hasCurrentSpec: true }) <= 120000, "an edit uses the edit budget");
+  } finally {
+    config.agent.stepTimeoutMs = original.step;
+    config.agent.maxTurnTimeoutMs = original.max;
+  }
+});
+
+test("a creation that times out retries once before giving up", async () => {
+  let calls = 0;
+  const result = await design({
+    prompt: "khung đỡ thiết bị 500x120",
+    currentSpec: null,
+    lod: 300,
+    emit: () => {},
+    model: "cheap-model",
+    generate: async () => {
+      calls += 1;
+      if (calls === 1) throw new Error("Agent run timed out after 300s");
+      return { json: ladderSpec(), text: "", usage: null };
+    },
+  });
+
+  assert.equal(calls, 2, "one timeout + one retry");
+  assert.equal(result.analysis.ok, true);
+  assert.equal(result.stats.modelCalls, 2);
+});
+
+test("a sectioned creation that times out is rebuilt section by section", async () => {
+  const brief = [
+    "## Khung",
+    "Khung thép 1200 x 600 mm.",
+    "",
+    "## Cửa thăm",
+    "Cửa thăm 300 x 300 mm.",
+  ].join("\n");
+
+  const calls = [];
+  const result = await design({
+    prompt: brief,
+    currentSpec: null,
+    lod: 300,
+    emit: () => {},
+    model: "cheap-model",
+    generate: async (messages) => {
+      calls.push(String(messages.at(-1).content));
+      // Both the first answer and its timeout retry fail; then the split runs.
+      if (calls.length <= 2) throw new Error("Agent run timed out after 300s");
+      return { json: ladderSpec(`Phần ${calls.length - 2}`), text: "", usage: null };
+    },
+  });
+
+  assert.equal(calls.length, 4, "2 failed calls + one per section");
+  assert.match(calls[2], /Khung thép 1200 x 600/, "the first section runs alone");
+  assert.match(calls[3], /Cửa thăm 300 x 300/, "the second section runs next");
+  assert.ok(result.analysis.ok);
 });
 
 const PHOTO = Buffer.from(

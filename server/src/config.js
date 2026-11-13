@@ -51,6 +51,12 @@ export const config = {
     stepTimeoutMs: Number(process.env.AGENT_STEP_TIMEOUT || process.env.AGENT_TIMEOUT || 240000),
     /** Connector / material / edit passes. */
     editTimeoutMs: Number(process.env.AGENT_EDIT_TIMEOUT || 120000),
+    /**
+     * Hard ceiling for one model call. A stale AGENT_TIMEOUT=600000 in .env used to
+     * make a single hung run block the studio for ten minutes; 5 minutes is enough
+     * for the longest family and leaves room for a retry inside the total budget.
+     */
+    maxTurnTimeoutMs: Number(process.env.AGENT_MAX_TURN_TIMEOUT || 300000),
     /** Whole request, all steps together (a split LOD 400 brief runs 4-5 passes). */
     totalTimeoutMs: Number(process.env.AGENT_TOTAL_TIMEOUT || 1500000),
     /** A new brief longer than this is split into skeleton + connectors + materials. */

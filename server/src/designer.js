@@ -528,6 +528,8 @@ Start like this and include every part you described:
 
 It must start with { and end with }.`;
 
+const TIMEOUT_RETRY = `The previous answer did not finish in time. Answer now with the complete JSON object only, and keep it compact: no commentary, no repeated explanation, every part named in the brief present once. Start with { and end with }.`;
+
 const JSON_OUTPUT_CONTRACT = `FINAL OUTPUT CONTRACT
 Return exactly one JSON object and nothing else.
 - The first non-whitespace character must be { and the last must be }.
@@ -1038,6 +1040,15 @@ async function documentMessages(attachments, emit) {
   ];
 }
 
+/**
+ * Timeout for one model call. Whatever the .env says, a single turn never exceeds
+ * AGENT_MAX_TURN_TIMEOUT and never eats more than the time left in the request.
+ */
+export function turnTimeoutMs({ hasCurrentSpec = false, remainingMs = Infinity } = {}) {
+  const budget = hasCurrentSpec ? config.agent.editTimeoutMs : config.agent.stepTimeoutMs;
+  return Math.max(5000, Math.min(budget, config.agent.maxTurnTimeoutMs, remainingMs));
+}
+
 async function designStable(options) {
   const startedAt = Date.now();
   const { prompt, currentSpec, lod, emit, model, customApiConfig, attachments, signal } = options;
@@ -1167,6 +1178,7 @@ async function designStable(options) {
     let bestAnalysis = null;
     let attempts = 0;
     let proseRetries = 0;
+    let timeoutRetries = 0;
     let layoutPassUsed = false;
     let latestGaps = null;
     let nextReason = null;
@@ -1177,8 +1189,7 @@ async function designStable(options) {
       const remaining = deadline - Date.now();
       if (attempt > 1 && remaining <= 5000) break;
       // An edit of an existing family must not wait as long as a fresh build.
-      const attemptBudget = spec ? config.agent.editTimeoutMs : config.agent.stepTimeoutMs;
-      const timeoutMs = Math.max(5000, Math.min(attemptBudget, remaining));
+      const timeoutMs = turnTimeoutMs({ hasCurrentSpec: Boolean(spec), remainingMs: remaining });
 
       if (attempt === 1) {
         send({ type: "stage", stage: "generating", message: "Đang dựng…" });
@@ -1207,6 +1218,24 @@ async function designStable(options) {
       } catch (error) {
         // Sent the answer cut off at the token limit: the caller splits and retries.
         if (isOutputLimitError(error)) throw error;
+
+        // A hung turn is retried once with a shorter instruction instead of failing
+        // the whole request after waiting the full timeout.
+        if (
+          isTimeoutError(error) &&
+          timeoutRetries < 1 &&
+          attempt < MAX_ATTEMPTS &&
+          deadline - Date.now() > 60000
+        ) {
+          timeoutRetries += 1;
+          send({
+            type: "stage",
+            stage: "retrying",
+            message: `Hết thời gian lượt ${attempt} — thử lại với yêu cầu gọn hơn`,
+          });
+          messages.push({ role: "user", content: TIMEOUT_RETRY });
+          continue;
+        }
 
         if (bestAnalysis?.ok) {
           console.warn(`[design] attempt ${attempt} failed, keeping the best valid spec:`, error.message);
@@ -1328,59 +1357,68 @@ async function designStable(options) {
   const warnings = [];
   let outcome;
 
+  /** Build a sectioned brief one "##" section at a time, keeping what worked. */
+  const buildBySections = async (steps) => {
+    console.log(`[design] rebuilding in ${steps.length} sections`);
+    send({
+      type: "stage",
+      stage: "retrying",
+      message: `Chia yêu cầu thành ${steps.length} bước nhỏ`,
+    });
+
+    let spec = null;
+    let stepsDone = 0;
+    let totalAttempts = 0;
+    let finalGaps = null;
+
+    for (const [index, step] of steps.entries()) {
+      try {
+        const stepOutcome = await runTurn(step.prompt, spec, {
+          // Later sections are still missing from an early spec: only the last step
+          // can satisfy the whole brief.
+          enforceCompleteness: index === steps.length - 1,
+        });
+        totalAttempts += stepOutcome.attempts;
+        if (stepOutcome.analysis?.spec) {
+          spec = stepOutcome.analysis.spec;
+          stepsDone += 1;
+        }
+        if (stepOutcome.gaps) finalGaps = stepOutcome.gaps;
+        if (!stepOutcome.analysis?.ok) {
+          warnings.push(
+            `Bước "${step.label}" chưa hợp lệ: ${formatIssues(stepOutcome.analysis?.errors ?? [])}`,
+          );
+        }
+      } catch (stepError) {
+        if (isOutputLimitError(stepError)) {
+          warnings.push(`Bước "${step.label}" vượt giới hạn độ dài — dừng chia nhỏ.`);
+          break;
+        }
+        // A later section failed: keep what the earlier sections built instead of
+        // throwing away a working family.
+        const reason = stepError?.message ?? String(stepError);
+        warnings.push(`Bước "${step.label}" lỗi (${reason}) — giữ phần đã dựng.`);
+        break;
+      }
+    }
+
+    if (stepsDone === 0) return null;
+    return { analysis: analyzeSpec(spec), attempts: totalAttempts, gaps: finalGaps };
+  };
+
   try {
     outcome = await runTurn(prompt, currentSpec);
   } catch (error) {
-    // A new family too long for one answer: split by "##" headings and build it in order.
-    if (!currentSpec && isOutputLimitError(error)) {
-      const steps = splitNewBrief(prompt, 0);
-      if (steps && steps.length > 1) {
-        console.log(`[design] output limit — rebuilding in ${steps.length} sections`);
-        send({
-          type: "stage",
-          stage: "retrying",
-          message: `Model viết quá dài — chia yêu cầu thành ${steps.length} bước nhỏ`,
-        });
+    // A new family whose first answer was cut off or timed out is rebuilt section by
+    // section, instead of losing the whole request after one ten-minute wait.
+    const sections = !currentSpec && (isOutputLimitError(error) || isTimeoutError(error))
+      ? splitNewBrief(prompt, 0)
+      : null;
 
-        let spec = null;
-        let stepsDone = 0;
-        let totalAttempts = 0;
-        let finalGaps = null;
-
-        for (const [index, step] of steps.entries()) {
-          try {
-            const stepOutcome = await runTurn(step.prompt, spec, {
-              // Later sections are still missing from an early spec: only the last
-              // step can satisfy the whole brief.
-              enforceCompleteness: index === steps.length - 1,
-            });
-            totalAttempts += stepOutcome.attempts;
-            if (stepOutcome.analysis?.spec) {
-              spec = stepOutcome.analysis.spec;
-              stepsDone += 1;
-            }
-            if (stepOutcome.gaps) finalGaps = stepOutcome.gaps;
-            if (!stepOutcome.analysis?.ok) {
-              warnings.push(`Bước "${step.label}" chưa hợp lệ: ${formatIssues(stepOutcome.analysis?.errors ?? [])}`);
-            }
-          } catch (stepError) {
-            if (isOutputLimitError(stepError)) {
-              warnings.push(`Bước "${step.label}" vượt giới hạn độ dài — dừng chia nhỏ.`);
-              break;
-            }
-            // A later section failed: keep what the earlier sections built instead of
-            // throwing away a working family.
-            const reason = stepError?.message ?? String(stepError);
-            warnings.push(`Bước "${step.label}" lỗi (${reason}) — giữ phần đã dựng.`);
-            break;
-          }
-        }
-
-        if (stepsDone === 0) throw error;
-        outcome = { analysis: analyzeSpec(spec), attempts: totalAttempts, gaps: finalGaps };
-      } else {
-        throw error;
-      }
+    if (sections && sections.length > 1) {
+      const built = await buildBySections(sections);
+      if (!built) throw error;
+      outcome = built;
     } else if (currentSpec) {
       // An edit that failed (timeout, provider error) must not discard the family the
       // user already has; the studio keeps it and shows why the change was not applied.
