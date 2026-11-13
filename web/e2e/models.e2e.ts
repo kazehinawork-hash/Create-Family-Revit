@@ -4,11 +4,7 @@ import { expect, test } from "@playwright/test";
 
 const saved = JSON.parse(
   fs.readFileSync(
-    path.join(
-      process.cwd(),
-      "saved-models",
-      "1794390236816-thinh-phat-cable-ladder-mitered-tee.json",
-    ),
+    path.join(process.cwd(), "web", "e2e", "fixtures", "mitered-tee.json"),
     "utf8",
   ),
 ) as { name: string; spec: Record<string, unknown> };

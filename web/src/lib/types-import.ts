@@ -1,4 +1,4 @@
-import * as XLSX from "xlsx";
+import { readSheet } from "read-excel-file/browser";
 import type { FamilyParameter, FamilyTypeEntry } from "@family/spec-core";
 
 export interface ImportColumn {
@@ -114,7 +114,7 @@ export function parseCsv(text: string): string[][] {
   return rows.filter((cells) => cells.some((cell) => cell.trim().length > 0));
 }
 
-/** Reads .csv/.txt as text and .xlsx/.xls through SheetJS, always as a cell grid. */
+/** Reads .csv/.txt as text and .xlsx through read-excel-file, always as a cell grid. */
 export async function readTable(file: File): Promise<string[][]> {
   const name = file.name.toLowerCase();
 
@@ -122,12 +122,20 @@ export async function readTable(file: File): Promise<string[][]> {
     return parseCsv(await file.text());
   }
 
-  const buffer = await file.arrayBuffer();
-  const workbook = XLSX.read(buffer, { type: "array" });
-  const sheetName = workbook.SheetNames[0];
-  const sheet = workbook.Sheets[sheetName];
-  const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, blankrows: false, defval: "" });
-  return rows.map((row) => row.map((cell) => (cell === null || cell === undefined ? "" : String(cell))));
+  // read-excel-file handles the modern .xlsx container; .xls is the old binary
+  // format and needs a converter (and SheetJS, which has unfixed advisories).
+  if (name.endsWith(".xls")) {
+    throw new Error("Chỉ đọc được .xlsx — mở file trong Excel và lưu lại dạng .xlsx.");
+  }
+
+  const rows = await readSheet(file);
+  return rows.map((row) =>
+    row.map((cell) => {
+      if (cell === null || cell === undefined) return "";
+      if (cell instanceof Date) return cell.toISOString().slice(0, 10);
+      return String(cell);
+    }),
+  );
 }
 
 function numberFromCell(value: string): number | null {
