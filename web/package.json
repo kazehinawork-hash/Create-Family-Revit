@@ -14,7 +14,8 @@
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "three": "^0.180.0",
-    "three-bvh-csg": "^0.0.17"
+    "three-bvh-csg": "^0.0.17",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",

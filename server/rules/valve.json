@@ -1,0 +1,160 @@
+{
+  "productType": "valve",
+  "aliases": [
+    "van",
+    "valve",
+    "van bướm",
+    "van cổng",
+    "van bi",
+    "van một chiều",
+    "butterfly valve",
+    "gate valve",
+    "ball valve",
+    "check valve"
+  ],
+  "category": "Pipe Fitting",
+  "matchers": {
+    "keywords": [
+      "van",
+      "valve",
+      "butterfly",
+      "gate valve",
+      "ball valve",
+      "check valve",
+      "van bướm",
+      "van cổng",
+      "van bi"
+    ],
+    "codePatterns": [
+      "^V-",
+      "-BF",
+      "-GT"
+    ]
+  },
+  "parameters": [
+    {
+      "name": "Nominal Size",
+      "group": "Dimensions",
+      "unit": "mm",
+      "default": 100,
+      "range": [
+        15,
+        600
+      ],
+      "fromEvidence": [
+        "Nominal Size"
+      ],
+      "remember": false
+    },
+    {
+      "name": "Pressure Rating",
+      "group": "Data",
+      "unit": "PN",
+      "default": 16,
+      "range": [
+        6,
+        40
+      ],
+      "fromEvidence": [],
+      "remember": false
+    },
+    {
+      "name": "Body Length",
+      "group": "Dimensions",
+      "unit": "mm",
+      "formula": "[Nominal Size] * 1.2 + 40",
+      "fromEvidence": [],
+      "remember": false
+    },
+    {
+      "name": "Body Diameter",
+      "group": "Dimensions",
+      "unit": "mm",
+      "formula": "[Flange OD] * 0.72",
+      "fromEvidence": [],
+      "remember": false
+    },
+    {
+      "name": "Stem Diameter",
+      "group": "Dimensions",
+      "unit": "mm",
+      "formula": "[Nominal Size] * 0.12 + 12",
+      "fromEvidence": [],
+      "remember": false
+    },
+    {
+      "name": "Disc Thickness",
+      "group": "Dimensions",
+      "unit": "mm",
+      "formula": "[Nominal Size] * 0.06 + 4",
+      "fromEvidence": [],
+      "remember": false
+    },
+    {
+      "name": "Handle Length",
+      "group": "Dimensions",
+      "unit": "mm",
+      "formula": "[Nominal Size] * 1.6",
+      "fromEvidence": [],
+      "remember": false
+    }
+  ],
+  "components": [
+    {
+      "kind": "body",
+      "required": true,
+      "countFormula": "1"
+    },
+    {
+      "kind": "flange",
+      "required": true,
+      "countFormula": "2",
+      "placement": "both ends"
+    },
+    {
+      "kind": "disc",
+      "required": true,
+      "countFormula": "1"
+    },
+    {
+      "kind": "stem",
+      "required": true,
+      "countFormula": "1"
+    },
+    {
+      "kind": "handle",
+      "required": true,
+      "countFormula": "1"
+    }
+  ],
+  "connectors": [
+    {
+      "domain": "pipe",
+      "sizeFrom": "Nominal Size",
+      "placement": "both flange faces"
+    }
+  ],
+  "materials": [
+    {
+      "name": "Cast Iron Body",
+      "color": "#4a4a4a",
+      "finish": "epoxy coated"
+    },
+    {
+      "name": "Stainless Steel Trim",
+      "color": "#c0c0c0",
+      "finish": "machined"
+    },
+    {
+      "name": "EPDM Seat",
+      "color": "#1a1a1a",
+      "finish": "rubber"
+    }
+  ],
+  "checks": [
+    {
+      "expr": "Body Length > Nominal Size",
+      "message": "Chiều dài thân van phải lớn hơn DN"
+    }
+  ]
+}

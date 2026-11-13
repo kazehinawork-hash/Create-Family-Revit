@@ -11,6 +11,29 @@ export interface DesignStats {
   elapsedMs: number;
   usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null;
   cached?: boolean;
+  tier?: number;
+  tierLabel?: string;
+  /** false when the spec does not satisfy the extracted requirement checklist. */
+  complete?: boolean;
+  missing?: string[];
+  checklist?: unknown;
+  model?: string | null;
+  modelCalls?: number;
+  promptChars?: number;
+  savedCalls?: number;
+  calls?: Array<{ tier: number; model: string; promptChars: number; modelCalls: number }>;
+  step?: { index: number; total: number; label: string; partial?: boolean };
+  steps?: Array<{ label: string; ms: number; ok: boolean; error?: string }>;
+  warnings?: string[];
+  /** Product type, rule pack origin and the values the agent actually used. */
+  productType?: string | null;
+  ruleSource?: "builtin" | "learned" | "learned-new" | null;
+  resolution?: Array<{
+    name: string;
+    value: unknown;
+    level?: number;
+    source?: string;
+  }>;
   fastEdit?: {
     name: string;
     type: string;
@@ -26,6 +49,7 @@ export interface StageEvent {
   stage: string;
   message: string;
   issues?: Issue[];
+  details?: string;
 }
 
 export interface SpecEvent {
@@ -39,9 +63,44 @@ export interface SpecEvent {
 export interface ErrorEvent {
   type: "error";
   message: string;
+  /** Raw provider text, shown inside the collapsible "details" block. */
+  details?: string;
+  retryable?: boolean;
 }
 
-export type DesignEvent = StageEvent | SpecEvent | ErrorEvent;
+/** First frame of every design stream: the id used to recover a result later. */
+export interface JobEvent {
+  type: "job";
+  jobId: string;
+}
+
+/** A saved family close enough to be used as the starting point. */
+export interface SuggestionEvent {
+  type: "suggestion";
+  sample: { id: string; name: string; score: number };
+}
+
+export type DesignEvent = JobEvent | SuggestionEvent | StageEvent | SpecEvent | ErrorEvent;
+
+export interface DesignJob {
+  job_id: string;
+  status: "running" | "done" | "error";
+  spec: FamilySpec | null;
+  issues: Issue[];
+  errors: Issue[];
+  warnings: string[];
+  stats: DesignStats | null;
+  error: string | null;
+}
+
+export async function fetchDesignJob(jobId: string): Promise<DesignJob | null> {
+  const response = await fetch(`/api/design/jobs/${encodeURIComponent(jobId)}`);
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`Job request failed (${response.status})`);
+
+  const payload = (await response.json()) as { job?: DesignJob };
+  return payload.job ?? null;
+}
 
 export interface AgentStatus {
   provider: string;
@@ -147,6 +206,8 @@ export async function streamDesign(
     spec: FamilySpec | null;
     lod?: Lod;
     model?: string;
+    /** Never switch to a fallback model, even if the selected one is overloaded. */
+    lockModel?: boolean;
     customApiConfig?: CustomApiConfig;
     attachments?: { path: string; name: string }[];
   },
@@ -154,12 +215,24 @@ export async function streamDesign(
   signal?: AbortSignal,
   onHeartbeat?: () => void,
 ): Promise<void> {
-  const response = await fetch("/api/design", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-    signal,
-  });
+  const request = () =>
+    fetch("/api/design", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal,
+    });
+
+  let response: Response;
+  try {
+    response = await request();
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    // A recycled keep-alive socket or a dev-server restart looks like a network
+    // failure here. One retry costs a second; after that the caller polls the job.
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    response = await request();
+  }
 
   if (!response.ok || !response.body) {
     const detail = await response.text().catch(() => "");
@@ -216,6 +289,7 @@ export interface BuildStats {
   refPlanes?: number;
   refDimensions?: number;
   locks?: number;
+  mode?: "constraints" | "planes" | "rebuild";
   joins?: number;
   totalForms?: number;
   missingForms?: number;
@@ -282,6 +356,38 @@ export async function buildFamily(spec: FamilySpec): Promise<BuildResult> {
   }
 
   return payload;
+}
+
+export async function exportMultiType(
+  spec: FamilySpec,
+): Promise<{ ok: boolean; path?: string; types?: number }> {
+  const response = await fetch("/api/export-multi-type", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ spec }),
+  });
+
+  const payload = (await response.json().catch(() => ({}))) as {
+    ok?: boolean;
+    path?: string;
+    types?: number;
+    error?: string;
+  };
+
+  if (!response.ok || payload.ok === false) {
+    throw new Error(payload.error || `Export failed (${response.status})`);
+  }
+
+  if (payload.path) {
+    const link = document.createElement("a");
+    link.href = `/api/download-rfa?path=${encodeURIComponent(payload.path)}`;
+    link.download = `${spec.name || "Family"}-types.rfa`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
+  return { ok: true, path: payload.path, types: payload.types };
 }
 
 export async function downloadPortablePackage(spec: FamilySpec): Promise<void> {
@@ -386,6 +492,24 @@ export async function saveModel(payload: { id?: string; name?: string; spec: Fam
     body: JSON.stringify(payload),
   });
   return await res.json();
+}
+
+export async function renameModel(
+  id: string,
+  name: string,
+): Promise<{ ok: boolean; id: string; name: string; savedAt?: number }> {
+  const res = await fetch(`/api/models/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.ok === false) {
+    throw new Error(data.error || `Rename failed (${res.status})`);
+  }
+
+  return data;
 }
 
 export async function deleteSavedModel(id: string): Promise<{ ok: boolean }> {

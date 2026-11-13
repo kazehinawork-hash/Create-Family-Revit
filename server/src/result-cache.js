@@ -31,3 +31,8 @@ export function writeCachedResult(key, value) {
     entries.delete(oldest);
   }
 }
+
+/** Test hook: cached results must not leak between cases. */
+export function clearCachedResults() {
+  entries.clear();
+}

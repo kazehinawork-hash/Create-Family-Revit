@@ -5,12 +5,20 @@ import express from "express";
 import { analyzeSpec } from "@family/spec-core";
 import { config, ROOT } from "./config.js";
 import { design } from "./designer.js";
-import { buildFamily, getBuildOutputRoots } from "./bridge.js";
+import { buildFamily, buildMultiType, getBuildOutputRoots } from "./bridge.js";
 import { auditBuild } from "./build-qa.js";
 import { agentStatus, detectAgentBackends, getCmdcModels } from "./agents.js";
 import { bridgeAlive, ensureBridge, findRevitExe } from "./revit.js";
 import { createPortablePackage } from "./portable.js";
 import { extractModelIds, normalizeModelBaseUrl } from "./model-list.js";
+import {
+  createDesignJob,
+  designJobSeenSince,
+  finishDesignJob,
+  getDesignJob,
+  touchDesignJob,
+  updateJob,
+} from "./jobs.js";
 import { checkModel } from "./model-check.js";
 import { writeJsonAtomic } from "./files.js";
 import {
@@ -316,13 +324,38 @@ app.post("/api/check-model", async (req, res) => {
   );
 });
 
-app.get("/api/health", async (_req, res) => {
-  const [models, backends, connected] = await Promise.all([
+/**
+ * One source failing (slow CLI, bridge down, missing binary) must never take the
+ * whole health endpoint down: every source is isolated and falls back to a safe value.
+ */
+export async function buildHealthPayload() {
+  const [modelsResult, backendsResult, bridgeResult] = await Promise.allSettled([
     getCmdcModels(),
     detectAgentBackends(),
     bridgeAlive(),
   ]);
-  const status = agentStatus();
+
+  const models = modelsResult.status === "fulfilled" && Array.isArray(modelsResult.value)
+    ? modelsResult.value
+    : [];
+  const backends =
+    backendsResult.status === "fulfilled" && backendsResult.value
+      ? backendsResult.value
+      : { commandcode: false, agy: false, codex: false, claude: false, openai: Boolean(config.llm.apiKey) };
+  const connected = bridgeResult.status === "fulfilled" ? Boolean(bridgeResult.value) : false;
+
+  let status;
+  try {
+    status = agentStatus();
+  } catch (error) {
+    status = {
+      provider: config.agent.provider,
+      model: config.agent.model || "",
+      ready: false,
+      detail: `agent status unavailable: ${error?.message ?? error}`,
+    };
+  }
+
   const anyCli = backends.commandcode || backends.agy || backends.codex || backends.claude;
   const ready = status.provider === "openai" ? backends.openai : anyCli;
   const detail =
@@ -333,7 +366,8 @@ app.get("/api/health", async (_req, res) => {
           ? status.detail
           : `"${config.agent.command}" không có trên máy — chọn model từ CLI đang cài hoặc Direct API`
         : `Không tìm thấy CLI nào trên máy — cài CLI hoặc dùng Direct API`;
-  res.json({
+
+  return {
     ok: true,
     agent: { ...status, ready, detail },
     backends,
@@ -346,7 +380,40 @@ app.get("/api/health", async (_req, res) => {
     },
     outDir: config.dirs.out,
     queueDir: config.dirs.queue,
-  });
+  };
+}
+
+app.get("/api/health", async (_req, res) => {
+  try {
+    res.json(await buildHealthPayload());
+  } catch (error) {
+    console.error("health failed:", error);
+    // Still 200: the studio must be able to render a degraded state instead of
+    // treating a partial failure as "the API is gone".
+    res.status(200).json({
+      ok: true,
+      degraded: true,
+      error: error?.message || String(error),
+      agent: {
+        provider: config.agent.provider,
+        model: config.agent.model || "",
+        ready: false,
+        detail: "Agent tạm thời không phản hồi",
+      },
+      backends: {
+        commandcode: false,
+        agy: false,
+        codex: false,
+        claude: false,
+        openai: Boolean(config.llm.apiKey),
+      },
+      models: [],
+      bridge: config.bridge.url,
+      revit: { connected: false, autoStart: config.revit.autoStart, exe: null },
+      outDir: config.dirs.out,
+      queueDir: config.dirs.queue,
+    });
+  }
 });
 
 app.post("/api/design", async (req, res) => {
@@ -383,20 +450,38 @@ app.post("/api/design", async (req, res) => {
 
   let closed = false;
   const controller = new AbortController();
+  let jobId = null;
+  let reconnectTimer = null;
+
+  // The browser reloads, the Vite proxy restarts, the laptop sleeps: the socket can
+  // drop mid-run. Keep the design alive for a grace period and only abort when the
+  // studio has not polled the job — it polls every few seconds while it is open.
+  const onStreamClosed = (reason) => {
+    if (closed && reconnectTimer) return;
+    closed = true;
+    const closedAt = Date.now();
+    clearTimeout(reconnectTimer);
+    reconnectTimer = setTimeout(() => {
+      if (jobId && designJobSeenSince(jobId, closedAt)) {
+        console.log("[design] studio reconnected — the run keeps going");
+        return;
+      }
+      controller.abort(reason);
+    }, config.agent.reconnectGraceMs);
+    reconnectTimer.unref?.();
+  };
 
   res.on("close", () => {
-    closed = true;
-    if (!res.writableEnded) controller.abort();
+    if (!res.writableEnded) onStreamClosed("client closed");
   });
 
   // A browser reload or a Vite proxy restart resets the socket. Without these
   // listeners Node emits an unhandled 'error' and the whole API process exits.
   const onStreamError = (error) => {
-    closed = true;
-    controller.abort();
     if (error?.code !== "ECONNRESET" && error?.code !== "EPIPE") {
       console.error("design stream error:", error);
     }
+    onStreamClosed("stream error");
   };
   res.on("error", onStreamError);
   req.on("error", onStreamError);
@@ -410,13 +495,34 @@ app.post("/api/design", async (req, res) => {
     }
   };
 
-  const emit = (event) => {
+  const emitRaw = (event) => {
     send(`data: ${JSON.stringify(event)}\n\n`);
+  };
+
+  // A design run is a job: the browser can reconnect and pick the result up even
+  // when the socket dies (Vite proxy restart, laptop sleep, reload).
+  const job = createDesignJob({ prompt, model: body.model, lod: body.lod });
+  jobId = job.job_id;
+  emitRaw({ type: "job", jobId: job.job_id });
+
+  const emit = (event) => {
+    if (event?.type === "spec" && event.spec) {
+      const partial = Boolean(event.stats?.step?.partial);
+      updateJob(job.job_id, {
+        status: partial ? "running" : "done",
+        spec: event.spec,
+        issues: event.issues ?? [],
+        errors: event.errors ?? [],
+        stats: event.stats ?? null,
+      });
+    }
+
+    emitRaw(event);
   };
 
   const keepAlive = setInterval(() => {
     send(": ping\n\n");
-  }, 5000);
+  }, config.agent.heartbeatMs);
 
   try {
     const result = await design({
@@ -424,8 +530,11 @@ app.post("/api/design", async (req, res) => {
       currentSpec: body.spec ?? null,
       lod: body.lod,
       model: body.model,
+      lockModel: body.lockModel,
       customApiConfig: body.customApiConfig,
       attachments: normalizeAttachments(body.attachments),
+      // Unknown product types get one cheap model call to learn a reusable pack.
+      learnRules: true,
       signal: controller.signal,
       emit,
     });
@@ -435,6 +544,15 @@ app.post("/api/design", async (req, res) => {
       spec: result.analysis.spec,
       issues: result.analysis.issues,
       errors: result.analysis.errors,
+      stats: result.stats,
+    });
+
+    finishDesignJob(job.job_id, {
+      status: "done",
+      spec: result.analysis.spec,
+      issues: result.analysis.issues ?? [],
+      errors: result.analysis.errors ?? [],
+      warnings: result.warnings ?? result.stats?.warnings ?? [],
       stats: result.stats,
     });
 
@@ -448,15 +566,39 @@ app.post("/api/design", async (req, res) => {
     }
   } catch (error) {
     console.error("design failed:", error);
-    emit({ type: "error", message: error?.message || String(error) });
+    const message = error?.message || String(error);
+    finishDesignJob(job.job_id, { status: "error", error: message });
+    emit({
+      type: "error",
+      message,
+      details: error?.detail ?? undefined,
+      retryable: error?.transient !== false,
+    });
   } finally {
     clearInterval(keepAlive);
+    clearTimeout(reconnectTimer);
     try {
       if (!res.writableEnded) res.end();
     } catch {
       // Socket already gone.
     }
   }
+});
+
+app.get("/api/design/jobs/:id", (req, res) => {
+  const job = getDesignJob(String(req.params.id || ""));
+  if (!job) {
+    res.status(404).json({
+      ok: false,
+      error: "Không tìm thấy job thiết kế (server có thể đã restart trước khi xong).",
+    });
+    return;
+  }
+
+  // Polling the job is also the "I am still here" signal for a run whose SSE
+  // socket dropped: the stream keeps going instead of being cancelled.
+  touchDesignJob(job.job_id);
+  res.json({ ok: true, job });
 });
 
 app.post("/api/build", async (req, res) => {
@@ -500,6 +642,44 @@ app.post("/api/build", async (req, res) => {
       }
     }
     res.json(result);
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error?.message || String(error) });
+  }
+});
+
+app.post("/api/export-multi-type", async (req, res) => {
+  const analysis = analyzeSpec(req.body?.spec);
+  if (!analysis.ok) {
+    res.status(400).json({ ok: false, error: "Spec contains errors", issues: analysis.errors });
+    return;
+  }
+
+  // The validator may drop unknown keys, so read the type list from the raw body too.
+  const types = req.body?.spec?.types ?? analysis.spec.types ?? [];
+  if (types.length === 0) {
+    res.status(400).json({ ok: false, error: "No types to export" });
+    return;
+  }
+
+  try {
+    const bridge = await ensureBridge();
+    if (!bridge.ok) {
+      res.status(503).json({ ok: false, error: bridge.error });
+      return;
+    }
+
+    const result = await buildMultiType({ ...analysis.spec, types });
+    if (!result.ok) {
+      res.status(502).json({ ok: false, error: result.error, warnings: result.warnings });
+      return;
+    }
+
+    res.json({
+      ok: true,
+      path: result.path,
+      types: result.types ?? types.length,
+      warnings: result.warnings ?? [],
+    });
   } catch (error) {
     res.status(500).json({ ok: false, error: error?.message || String(error) });
   }
@@ -721,6 +901,62 @@ app.post("/api/models", (req, res) => {
   }
 });
 
+/** Characters Revit refuses in a family name, which also break file paths. */
+const FORBIDDEN_NAME_CHARS = /[\\/:*?"<>|]/;
+const MAX_MODEL_NAME = 120;
+
+function normalizeModelName(value) {
+  if (typeof value !== "string") return { error: "Tên mô hình phải là chuỗi." };
+  const name = value.trim().replace(/\s+/g, " ");
+  if (!name) return { error: "Tên mô hình không được để trống." };
+  if (name.length > MAX_MODEL_NAME) {
+    return { error: `Tên mô hình tối đa ${MAX_MODEL_NAME} ký tự.` };
+  }
+  if (FORBIDDEN_NAME_CHARS.test(name)) {
+    return { error: 'Tên mô hình không được chứa các ký tự \\ / : * ? " < > |.' };
+  }
+  return { name };
+}
+
+app.patch("/api/models/:id", (req, res) => {
+  try {
+    ensureSavedDir();
+    const safeId = safeModelId(req.params.id);
+    const filePath = path.join(config.dirs.saved, `${safeId}.json`);
+    if (!fs.existsSync(filePath)) {
+      res.status(404).json({ error: "Model not found" });
+      return;
+    }
+
+    const parsed = normalizeModelName(req.body?.name);
+    if (parsed.error) {
+      res.status(400).json({ error: parsed.error });
+      return;
+    }
+
+    const data = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    const spec = data.spec && typeof data.spec === "object" ? data.spec : {};
+    const previous = String(spec.name ?? data.name ?? "").trim();
+
+    // A rename is a save: keep the previous file as a revision.
+    archiveModel(safeId, filePath);
+
+    spec.name = parsed.name;
+    // Keep typeName in step only when it mirrored the family name.
+    if (typeof spec.typeName === "string" && spec.typeName.trim() === previous) {
+      spec.typeName = parsed.name;
+    }
+    data.spec = spec;
+    data.name = parsed.name;
+    data.savedAt = Date.now();
+
+    writeJsonAtomic(filePath, data);
+    res.json({ ok: true, id: safeId, name: parsed.name, savedAt: data.savedAt });
+  } catch (error) {
+    res.status(500).json({ error: error?.message || String(error) });
+  }
+});
+
 app.delete("/api/models/:id", (req, res) => {
   try {
     ensureSavedDir();
@@ -783,6 +1019,20 @@ process.on("unhandledRejection", (reason) => {
 
 let listenAttempts = 0;
 
+/**
+ * Node cuts a request after five minutes by default. A design run legitimately
+ * streams for up to AGENT_TOTAL_TIMEOUT, so that default silently killed every
+ * long brief with a 408 and the studio reported "mất kết nối".
+ */
+export function applyServerTimeouts(server) {
+  server.requestTimeout = 0;
+  server.timeout = 0;
+  server.headersTimeout = 60000;
+  // Must stay above common proxy idle timeouts (Vite closes at 60 s).
+  server.keepAliveTimeout = 65000;
+  return server;
+}
+
 function startListening() {
   const server = app.listen(config.port, config.host, () => {
     listenAttempts = 0;
@@ -798,6 +1048,8 @@ function startListening() {
     void detectAgentBackends().catch(() => {});
   });
 
+  applyServerTimeouts(server);
+
   server.on("clientError", (error, socket) => {
     if (error?.code === "ECONNRESET" || !socket.writable) {
       try { socket.destroy(); } catch { /* already gone */ }
@@ -812,11 +1064,23 @@ function startListening() {
 
     // node --watch can start the new process before the old listener releases
     // the port. Retry instead of staying alive with no listener.
-    if (error?.code === "EADDRINUSE" && listenAttempts < 30) {
-      listenAttempts += 1;
-      setTimeout(startListening, 1000);
+    if (error?.code === "EADDRINUSE") {
+      if (listenAttempts < 30) {
+        listenAttempts += 1;
+        setTimeout(startListening, 1000);
+        return;
+      }
+
+      console.error(
+        `Cổng ${config.port} đang bị tiến trình khác giữ (EADDRINUSE sau ${listenAttempts} lần thử). ` +
+          "Dừng server để dev.mjs dừng cả cụm — kiểm tra tiến trình đang chiếm cổng rồi chạy lại.",
+      );
+      process.exit(1);
     }
   });
 }
 
-startListening();
+// Tests import this module for buildHealthPayload(); they must not open a listener.
+if (process.env.FAMILY_AGENT_NO_LISTEN !== "1") {
+  startListening();
+}

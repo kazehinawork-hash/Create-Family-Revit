@@ -2,6 +2,36 @@ import { useEffect, useRef, useState } from "react";
 import type { Issue } from "@family/spec-core";
 import { isImageDocument, type AgentBackends, type CmdcModel, type CustomApiConfig, type UploadedDocument } from "../lib/api";
 
+export interface ResolutionRow {
+  name: string;
+  value: unknown;
+  level?: number;
+  source?: string;
+}
+
+/** 1-2 read values (green), 3 measured by scale (amber), 4-5 assumptions (grey). */
+function levelClass(level?: number): string {
+  if (level === undefined || level === null) return "lvl-assumed";
+  if (level <= 2) return "lvl-exact";
+  if (level === 3) return "lvl-measured";
+  return "lvl-assumed";
+}
+
+function downloadResolutionCsv(rows: ResolutionRow[]) {
+  const cell = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+  const csv = [
+    ["Tham số", "Giá trị", "Mức", "Nguồn"].map(cell).join(","),
+    ...rows.map((row) => [row.name, row.value, row.level ?? "", row.source ?? ""].map(cell).join(",")),
+  ].join("\n");
+
+  const url = URL.createObjectURL(new Blob([`\ufeff${csv}`], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "thong-so-da-dung.csv";
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
 export interface ChatEntry {
   id: string;
   role: "user" | "agent";
@@ -10,7 +40,16 @@ export interface ChatEntry {
   meta?: string;
   issues?: Issue[];
   notes?: string[];
+  /** Parameter values the agent used, with where each one came from. */
+  resolution?: ResolutionRow[];
   attachments?: UploadedDocument[];
+  action?: {
+    label: string;
+    kind?: "retry" | "use-sample";
+    sampleId?: string;
+  };
+  /** Raw provider error, kept for the collapsible details block. */
+  details?: string;
 }
 
 
@@ -35,6 +74,14 @@ interface Props {
   uploading: boolean;
   onAttach: (files: File[]) => void;
   onRemoveAttachment: (index: number) => void;
+  onRetry?: () => void;
+  onAction?: (action: NonNullable<ChatEntry["action"]>) => void;
+  /** Model calls spent in this session, per model. */
+  sessionUsage?: Record<string, number>;
+  /** Missing requirement items; when set the spec is not ready to build. */
+  incomplete?: string[] | null;
+  /** Liveness of the local API; false overrides every model-specific status. */
+  serverOnline?: boolean | null;
 }
 
 const EMPTY_MODELS: CmdcModel[] = [];
@@ -201,6 +248,11 @@ export function ChatPanel({
   uploading,
   onAttach,
   onRemoveAttachment,
+  onRetry,
+  onAction,
+  sessionUsage,
+  incomplete,
+  serverOnline,
 }: Props) {
   const [draft, setDraft] = useState("");
   const [preview, setPreview] = useState<UploadedDocument | null>(null);
@@ -258,10 +310,52 @@ export function ChatPanel({
             model: selectedModelRef.current,
           }),
         });
-        const data = await res.json();
+
+        let data: any = {};
+        try {
+          data = await res.json();
+        } catch {
+          data = {};
+        }
+
+        const providerStatus = Number(data?.status ?? res.status);
+        const rejected =
+          res.status === 401 ||
+          res.status === 403 ||
+          providerStatus === 401 ||
+          providerStatus === 403;
+
+        // A timeout / 5xx / busy provider is not a wrong key: keep the previously
+        // valid state and only show a warning, so a flaky network does not lock the UI.
+        const transient =
+          !rejected &&
+          (res.status >= 500 ||
+            [408, 429, 500, 502, 503, 504].includes(providerStatus) ||
+            /timeout|timed out|ECONN|fetch failed|network/i.test(String(data?.error ?? "")));
+
+        if (transient) {
+          setApiVerification((prev) =>
+            prev.valid
+              ? {
+                  ...prev,
+                  checking: false,
+                  error: data?.error || "Không kiểm tra được API (mạng/timeout) — giữ trạng thái hợp lệ trước đó",
+                }
+              : {
+                  checked: true,
+                  valid: false,
+                  checking: false,
+                  error: data?.error || "Không kết nối được tới API — thử lại sau",
+                  models: [],
+                },
+          );
+          return;
+        }
+
         const models = Array.isArray(data.models)
           ? data.models.filter((item: unknown): item is string => typeof item === "string" && item.trim().length > 0)
           : [];
+
         setApiVerification({
           checked: true,
           valid: Boolean(data.ok),
@@ -284,13 +378,23 @@ export function ChatPanel({
           });
         }
       } catch (err: any) {
-        setApiVerification({
-          checked: true,
-          valid: false,
-          checking: false,
-          error: err?.message || "Không thể kết nối tới server xác minh",
-          models: [],
-        });
+        setApiVerification((prev) =>
+          prev.valid
+            ? {
+                ...prev,
+                checking: false,
+                error:
+                  err?.message ||
+                  "Không kiểm tra được API (mạng/timeout) — giữ trạng thái hợp lệ trước đó",
+              }
+            : {
+                checked: true,
+                valid: false,
+                checking: false,
+                error: err?.message || "Không thể kết nối tới server xác minh",
+                models: [],
+              },
+        );
       }
     }, 600);
 
@@ -447,7 +551,13 @@ export function ChatPanel({
   let statusTone: "ok" | "warn" | "error" = modelBackendReady ? "ok" : "warn";
   let statusHint = agentDetail || "Agent đang hoạt động sẵn sàng nhận yêu cầu";
 
-  if (isCustomApi) {
+  if (serverOnline === false) {
+    // The API itself is unreachable: no model can run, whatever is selected.
+    isCurrentModelReady = false;
+    statusText = "Mất kết nối server";
+    statusTone = "error";
+    statusHint = "API 127.0.0.1:8787 không phản hồi — đang thử lại…";
+  } else if (isCustomApi) {
     // A machine without any CLI can still work through Direct API, so this status
     // must not inherit the "no CLI installed" readiness of the default backend.
     if (!apiConfig.apiKey?.trim()) {
@@ -458,7 +568,7 @@ export function ChatPanel({
     } else if (apiVerification.checking) {
       isCurrentModelReady = false;
       statusText = "Đang kiểm tra...";
-      statusTone = "error";
+      statusTone = "warn";
       statusHint = "Đang kiểm tra tính hợp lệ của API Key...";
     } else if (apiVerification.checked && !apiVerification.valid) {
       isCurrentModelReady = false;
@@ -505,6 +615,16 @@ export function ChatPanel({
             ))}
           </select>
 
+          {incomplete && incomplete.length > 0 && (
+            <span
+              className="agent-pill incomplete"
+              title={incomplete.join("\n")}
+              data-testid="incomplete-pill"
+            >
+              ⚠ Chưa đầy đủ
+            </span>
+          )}
+
           <span
             className={`agent-pill ${statusTone} ${statusTone === "ok" ? "agent-pill-pulse" : ""}`}
             title={statusHint}
@@ -515,6 +635,19 @@ export function ChatPanel({
           </span>
         </div>
       </div>
+
+      {sessionUsage && Object.keys(sessionUsage).length > 0 && (
+        <div className="session-usage" data-testid="session-usage">
+          <span className="session-usage-title">Phiên này</span>
+          {Object.entries(sessionUsage)
+            .sort((a, b) => b[1] - a[1])
+            .map(([modelId, count]) => (
+              <span key={modelId} className="session-usage-item" title={`${count} lượt gọi model`}>
+                {modelId} ×{count}
+              </span>
+            ))}
+        </div>
+      )}
 
       {isCustomApi && (
         <div className="api-config">
@@ -672,9 +805,57 @@ export function ChatPanel({
                 Family agent
               </div>
               <div className="body">{entry.text}</div>
+              {entry.details && (
+                <details className="msg-details" data-testid="chat-details">
+                  <summary>Chi tiết lỗi</summary>
+                  <pre>{entry.details}</pre>
+                </details>
+              )}
+              {entry.action && (
+                <button
+                  type="button"
+                  className="msg-action"
+                  onClick={() => (onAction ? onAction(entry.action!) : onRetry?.())}
+                  data-testid="chat-retry"
+                >
+                  {entry.action.label}
+                </button>
+              )}
+              {entry.resolution && entry.resolution.length > 0 && (
+                <div className="agent-assumptions">
+                  <div className="assumptions-head">
+                    <div className="assumptions-title">Thông số đã dùng</div>
+                    <button
+                      type="button"
+                      className="assumptions-csv"
+                      onClick={() => downloadResolutionCsv(entry.resolution!)}
+                    >
+                      Tải CSV
+                    </button>
+                  </div>
+                  <table className="resolution-table" data-testid="resolution-table">
+                    <thead>
+                      <tr>
+                        <th>Tham số</th>
+                        <th>Giá trị</th>
+                        <th>Nguồn</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {entry.resolution.map((row, index) => (
+                        <tr key={`${row.name}-${index}`} className={levelClass(row.level)}>
+                          <td>{row.name}</td>
+                          <td>{String(row.value ?? "")}</td>
+                          <td>{row.source ?? ""}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
               {entry.notes && entry.notes.length > 0 && (
                 <div className="agent-assumptions">
-                  <div className="assumptions-title">Giả định & Câu hỏi từ Agent (Assumptions & Questions)</div>
+                  <div className="assumptions-title">Giả định Agent đã dùng</div>
                   <ul className="assumptions-list">
                     {entry.notes.map((note, idx) => (
                       <li key={idx}>{note}</li>

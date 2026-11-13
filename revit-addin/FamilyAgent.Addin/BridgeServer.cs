@@ -42,9 +42,11 @@ namespace FamilyAgent.Addin
 
         private readonly HttpListener _listener = new HttpListener();
         private readonly BuildRequestHandler _handler = new BuildRequestHandler();
+        private readonly MultiBuildRequestHandler _multiBuilder = new MultiBuildRequestHandler();
         private readonly InspectRequestHandler _inspector = new InspectRequestHandler();
         private readonly RebuildRequestHandler _rebuilder = new RebuildRequestHandler();
         private ExternalEvent _externalEvent;
+        private ExternalEvent _multiEvent;
         private ExternalEvent _inspectEvent;
         private ExternalEvent _rebuildEvent;
         private Thread _thread;
@@ -65,6 +67,9 @@ namespace FamilyAgent.Addin
             {
                 _externalEvent = _externalEvent ?? ExternalEvent.Create(_handler);
                 _handler.Event = _externalEvent;
+
+                _multiEvent = _multiEvent ?? ExternalEvent.Create(_multiBuilder);
+                _multiBuilder.Event = _multiEvent;
 
                 _inspectEvent = _inspectEvent ?? ExternalEvent.Create(_inspector);
                 _inspector.Event = _inspectEvent;
@@ -132,7 +137,7 @@ namespace FamilyAgent.Addin
                     return;
                 }
 
-                if (context.Request.HttpMethod != "POST" || path != "/build")
+                if (context.Request.HttpMethod != "POST" || (path != "/build" && path != "/build-multi"))
                 {
                     if (context.Request.HttpMethod == "POST" && path == "/rebuild")
                     {
@@ -196,7 +201,11 @@ namespace FamilyAgent.Addin
                     return;
                 }
 
-                if (!_handler.TryQueue(body, context))
+                var queued = path == "/build-multi"
+                    ? _multiBuilder.TryQueue(body, context)
+                    : _handler.TryQueue(body, context);
+
+                if (!queued)
                 {
                     Respond(context, 409,
                         JsonConvert.SerializeObject(new { ok = false, error = "Revit is busy with another build" }));
@@ -270,11 +279,25 @@ namespace FamilyAgent.Addin
                 try
                 {
                     var request = JsonConvert.DeserializeObject<InspectRequest>(json) ?? new InspectRequest();
+
+                    if ((request.Values != null && request.Values.Count > 0) ||
+                        (request.Types != null && request.Types.Count > 0))
+                    {
+                        // Project harness: load into an empty project and drive the type.
+                        var projectResult = FamilyBuilder.InspectProject(
+                            app,
+                            request.Path,
+                            new List<KeyValuePair<string, double>>(request.Values ?? new Dictionary<string, double>()),
+                            request.Types);
+                        Respond(context, 200, JsonConvert.SerializeObject(new { ok = true, result = projectResult }, JsonSettings));
+                        return;
+                    }
+
                     var result = FamilyBuilder.Inspect(
                         app,
                         request.Path,
                         request.Parameter,
-                        request.Percent <= 0 ? 15 : request.Percent);
+                        request.Percent == 0 ? 15 : request.Percent);
 
                     Respond(context, 200, JsonConvert.SerializeObject(new { ok = true, result }, JsonSettings));
                 }
@@ -301,6 +324,8 @@ namespace FamilyAgent.Addin
                 public string Path { get; set; }
                 public string Parameter { get; set; }
                 public double Percent { get; set; }
+                public Dictionary<string, double> Values { get; set; }
+                public List<string> Types { get; set; }
             }
         }
 
@@ -426,6 +451,64 @@ namespace FamilyAgent.Addin
                 public string Parameter { get; set; }
                 public double Value { get; set; }
             }
+        }
+
+        private sealed class MultiBuildRequestHandler : IExternalEventHandler
+        {
+            private readonly object _gate = new object();
+            private string _json;
+            private HttpListenerContext _context;
+            private bool _busy;
+
+            public ExternalEvent Event;
+
+            public bool TryQueue(string json, HttpListenerContext context)
+            {
+                lock (_gate)
+                {
+                    if (_busy) return false;
+                    _busy = true;
+                    _json = json;
+                    _context = context;
+                }
+
+                Event?.Raise();
+                return true;
+            }
+
+            public void Execute(UIApplication app)
+            {
+                string json;
+                HttpListenerContext context;
+
+                lock (_gate)
+                {
+                    json = _json;
+                    context = _context;
+                }
+
+                try
+                {
+                    var result = FamilyBuilder.BuildBakedMulti(app.Application, json);
+                    Respond(context, result.Ok ? 200 : 500, Serialize(result));
+                }
+                catch (Exception ex)
+                {
+                    Respond(context, 500,
+                        JsonConvert.SerializeObject(new { ok = false, error = ex.Message }, JsonSettings));
+                }
+                finally
+                {
+                    lock (_gate)
+                    {
+                        _busy = false;
+                        _json = null;
+                        _context = null;
+                    }
+                }
+            }
+
+            public string GetName() => "Family Agent multi-size build";
         }
 
         private sealed class BuildRequestHandler : IExternalEventHandler

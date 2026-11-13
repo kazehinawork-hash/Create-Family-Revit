@@ -6,11 +6,13 @@ import {
   type Analysis,
   type FamilyParameter,
   type FamilySpec,
+  type FamilyTypeEntry,
   type ParameterType,
   type PartBuildStatus,
   type ResolvedParameter,
 } from "@family/spec-core";
 import { parameterDisplay, parameterUnit, type Units } from "../lib/format";
+import { TypesPanel } from "./TypesPanel";
 
 interface Props {
   spec: FamilySpec;
@@ -28,6 +30,12 @@ interface Props {
   onAddParameter: (draft: { name: string; type: ParameterType; value: number | string }) => void;
   onHighlightParts?: (partIds: string[]) => void;
   onUpdateConnectorHost?: (connectorId: string, host: "solid" | "reference-plane") => void;
+  types: FamilyTypeEntry[];
+  onChangeTypes: (types: FamilyTypeEntry[]) => void;
+  onPreviewType: (values: Record<string, number> | null) => void;
+  onExportTypes: () => void;
+  exportingTypes?: boolean;
+  previewTypeActive?: boolean;
 }
 
 const GROUP_ORDER = [
@@ -229,8 +237,14 @@ export function ParameterPanel({
   onAddParameter,
   onHighlightParts,
   onUpdateConnectorHost,
+  types,
+  onChangeTypes,
+  onPreviewType,
+  onExportTypes,
+  exportingTypes = false,
+  previewTypeActive = false,
 }: Props) {
-  const [tab, setTab] = useState<"parameters" | "parts" | "connectors">("parameters");
+  const [tab, setTab] = useState<"parameters" | "parts" | "connectors" | "types">("parameters");
   const [filter, setFilter] = useState("");
   const [partFilter, setPartFilter] = useState("");
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
@@ -413,6 +427,14 @@ export function ParameterPanel({
           onClick={() => setTab("connectors")}
         >
           Connectors <span className="count">{spec.connectors?.length ?? 0}</span>
+        </button>
+        <button
+          type="button"
+          className={`tab ${tab === "types" ? "active" : ""}`}
+          onClick={() => setTab("types")}
+          data-testid="tab-types"
+        >
+          Types <span className="count">{types.length}</span>
         </button>
       </div>
 
@@ -768,6 +790,19 @@ export function ParameterPanel({
             {spec.connectors?.length ?? 0} MEP connectors configured
           </div>
         </div>
+      )}
+      {tab === "types" && (
+        <TypesPanel
+          spec={spec}
+          resolved={analysis.parameters.parameters}
+          units={units}
+          types={types}
+          onChange={onChangeTypes}
+          onPreview={onPreviewType}
+          onExport={onExportTypes}
+          exporting={exportingTypes}
+          previewActive={previewTypeActive}
+        />
       )}
     </section>
   );

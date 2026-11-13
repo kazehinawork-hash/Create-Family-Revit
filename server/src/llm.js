@@ -57,6 +57,59 @@ export class LlmError extends Error {
   }
 }
 
+/** Base64 payload for an image part ({path}|{buffer}|data URL). */
+function imageBase64(part) {
+  try {
+    if (part?.buffer) {
+      return Buffer.from(part.buffer).toString("base64");
+    }
+    if (part?.path) {
+      return readFileSync(part.path).toString("base64");
+    }
+    if (typeof part?.url === "string" && part.url.startsWith("data:")) {
+      return part.url.slice(part.url.indexOf(",") + 1);
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+/** Split a message content (string or multimodal array) per provider. */
+function contentParts(content) {
+  if (typeof content === "string") return { text: content, images: [] };
+
+  const texts = [];
+  const images = [];
+  for (const part of Array.isArray(content) ? content : []) {
+    if (!part || typeof part !== "object") continue;
+    if (part.type === "text" && typeof part.text === "string") texts.push(part.text);
+    if (part.type === "image") {
+      const data = imageBase64(part);
+      if (data) images.push({ mime: part.mime || "image/png", data });
+    }
+  }
+  return { text: texts.join("\n\n"), images };
+}
+
+function openAiContent(content) {
+  if (typeof content === "string") return content;
+  const parts = [];
+  for (const part of Array.isArray(content) ? content : []) {
+    if (part?.type === "text") parts.push({ type: "text", text: part.text });
+    if (part?.type === "image") {
+      const data = imageBase64(part);
+      if (data) {
+        parts.push({
+          type: "image_url",
+          image_url: { url: `data:${part.mime || "image/png"};base64,${data}` },
+        });
+      }
+    }
+  }
+  return parts.length > 0 ? parts : "";
+}
+
 function stripFences(text) {
   let trimmed = text.trim();
   if (trimmed.includes("```")) {
@@ -69,9 +122,10 @@ function stripFences(text) {
 }
 
 /**
- * Executes a fetch request with exponential backoff retry for transient network/rate-limit errors (429, 502, 503, 504).
+ * Executes one fetch. Retries (429/5xx/network, with backoff and Retry-After)
+ * live in retry.js so every backend shares a single policy.
  */
-async function fetchWithRetry(url, init, retries = 2, baseDelayMs = 1200) {
+async function fetchWithRetry(url, init, retries = 0, baseDelayMs = 1200) {
   let lastError;
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
@@ -99,6 +153,29 @@ async function fetchWithRetry(url, init, retries = 2, baseDelayMs = 1200) {
     }
   }
   throw lastError;
+}
+
+/** Honour `Retry-After` (seconds or HTTP date) when a provider sends one. */
+function retryAfterMs(response) {
+  const value = response?.headers?.get?.("retry-after");
+  if (!value) return undefined;
+
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.round(seconds * 1000);
+
+  const date = Date.parse(value);
+  return Number.isFinite(date) ? Math.max(0, date - Date.now()) : undefined;
+}
+
+function providerError(prefix, response, detail, model) {
+  const error = new LlmError(
+    `${prefix} (${response.status})${model ? ` [${model}]` : ""}: ${String(detail).slice(0, 500)}`,
+    response.status,
+  );
+  error.model = model;
+  const wait = retryAfterMs(response);
+  if (wait !== undefined) error.retryAfterMs = wait;
+  return error;
 }
 
 function noJsonError(text) {
@@ -218,10 +295,20 @@ export async function geminiChatJson(messages, options = {}) {
   const systemMessage = messages.find((m) => m.role === "system");
   const conversation = messages.filter((m) => m.role !== "system");
 
-  const contents = conversation.map((m) => ({
-    role: m.role === "assistant" ? "model" : "user",
-    parts: [{ text: m.content }],
-  }));
+  const contents = conversation.map((m) => {
+    const parts = [];
+    for (const part of Array.isArray(m.content) ? m.content : [{ type: "text", text: String(m.content) }]) {
+      if (part?.type === "text") parts.push({ text: part.text });
+      if (part?.type === "image") {
+        const data = imageBase64(part);
+        if (data) parts.push({ inlineData: { mimeType: part.mime || "image/png", data } });
+      }
+    }
+    return {
+      role: m.role === "assistant" ? "model" : "user",
+      parts: parts.length > 0 ? parts : [{ text: "" }],
+    };
+  });
 
   const body = {
     contents,
@@ -254,7 +341,7 @@ export async function geminiChatJson(messages, options = {}) {
 
   if (!res.ok) {
     const errText = await res.text().catch(() => "");
-    throw new LlmError(`Gemini API error (${res.status}): ${errText.slice(0, 500)}`, res.status);
+    throw providerError("Gemini API error", res, errText, model);
   }
 
   const data = await res.json();
@@ -299,10 +386,22 @@ export async function anthropicChatJson(messages, options = {}) {
   const systemMessage = messages.find((m) => m.role === "system");
   const conversation = messages.filter((m) => m.role !== "system");
 
-  const formattedMessages = conversation.map((m) => ({
-    role: m.role === "assistant" ? "assistant" : "user",
-    content: m.content,
-  }));
+  const formattedMessages = conversation.map((m) => {
+    const { text, images } = contentParts(m.content);
+    if (images.length === 0) {
+      return { role: m.role === "assistant" ? "assistant" : "user", content: text };
+    }
+    return {
+      role: m.role === "assistant" ? "assistant" : "user",
+      content: [
+        { type: "text", text },
+        ...images.map((image) => ({
+          type: "image",
+          source: { type: "base64", media_type: image.mime, data: image.data },
+        })),
+      ],
+    };
+  });
 
   const body = {
     model,
@@ -328,7 +427,7 @@ export async function anthropicChatJson(messages, options = {}) {
 
   if (!res.ok) {
     const errText = await res.text().catch(() => "");
-    throw new LlmError(`Anthropic API error (${res.status}): ${errText.slice(0, 500)}`, res.status);
+    throw providerError("Anthropic API error", res, errText, model);
   }
 
   const data = await res.json();
@@ -374,7 +473,10 @@ export async function chatJson(messages, options = {}) {
 
   const body = {
     model,
-    messages,
+    messages: messages.map((message) => ({
+      ...message,
+      content: openAiContent(message.content),
+    })),
     temperature: options.temperature ?? config.llm.temperature,
     max_tokens: options.maxTokens ?? config.llm.maxTokens,
     response_format: responseFormat(),
@@ -416,9 +518,11 @@ export async function chatJson(messages, options = {}) {
 
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
-    throw new LlmError(
-      `Model request failed (${response.status}): ${detail.slice(0, 600) || response.statusText}`,
-      response.status,
+    throw providerError(
+      "Model request failed",
+      response,
+      detail || response.statusText,
+      model,
     );
   }
 

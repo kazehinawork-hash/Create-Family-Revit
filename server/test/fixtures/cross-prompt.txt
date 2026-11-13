@@ -1,0 +1,29 @@
+Ngã tư thang cáp vát góc chấn mòi vuông (Mitered Cross, Cable Tray Fitting)
+
+Mô tả: fitting ngã tư cho hệ thang cáp 400x400, thành cao 100 mm, 4 nhánh vuông góc,
+các mối nối vát 45° (miter) ở 4 góc, tiết diện chữ C (web + top flange + bottom flange + safety lip).
+
+Thông số bắt buộc:
+- W1 = 400 mm (khẩu độ nhánh trục X)
+- W2 = 400 mm (khẩu độ nhánh trục Y)
+- H = 100 mm (chiều cao thành)
+- Tangent = 120 mm
+- Miter_Offset = 150 mm
+- Sheet Thickness = 1.8 mm
+- Flange Width = 15 mm
+- Safety Lip = 5 mm
+- Rung Width = 35 mm, Rung Height = 15 mm, Rung Thickness = 1.5 mm
+- Total_Length_X = Total_Length_Y = W + 2×Tangent + 2×Miter_Offset = 940 mm
+
+Hình học:
+- 4 cụm thành góc vát 45° chữ C, đối xứng qua trục ±X và ±Y; mỗi cụm gồm web đứng,
+  top flange, bottom flange và safety lip.
+- 6 bậc thang có lỗ rãnh (rung) bắt vít, phân bố đều theo nhịp 150 mm.
+- 4 connector kiểu CableTray đặt trên reference plane tại ±Total_Length_X/2 và
+  ±Total_Length_Y/2, cao độ z = H/2, kích thước bằng khẩu độ nhánh.
+
+Vật liệu:
+- Thân/thành: thép sơn tĩnh điện RAL 7035 (#d7d7d7)
+- Bậc thang: thép mạ nhúng nóng (#b8c0c8)
+
+Yêu cầu kiểm tra: bounding box 940 x 940 x 100 mm, 4 thành góc, 6 bậc, 4 connector.

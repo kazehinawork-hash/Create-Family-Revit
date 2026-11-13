@@ -1,0 +1,83 @@
+{
+  "EN1092-1_PN16": {
+    "standard": "EN 1092-1",
+    "pn": 16,
+    "unit": "mm",
+    "rows": {
+      "15": { "od": 95, "pcd": 65, "bolts": 4, "bolt": "M12", "thickness": 16 },
+      "20": { "od": 105, "pcd": 75, "bolts": 4, "bolt": "M12", "thickness": 18 },
+      "25": { "od": 115, "pcd": 85, "bolts": 4, "bolt": "M12", "thickness": 18 },
+      "32": { "od": 140, "pcd": 100, "bolts": 4, "bolt": "M16", "thickness": 18 },
+      "40": { "od": 150, "pcd": 110, "bolts": 4, "bolt": "M16", "thickness": 18 },
+      "50": { "od": 165, "pcd": 125, "bolts": 4, "bolt": "M16", "thickness": 20 },
+      "65": { "od": 185, "pcd": 145, "bolts": 8, "bolt": "M16", "thickness": 20 },
+      "80": { "od": 200, "pcd": 160, "bolts": 8, "bolt": "M16", "thickness": 20 },
+      "100": { "od": 220, "pcd": 180, "bolts": 8, "bolt": "M16", "thickness": 20 },
+      "125": { "od": 250, "pcd": 210, "bolts": 8, "bolt": "M16", "thickness": 22 },
+      "150": { "od": 285, "pcd": 240, "bolts": 8, "bolt": "M20", "thickness": 22 },
+      "200": { "od": 340, "pcd": 295, "bolts": 12, "bolt": "M20", "thickness": 24 },
+      "250": { "od": 405, "pcd": 355, "bolts": 12, "bolt": "M24", "thickness": 26 },
+      "300": { "od": 460, "pcd": 410, "bolts": 12, "bolt": "M24", "thickness": 28 },
+      "350": { "od": 520, "pcd": 470, "bolts": 16, "bolt": "M24", "thickness": 30 },
+      "400": { "od": 580, "pcd": 525, "bolts": 16, "bolt": "M27", "thickness": 32 },
+      "500": { "od": 715, "pcd": 650, "bolts": 20, "bolt": "M30", "thickness": 36 },
+      "600": { "od": 840, "pcd": 770, "bolts": 20, "bolt": "M33", "thickness": 40 }
+    }
+  },
+  "EN1092-1_PN10": {
+    "standard": "EN 1092-1",
+    "pn": 10,
+    "unit": "mm",
+    "rows": {
+      "15": { "od": 95, "pcd": 65, "bolts": 4, "bolt": "M12", "thickness": 14 },
+      "20": { "od": 105, "pcd": 75, "bolts": 4, "bolt": "M12", "thickness": 16 },
+      "25": { "od": 115, "pcd": 85, "bolts": 4, "bolt": "M12", "thickness": 16 },
+      "32": { "od": 140, "pcd": 100, "bolts": 4, "bolt": "M16", "thickness": 16 },
+      "40": { "od": 150, "pcd": 110, "bolts": 4, "bolt": "M16", "thickness": 16 },
+      "50": { "od": 165, "pcd": 125, "bolts": 4, "bolt": "M16", "thickness": 18 },
+      "65": { "od": 185, "pcd": 145, "bolts": 4, "bolt": "M16", "thickness": 18 },
+      "80": { "od": 200, "pcd": 160, "bolts": 8, "bolt": "M16", "thickness": 20 },
+      "100": { "od": 220, "pcd": 180, "bolts": 8, "bolt": "M16", "thickness": 20 },
+      "125": { "od": 250, "pcd": 210, "bolts": 8, "bolt": "M16", "thickness": 22 },
+      "150": { "od": 285, "pcd": 240, "bolts": 8, "bolt": "M20", "thickness": 22 },
+      "200": { "od": 340, "pcd": 295, "bolts": 8, "bolt": "M20", "thickness": 24 },
+      "250": { "od": 395, "pcd": 350, "bolts": 12, "bolt": "M20", "thickness": 26 },
+      "300": { "od": 445, "pcd": 400, "bolts": 12, "bolt": "M20", "thickness": 28 },
+      "400": { "od": 565, "pcd": 515, "bolts": 16, "bolt": "M24", "thickness": 32 },
+      "500": { "od": 670, "pcd": 620, "bolts": 20, "bolt": "M24", "thickness": 34 },
+      "600": { "od": 780, "pcd": 725, "bolts": 20, "bolt": "M27", "thickness": 36 }
+    }
+  },
+  "ANSI150": {
+    "standard": "ASME B16.5 Class 150",
+    "pn": 20,
+    "unit": "mm",
+    "rows": {
+      "15": { "nps": "1/2", "od": 89, "pcd": 60.5, "bolts": 4, "bolt": "M12", "thickness": 11.2 },
+      "25": { "nps": "1", "od": 108, "pcd": 79.5, "bolts": 4, "bolt": "M12", "thickness": 14.2 },
+      "50": { "nps": "2", "od": 152, "pcd": 120.5, "bolts": 4, "bolt": "M16", "thickness": 19.1 },
+      "80": { "nps": "3", "od": 190, "pcd": 152.5, "bolts": 4, "bolt": "M16", "thickness": 23.9 },
+      "100": { "nps": "4", "od": 229, "pcd": 190.5, "bolts": 8, "bolt": "M16", "thickness": 23.9 },
+      "150": { "nps": "6", "od": 279, "pcd": 241.5, "bolts": 8, "bolt": "M20", "thickness": 25.4 },
+      "200": { "nps": "8", "od": 343, "pcd": 298.5, "bolts": 8, "bolt": "M20", "thickness": 28.4 },
+      "250": { "nps": "10", "od": 406, "pcd": 362, "bolts": 12, "bolt": "M24", "thickness": 30.2 },
+      "300": { "nps": "12", "od": 483, "pcd": 432, "bolts": 12, "bolt": "M24", "thickness": 31.8 }
+    }
+  },
+  "JIS10K": {
+    "standard": "JIS B2220 10K",
+    "pn": 10,
+    "unit": "mm",
+    "rows": {
+      "15": { "od": 95, "pcd": 70, "bolts": 4, "bolt": "M12", "thickness": 12 },
+      "25": { "od": 125, "pcd": 90, "bolts": 4, "bolt": "M16", "thickness": 14 },
+      "50": { "od": 155, "pcd": 120, "bolts": 4, "bolt": "M16", "thickness": 16 },
+      "80": { "od": 185, "pcd": 150, "bolts": 8, "bolt": "M16", "thickness": 18 },
+      "100": { "od": 210, "pcd": 175, "bolts": 8, "bolt": "M16", "thickness": 18 },
+      "150": { "od": 280, "pcd": 240, "bolts": 8, "bolt": "M20", "thickness": 22 },
+      "200": { "od": 330, "pcd": 290, "bolts": 12, "bolt": "M20", "thickness": 22 },
+      "250": { "od": 400, "pcd": 355, "bolts": 12, "bolt": "M22", "thickness": 24 },
+      "300": { "od": 445, "pcd": 400, "bolts": 16, "bolt": "M22", "thickness": 24 }
+    }
+  }
+}

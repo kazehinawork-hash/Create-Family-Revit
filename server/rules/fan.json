@@ -1,0 +1,154 @@
+{
+  "productType": "fan",
+  "aliases": [
+    "quạt",
+    "fan",
+    "quạt hướng trục",
+    "axial fan",
+    "quạt ly tâm",
+    "centrifugal fan"
+  ],
+  "category": "Mechanical Equipment",
+  "matchers": {
+    "keywords": [
+      "quạt",
+      "fan",
+      "axial",
+      "centrifugal",
+      "hướng trục",
+      "ly tâm"
+    ],
+    "codePatterns": [
+      "^F-",
+      "AF-"
+    ]
+  },
+  "parameters": [
+    {
+      "name": "Impeller Diameter",
+      "group": "Dimensions",
+      "unit": "mm",
+      "default": 400,
+      "range": [
+        200,
+        2000
+      ],
+      "fromEvidence": [
+        "Diameter"
+      ],
+      "remember": false
+    },
+    {
+      "name": "Motor Power",
+      "group": "Data",
+      "unit": "kW",
+      "default": 1.5,
+      "range": [
+        0.1,
+        90
+      ],
+      "fromEvidence": [
+        "Motor Power"
+      ],
+      "remember": false
+    },
+    {
+      "name": "Casing Length",
+      "group": "Dimensions",
+      "unit": "mm",
+      "formula": "[Impeller Diameter] * 0.45",
+      "fromEvidence": [],
+      "remember": false
+    },
+    {
+      "name": "Casing Height",
+      "group": "Dimensions",
+      "unit": "mm",
+      "formula": "[Impeller Diameter] * 1.1",
+      "fromEvidence": [
+        "Height"
+      ],
+      "remember": false
+    },
+    {
+      "name": "Motor Frame Size",
+      "group": "Data",
+      "unit": "",
+      "default": "90L",
+      "fromEvidence": [
+        "Motor Frame"
+      ],
+      "remember": false
+    },
+    {
+      "name": "Motor Shaft Height",
+      "group": "Dimensions",
+      "unit": "mm",
+      "default": 90,
+      "fromEvidence": [
+        "Motor Shaft Height"
+      ],
+      "remember": false
+    },
+    {
+      "name": "Blade Thickness",
+      "group": "Dimensions",
+      "unit": "mm",
+      "formula": "[Impeller Diameter] * 0.008 + 1",
+      "fromEvidence": [],
+      "remember": false
+    }
+  ],
+  "components": [
+    {
+      "kind": "casing",
+      "required": true,
+      "countFormula": "1"
+    },
+    {
+      "kind": "impeller",
+      "required": true,
+      "countFormula": "1"
+    },
+    {
+      "kind": "blade",
+      "required": true,
+      "countFormula": "6"
+    },
+    {
+      "kind": "motor",
+      "required": true,
+      "countFormula": "1"
+    },
+    {
+      "kind": "guard",
+      "required": false,
+      "countFormula": "1"
+    }
+  ],
+  "connectors": [
+    {
+      "domain": "duct",
+      "sizeFrom": "Impeller Diameter",
+      "placement": "inlet and outlet"
+    }
+  ],
+  "materials": [
+    {
+      "name": "Sheet Steel Casing",
+      "color": "#b9bec2",
+      "finish": "galvanized"
+    },
+    {
+      "name": "Aluminium Impeller",
+      "color": "#dcdcdc",
+      "finish": "mill finish"
+    }
+  ],
+  "checks": [
+    {
+      "expr": "Casing Height > Impeller Diameter",
+      "message": "Vỏ quạt phải cao hơn đường kính cánh"
+    }
+  ]
+}

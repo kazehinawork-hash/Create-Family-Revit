@@ -177,6 +177,13 @@ namespace FamilyAgent.Core
         public Num? PressureDrop { get; set; }
     }
 
+    /// <summary>One exported Family Type: a name and the driver values it takes.</summary>
+    public sealed class FamilyTypeSpec
+    {
+        public string Name { get; set; }
+        public Dictionary<string, double> Values { get; set; } = new Dictionary<string, double>();
+    }
+
     public sealed class FamilySpec
     {
         public string SchemaVersion { get; set; }
@@ -192,6 +199,7 @@ namespace FamilyAgent.Core
         public List<FamilyPart> Parts { get; set; } = new List<FamilyPart>();
         public List<MepConnector> Connectors { get; set; } = new List<MepConnector>();
         public List<MaterialDef> Materials { get; set; }
+        public List<FamilyTypeSpec> Types { get; set; } = new List<FamilyTypeSpec>();
         public List<string> Notes { get; set; }
     }
 

@@ -990,6 +990,28 @@ export function validateSpec(raw: unknown): ValidationResult {
         }))
     : undefined;
 
+  // The Types tab owns this list; an agent edit must not erase it.
+  const types = Array.isArray(root.types)
+    ? root.types
+        .filter(isObject)
+        .map((entry, index) => {
+          const values: Record<string, number> = {};
+          if (isObject(entry.values)) {
+            for (const [key, value] of Object.entries(entry.values)) {
+              const numeric = Number(value);
+              if (Number.isFinite(numeric)) values[key] = numeric;
+            }
+          }
+
+          return {
+            name: text(entry.name) || `Type ${index + 1}`,
+            values,
+            autoName: entry.autoName === true ? true : undefined,
+          };
+        })
+        .filter((entry) => Object.keys(entry.values).length > 0)
+    : undefined;
+
   const spec: FamilySpec = {
     schemaVersion: "1.0",
     name,
@@ -1004,6 +1026,7 @@ export function validateSpec(raw: unknown): ValidationResult {
     parts,
     connectors,
     materials,
+    types,
     notes: Array.isArray(root.notes) ? root.notes.map((note) => String(note)) : undefined,
   };
 
