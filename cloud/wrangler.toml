@@ -1,0 +1,14 @@
+name = "revit"
+main = "src/worker.js"
+compatibility_date = "2024-04-01"
+
+[assets]
+directory = "../web/dist"
+binding = "ASSETS"
+
+[[kv_namespaces]]
+binding = "FAMILY_MODELS"
+id = "a95f1dfc604b49758a9c93c07ba549d2"
+
+[vars]
+ENVIRONMENT = "production"

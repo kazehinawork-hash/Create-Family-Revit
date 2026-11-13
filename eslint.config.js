@@ -15,6 +15,8 @@ export default [
       "tmp/**",
       "web/dist/**",
       ".commandcode/**",
+      "cloud/**",
+      "connector/**",
     ],
   },
   js.configs.recommended,

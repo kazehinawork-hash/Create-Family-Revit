@@ -33,6 +33,9 @@ import {
   saveModel,
   renameModel,
   deleteSavedModel,
+  fetchLatestExternalSpec,
+  subscribeExternalSpecStream,
+  type ExternalSpecPayload,
   type Health,
   type Lod,
   type UploadedDocument,
@@ -451,6 +454,66 @@ export function App() {
     setNative(false);
     setHistoryVersion((version) => version + 1);
   };
+
+  // Real-time synchronization with MCP / External Agents
+  const lastExternalHashRef = useRef<string>("");
+
+  useEffect(() => {
+    let alive = true;
+
+    const handleExternalSpec = (data: ExternalSpecPayload) => {
+      if (!alive || !data || !data.spec || !data.spec_hash) return;
+      if (data.spec_hash === lastExternalHashRef.current) return;
+
+      lastExternalHashRef.current = data.spec_hash;
+      applySpec(data.spec);
+      setNative(false);
+
+      const partsCount = data.geometry_summary?.parts_count ?? (data.spec.parts?.length || 0);
+      const paramsCount = data.geometry_summary?.parameters_count ?? (data.spec.parameters?.length || 0);
+      const bounds = data.geometry_summary?.bounds;
+      const dims = bounds ? ` · ${bounds.x} × ${bounds.y} × ${bounds.z} mm` : "";
+
+      pushEntry({
+        role: "agent",
+        text: `Đã nhận Family Spec từ MCP: ${data.spec.name || "Family"}.\n${partsCount} chi tiết · ${paramsCount} tham số${dims}`,
+        notes: data.spec.notes,
+        meta: "⚡ MCP Real-time Sync",
+        issues: (data.warnings || []).map((w) => ({ message: w, severity: "warning", path: "spec" })),
+      });
+
+      setToast({
+        text: `Đã nạp 3D Family từ MCP: ${data.spec.name || "Family"}`,
+        sub: `${partsCount} chi tiết · ${paramsCount} tham số. Hiển thị trực tiếp trên 3D Viewport.`,
+        tone: "ok",
+      });
+    };
+
+    // 1. Initial fetch of latest external spec
+    void fetchLatestExternalSpec().then((latest) => {
+      if (alive && latest && latest.spec && latest.spec_hash) {
+        handleExternalSpec(latest);
+      }
+    });
+
+    // 2. Real-time SSE stream
+    const unsubscribe = subscribeExternalSpecStream(handleExternalSpec);
+
+    // 3. Fallback polling every 2.5 seconds in case SSE drops
+    const pollInterval = window.setInterval(async () => {
+      if (!alive) return;
+      const latest = await fetchLatestExternalSpec();
+      if (alive && latest && latest.spec && latest.spec_hash) {
+        handleExternalSpec(latest);
+      }
+    }, 2500);
+
+    return () => {
+      alive = false;
+      unsubscribe();
+      window.clearInterval(pollInterval);
+    };
+  }, []);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {

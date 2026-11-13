@@ -14,6 +14,44 @@ const jobs = new Map();
 const previews = new Map();
 const idempotencyKeys = new Map();
 
+let latestExternalSpec = null;
+const externalSpecListeners = new Set();
+
+export function setLatestExternalSpec({ spec, previewId, specHash, analysis, warnings = [] }) {
+  const now = new Date().toISOString();
+  latestExternalSpec = {
+    preview_id: previewId || null,
+    spec_hash: specHash || computeSpecHash(spec),
+    spec,
+    updated_at: now,
+    geometry_summary: {
+      bounds: analysis?.model?.bounds || null,
+      parts_count: analysis?.model?.parts?.length || (spec?.geometry?.length || 0),
+      parameters_count: spec?.parameters?.length || 0,
+      connectors_count: spec?.connectors?.length || 0,
+    },
+    warnings,
+  };
+
+  for (const listener of externalSpecListeners) {
+    try {
+      listener(latestExternalSpec);
+    } catch {}
+  }
+
+  return latestExternalSpec;
+}
+
+export function getLatestExternalSpec() {
+  return latestExternalSpec;
+}
+
+export function subscribeExternalSpec(listener) {
+  externalSpecListeners.add(listener);
+  return () => {
+    externalSpecListeners.delete(listener);
+  };
+}
 export const JOBS_DIR = path.join(config.dirs.root, ".jobs");
 
 export function computeSpecHash(spec) {
@@ -40,6 +78,7 @@ export function savePreview({ spec, specHash, analysis, warnings = [] }) {
   };
 
   previews.set(previewId, previewData);
+  setLatestExternalSpec({ spec, previewId, specHash, analysis, warnings });
   return previewData;
 }
 
