@@ -532,11 +532,13 @@ async function readCompletionStream(response, options = {}) {
   const readWithTimeout = async (ms) => {
     let timer;
     const timeout = new Promise((resolve) => {
+      // Deliberately ref'd: while the timer is the only pending work, an unref'd
+      // timer lets the event loop drain and the request would look cancelled.
       timer = setTimeout(() => resolve({ timeout: true }), Math.max(50, ms));
-      timer.unref?.();
     });
+    const read = reader.read();
     try {
-      return await Promise.race([reader.read(), timeout]);
+      return { ...(await Promise.race([read, timeout])), read };
     } finally {
       clearTimeout(timer);
     }
@@ -554,8 +556,14 @@ async function readCompletionStream(response, options = {}) {
       const chunk = await readWithTimeout(Math.min(idleMs, maxTotalMs - elapsed));
 
       if (chunk?.timeout) {
-        // Nothing new arrived: cancel the socket and report the idle stop.
+        // Nothing new arrived: cancel the socket, then wait for the pending read to
+        // settle so the test runner (and the event loop) does not see a dangling promise.
         Promise.resolve(reader.cancel?.()).catch(() => {});
+        try {
+          await chunk.read;
+        } catch {
+          /* the read is aborted together with the stream */
+        }
         throw new LlmError(
           Date.now() - startedAt >= maxTotalMs
             ? `Lượt gọi model vượt trần ${Math.round(maxTotalMs / 1000)}s — dừng lượt này.`
