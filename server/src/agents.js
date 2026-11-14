@@ -78,11 +78,60 @@ function extractResult(stdout) {
   return null;
 }
 
-/** A result frame whose answer was cut off by the CLI's turn or output-token limit. */
+/**
+ * Last-resort answer lookup when the CLI printed no `result` frame. stdout is a
+ * stream of one-JSON-per-line frames, so a greedy /\{.*\}/ grabs garbage spanning
+ * many frames. Walk the lines from the end instead and take the first one that is
+ * either a spec or a frame carrying the final text.
+ */
+export function extractAnswerText(stdout) {
+  const lines = String(stdout ?? "").split(/\r?\n/);
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index].trim();
+    if (!line.startsWith("{")) continue;
+    let value;
+    try {
+      value = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (!value || typeof value !== "object") continue;
+    if (Array.isArray(value.parts) || typeof value.schemaVersion === "string") return line;
+    for (const key of ["finalText", "response", "text", "content"]) {
+      if (typeof value[key] === "string" && value[key].includes("{")) return value[key].trim();
+    }
+  }
+  // A plain (non-framed) answer: the whole stdout is the JSON object. Two frames on
+  // separate lines also start with { and end with }, so require a single line.
+  const whole = String(stdout ?? "").trim();
+  if (whole.startsWith("{") && whole.endsWith("}") && !whole.includes("\n")) return whole;
+  return "";
+}
+
+/**
+ * Only a token cap truncates the answer. The CLI also reports "Reached maximum
+ * conversation turns" — that is a turn budget, not a long output, and the two need
+ * different fixes (raise the turns vs split the brief).
+ */
 export function isTruncatedFrame(frame, stderr = "") {
   const stop = String(frame?.stopReason ?? frame?.stop_reason ?? "").toLowerCase();
-  if (/max_turns|max_tokens|length|output_limit/.test(stop)) return true;
-  return /reached maximum conversation turns|max(imum)? output tokens/i.test(String(stderr ?? ""));
+  if (/max_tokens|output_limit|length/.test(stop)) return true;
+  return /max(imum)? output tokens|output token limit/i.test(String(stderr ?? ""));
+}
+
+/** The CLI ran out of conversation turns before writing the answer. */
+export function isMaxTurnsFrame(frame, stderr = "") {
+  const stop = String(frame?.stopReason ?? frame?.stop_reason ?? "").toLowerCase();
+  if (stop === "max_turns") return true;
+  return /reached maximum conversation turns/i.test(String(stderr ?? ""));
+}
+
+export function maxTurnsError(maxTurns) {
+  const error = new LlmError(
+    `Model dùng hết ${maxTurns ? `${maxTurns} ` : ""}lượt của CLI mà chưa trả spec (MAX_TURNS).`,
+  );
+  error.code = "MAX_TURNS";
+  return error;
 }
 
 export function outputLimitError(outputTokens) {
@@ -223,6 +272,16 @@ function attachModel(error, model) {
  * abort, kill the process tree and collect stdout/stderr. The three backends used to
  * carry three near-identical copies of this ~100 line block.
  */
+/**
+ * The CLI reads COMMAND_CODE_API_KEY at startup, so a key pasted in the studio works
+ * without `cmd login`. Never written to disk or logged.
+ */
+export function cliEnvFor(apiKey) {
+  const key = String(apiKey ?? "").trim();
+  if (!key) return undefined;
+  return { ...process.env, COMMAND_CODE_API_KEY: key };
+}
+
 function runCliProcess({
   tag,
   executable,
@@ -233,6 +292,7 @@ function runCliProcess({
   signal,
   onProgress,
   onStdoutLine,
+  env,
 }) {
   return new Promise((resolve, reject) => {
     const started = Date.now();
@@ -242,11 +302,15 @@ function runCliProcess({
 
     let child;
     try {
-      child = spawnCli(executable, args, {
-        cwd: cwd || os.tmpdir(),
-        stdio: ["pipe", "pipe", "pipe"],
-        windowsHide: true,
-      });
+      // Tests replace the process outright; a real CLI must never be spawned then.
+      child = spawnOverride
+        ? spawnOverride(executable, args, { cwd, env })
+        : spawnCli(executable, args, {
+            cwd: cwd || os.tmpdir(),
+            stdio: ["pipe", "pipe", "pipe"],
+            windowsHide: true,
+            ...(env ? { env } : {}),
+          });
     } catch (error) {
       reject(new LlmError(`Failed to spawn "${executable}": ${error.message}`));
       return;
@@ -371,7 +435,39 @@ function runCliProcess({
   });
 }
 
-function runCommandCode(prompt, timeoutMs, model, cwd, onProgress, signal, maxTurns = 3) {
+/** Effort levels the CLI understands, cheapest first. */
+export const CLI_EFFORTS = ["off", "low", "medium", "high", "max"];
+
+/**
+ * Which reasoning effort a CLI design run uses. An explicit COMMAND_CODE_EFFORT is the
+ * user's choice and wins; otherwise build/repair turns use the cheap default.
+ */
+export function resolveCliEffort({ effort, buildEffort } = {}) {
+  const explicit = String(effort ?? config.agent.effort ?? "").trim().toLowerCase();
+  if (explicit) return explicit;
+  const build = String(buildEffort ?? config.agent.buildEffort ?? "").trim().toLowerCase();
+  return build;
+}
+
+/** Args shared by every cmdc design turn. */
+export function commandCodeArgs({ maxTurns, model, effort } = {}) {
+  const args = ["-p", "--no-session", "--output-format", "json", "--skip-onboarding", "--max-turns", String(maxTurns)];
+
+  // Skills and mods are project automation, useless for writing one JSON spec and
+  // expensive to discover on every call.
+  if (config.agent.cliNoSkills) args.push("--no-skills");
+  if (config.agent.cliSafeMode) args.push("--safe-mode");
+
+  const chosenEffort = resolveCliEffort({ effort });
+  if (CLI_EFFORTS.includes(chosenEffort)) args.push("--effort", chosenEffort);
+
+  const safeChosen = safeArg(model);
+  if (safeChosen) args.push("-m", safeChosen);
+
+  return args;
+}
+
+function runCommandCode(prompt, timeoutMs, model, cwd, onProgress, signal, maxTurns = 3, apiKey = null, effort = null) {
   const chosen = model || config.agent.model;
   const isAgy = Boolean(chosen && chosen.startsWith("agy:"));
   let executable = config.agent.command;
@@ -387,13 +483,7 @@ function runCommandCode(prompt, timeoutMs, model, cwd, onProgress, signal, maxTu
       "--dangerously-skip-permissions",
     ];
   } else {
-    args = ["-p", "--no-session", "--output-format", "json", "--skip-onboarding", "--max-turns", String(maxTurns)];
-
-    const effort = (config.agent.effort || "").trim().toLowerCase();
-    if (["off", "high", "max"].includes(effort)) args.push("--effort", effort);
-
-    const safeChosen = safeArg(chosen);
-    if (safeChosen) args.push("-m", safeChosen);
+    args = commandCodeArgs({ maxTurns, model: chosen, effort });
   }
 
   return (async () => {
@@ -406,6 +496,7 @@ function runCommandCode(prompt, timeoutMs, model, cwd, onProgress, signal, maxTu
         cwd,
         timeoutMs,
         signal,
+        env: cliEnvFor(apiKey),
         onStdoutLine: (event) => {
           const description = describeEvent(event);
           if (description && onProgress) onProgress(description);
@@ -561,8 +652,15 @@ async function claudeCliJson(messages, options = {}) {
 async function commandCodeJson(messages, options = {}) {
   const prompt = flatten(messages);
   const workspace = prepareWorkspace(options.attachments);
+  const startedAt = Date.now();
 
   try {
+    // The brief needs one answer; a run with no answer yet gets one more turn so the
+    // model can finish instead of dying on "Reached maximum conversation turns".
+    // Headless runs withhold tools anyway, so nothing is written to disk.
+    const extraTurns = Number(options.commandCodeMaxTurns) || 0;
+    const maxTurns = (options.attachments && options.attachments.length > 0 ? 3 : 2) + extraTurns;
+
     const result = await runCommandCode(
       prompt,
       options.timeoutMs ?? config.agent.timeoutMs,
@@ -570,8 +668,9 @@ async function commandCodeJson(messages, options = {}) {
       workspace.dir,
       options.onProgress,
       options.signal,
-      // A plain brief needs a single answer; only attachments need tool turns to read files.
-      options.attachments && options.attachments.length > 0 ? 3 : 1,
+      maxTurns,
+      options.commandCodeApiKey,
+      options.effort ?? null,
     );
     const frame = extractResult(result.stdout);
     const usedModel = result.model || extractUsedModel(result.stdout);
@@ -596,9 +695,11 @@ async function commandCodeJson(messages, options = {}) {
       text = (frame.finalText || frame.response || "").trim();
       usage = frame.usage ?? null;
 
-      // The CLI stopped before the answer was finished (output-token cap or turn
-      // limit). Its stdout is megabytes of stream frames, so never fish a "{...}"
-      // out of it: report the real cause so the designer can split the brief.
+      // The CLI stopped before the answer was finished. A turn cap is retried once
+      // with one more turn; a token cap means the brief must be split.
+      if (!text && isMaxTurnsFrame(frame, result.stderr)) {
+        throw attachModel(maxTurnsError(maxTurns), usedModel);
+      }
       if (!text && isTruncatedFrame(frame, result.stderr)) {
         const tokens = frame.usage?.outputTokens ?? frame.usage?.output_tokens ?? null;
         throw attachModel(outputLimitError(tokens), usedModel);
@@ -619,10 +720,7 @@ async function commandCodeJson(messages, options = {}) {
     }
 
     if (!text) {
-      const match = result.stdout.match(/\{[\s\S]*\}/);
-      if (match) {
-        text = match[0];
-      }
+      text = extractAnswerText(result.stdout);
     }
 
     if (!text) {
@@ -633,7 +731,18 @@ async function commandCodeJson(messages, options = {}) {
     }
 
     const json = parseModelJson(text);
-    return { text, json, usage, model: usedModel };
+    return {
+      text,
+      json,
+      usage,
+      model: usedModel,
+      metrics: {
+        firstTokenMs: null,
+        totalMs: Date.now() - startedAt,
+        outChars: text.length,
+        via: "cli",
+      },
+    };
   } finally {
     if (workspace.dir) {
       try { fs.rmSync(workspace.dir, { recursive: true, force: true }); } catch { /* ignore */ }

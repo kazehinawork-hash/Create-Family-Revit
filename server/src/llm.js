@@ -187,58 +187,102 @@ function noJsonError(text) {
   return error;
 }
 
-export function parseModelJson(text) {
-  let clean = stripFences(text);
+/** True when every brace/bracket is closed and no string is left open. */
+function isBalancedJson(text) {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
 
-  const firstBrace = clean.indexOf("{");
-  const lastBrace = clean.lastIndexOf("}");
-  if (firstBrace < 0 || lastBrace <= firstBrace) {
-    throw noJsonError(text);
+  for (const char of String(text ?? "")) {
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"') inString = true;
+    else if (char === "{" || char === "[") depth += 1;
+    else if (char === "}" || char === "]") depth -= 1;
   }
 
-  clean = clean.slice(firstBrace, lastBrace + 1);
+  return depth === 0 && !inString;
+}
 
-  // 1. Try direct parse
+/** The answer stops mid-way (token cap) instead of closing the JSON object. */
+export function looksTruncated(text) {
+  const clean = stripFences(text);
+  const firstBrace = clean.indexOf("{");
+  if (firstBrace < 0) return false;
+
+  const body = clean.slice(firstBrace);
+  const lastBrace = body.lastIndexOf("}");
+  const slice = lastBrace > 0 ? body.slice(0, lastBrace + 1) : body;
+
+  return !isBalancedJson(slice);
+}
+
+export function parseModelJson(text) {
+  const clean = stripFences(text);
+
+  const firstBrace = clean.indexOf("{");
+  if (firstBrace < 0) throw noJsonError(text);
+
+  const body = clean.slice(firstBrace);
+  const lastBrace = body.lastIndexOf("}");
+  const slice = lastBrace > 0 ? body.slice(0, lastBrace + 1) : body;
+
+  // The model ran out of output tokens: no amount of repair turns a half-written
+  // family into a buildable one. Report it as OUTPUT_LIMIT so the design pipeline
+  // rebuilds the brief section by section instead of failing the whole request.
+  if (!isBalancedJson(slice)) {
+    const error = new LlmError(
+      "Model output ended before the JSON was closed (OUTPUT_LIMIT) — retry with a shorter brief",
+    );
+    error.code = "OUTPUT_LIMIT";
+    error.raw = text;
+    throw error;
+  }
+
+  // 1. Direct parse of the object, prose around it removed.
   try {
-    return JSON.parse(clean);
+    return JSON.parse(slice);
   } catch {
-    // 2. Try jsonrepair on the full cleaned string
-    try {
-      const repaired = jsonrepair(clean);
-      return JSON.parse(repaired);
-    } catch {
-      /* continue to advanced repairing */
-    }
+    /* keep repairing */
+  }
 
-    // 3. Clean unescaped quotes or common LLM syntax corruptions inside expressions
-    let sanitized = clean
-      .replace(/,\s*([}\]])/g, "$1")
-      .replace(/:\s*"([^"]*)"([^",}\]]+)"/g, ':"$1 $2"');
+  // 2. jsonrepair handles trailing commas, raw newlines and stray quotes.
+  try {
+    return JSON.parse(jsonrepair(slice));
+  } catch {
+    /* keep repairing */
+  }
 
-    try {
-      return JSON.parse(jsonrepair(sanitized));
-    } catch {
-      const openBraces = (sanitized.match(/\{/g) || []).length;
-      const closeBraces = (sanitized.match(/\}/g) || []).length;
-      const openBrackets = (sanitized.match(/\[/g) || []).length;
-      const closeBrackets = (sanitized.match(/\]/g) || []).length;
+  // 3. Common LLM corruptions inside values, then close what is still open.
+  let sanitized = slice
+    .replace(/,\s*([}\]])/g, "$1")
+    .replace(/:\s*"([^"]*)"([^",}\]]+)"/g, ':"$1 $2"');
 
-      if (openBrackets > closeBrackets) {
-        sanitized += "]".repeat(openBrackets - closeBrackets);
-      }
-      if (openBraces > closeBraces) {
-        sanitized += "}".repeat(openBraces - closeBraces);
-      }
+  try {
+    return JSON.parse(jsonrepair(sanitized));
+  } catch {
+    /* keep repairing */
+  }
 
-      try {
-        return JSON.parse(jsonrepair(sanitized));
-      } catch (err3) {
-        const error = new LlmError(`Model returned unparseable JSON: ${err3.message}`);
-        error.raw = text;
-        error.sanitized = sanitized;
-        throw error;
-      }
-    }
+  const openBraces = (sanitized.match(/\{/g) || []).length;
+  const closeBraces = (sanitized.match(/\}/g) || []).length;
+  const openBrackets = (sanitized.match(/\[/g) || []).length;
+  const closeBrackets = (sanitized.match(/\]/g) || []).length;
+
+  if (openBrackets > closeBrackets) sanitized += "]".repeat(openBrackets - closeBrackets);
+  if (openBraces > closeBraces) sanitized += "}".repeat(openBraces - closeBraces);
+
+  try {
+    return JSON.parse(jsonrepair(sanitized));
+  } catch (err3) {
+    const error = new LlmError(`Model returned unparseable JSON: ${err3.message}`);
+    error.raw = text;
+    error.sanitized = sanitized;
+    throw error;
   }
 }
 
@@ -458,10 +502,124 @@ export async function anthropicChatJson(messages, options = {}) {
 /**
  * Call OpenAI Compatible endpoint (OpenAI, DeepSeek, OpenRouter, Ollama, etc.)
  */
+/**
+ * Reads an SSE completion stream. The call is bounded by "no new token" time instead
+ * of total wall-clock time, so a model that is actually writing is never cut off,
+ * while a silent socket still fails within `idleMs`. `maxTotalMs` stays as a ceiling.
+ */
+async function readCompletionStream(response, options = {}) {
+  const reader = response.body?.getReader?.();
+  if (!reader) return null;
+
+  const decoder = new TextDecoder();
+  const idleMs = Math.max(50, Number(options.idleMs) || 90000);
+  const maxTotalMs = Math.max(idleMs, Number(options.maxTotalMs) || 180000);
+  const onProgress = options.onProgress;
+  const startedAt = options.startedAt ?? Date.now();
+
+  let buffer = "";
+  let text = "";
+  let usage = null;
+  let firstTokenMs = null;
+
+  const progressMs = Math.max(10, Number(options.progressMs) || 2000);
+  const progress = setInterval(() => {
+    if (text && onProgress) onProgress(`Đang viết… ${Math.max(1, Math.round(text.length / 4))} token`);
+  }, progressMs);
+  progress.unref?.();
+
+  /** Read one chunk, or report a timeout after `ms` without data. */
+  const readWithTimeout = async (ms) => {
+    let timer;
+    const timeout = new Promise((resolve) => {
+      timer = setTimeout(() => resolve({ timeout: true }), Math.max(50, ms));
+      timer.unref?.();
+    });
+    try {
+      return await Promise.race([reader.read(), timeout]);
+    } finally {
+      clearTimeout(timer);
+    }
+  };
+
+  try {
+    while (true) {
+      const elapsed = Date.now() - startedAt;
+      if (elapsed >= maxTotalMs) {
+        throw new LlmError(
+          `Lượt gọi model vượt trần ${Math.round(maxTotalMs / 1000)}s — dừng lượt này.`,
+        );
+      }
+
+      const chunk = await readWithTimeout(Math.min(idleMs, maxTotalMs - elapsed));
+
+      if (chunk?.timeout) {
+        // Nothing new arrived: cancel the socket and report the idle stop.
+        Promise.resolve(reader.cancel?.()).catch(() => {});
+        throw new LlmError(
+          Date.now() - startedAt >= maxTotalMs
+            ? `Lượt gọi model vượt trần ${Math.round(maxTotalMs / 1000)}s — dừng lượt này.`
+            : `Model không gửi thêm token nào trong ${Math.round(idleMs / 1000)}s — dừng lượt này.`,
+        );
+      }
+
+      if (chunk.done) break;
+
+      buffer += decoder.decode(chunk.value, { stream: true });
+      const lines = buffer.split(/\r?\n/);
+      buffer = lines.pop() ?? "";
+
+      for (const raw of lines) {
+        const line = raw.trim();
+        if (!line.startsWith("data:")) continue;
+        const data = line.slice(5).trim();
+        if (!data || data === "[DONE]") continue;
+
+        let event;
+        try {
+          event = JSON.parse(data);
+        } catch {
+          continue;
+        }
+        if (event?.error) {
+          throw new LlmError(
+            `Model trả lỗi giữa dòng: ${String(event.error.message ?? event.error).slice(0, 300)}`,
+          );
+        }
+        if (event?.usage) usage = event.usage;
+
+        const delta =
+          event?.choices?.[0]?.delta?.content ??
+          event?.choices?.[0]?.message?.content ??
+          "";
+        if (typeof delta === "string" && delta) {
+          if (firstTokenMs === null) firstTokenMs = Date.now() - startedAt;
+          text += delta;
+        }
+      }
+    }
+  } finally {
+    clearInterval(progress);
+    try {
+      reader.releaseLock?.();
+    } catch {
+      /* stream closed */
+    }
+  }
+
+  if (!text.trim()) return null;
+  return {
+    text,
+    usage,
+    metrics: { firstTokenMs, totalMs: Date.now() - startedAt, outChars: text.length },
+  };
+}
+
 export async function chatJson(messages, options = {}) {
   const apiKey = options.apiKey || config.llm.apiKey;
   const baseUrl = (options.baseUrl || config.llm.baseUrl).replace(/\/+$/, "");
   const model = normalizeModelId(options.model, "openai");
+  const startedAt = Date.now();
 
   if (!apiKey && !baseUrl.includes("localhost") && !baseUrl.includes("127.0.0.1")) {
     throw new LlmError(
@@ -480,19 +638,25 @@ export async function chatJson(messages, options = {}) {
     temperature: options.temperature ?? config.llm.temperature,
     max_tokens: options.maxTokens ?? config.llm.maxTokens,
     response_format: responseFormat(),
+    // Streaming lets the studio show "Đang viết… N token" and makes an idle socket
+    // detectable long before the whole-turn ceiling.
+    stream: options.stream !== false,
   };
 
   const headers = { "Content-Type": "application/json" };
   if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
 
-  let response;
-  try {
-    response = await fetchWithRetry(endpoint, {
+  const request = () =>
+    fetchWithRetry(endpoint, {
       method: "POST",
       headers,
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(options.timeoutMs ?? 180000),
     });
+
+  let response;
+  try {
+    response = await request();
   } catch (error) {
     throw new LlmError(`Could not reach the model endpoint: ${error.message}`);
   }
@@ -505,12 +669,7 @@ export async function chatJson(messages, options = {}) {
     schemaSupported = false;
     body.response_format = { type: "json_object" };
     try {
-      response = await fetchWithRetry(endpoint, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(options.timeoutMs ?? 180000),
-      });
+      response = await request();
     } catch (error) {
       throw new LlmError(`Could not reach the model endpoint: ${error.message}`);
     }
@@ -526,14 +685,45 @@ export async function chatJson(messages, options = {}) {
     );
   }
 
-  const payload = await response.json();
-  const content = payload?.choices?.[0]?.message?.content;
-  if (!content) throw new LlmError("The model returned an empty response");
+  const contentType = String(response.headers?.get?.("content-type") || "");
+  const streamed =
+    body.stream && (contentType.includes("event-stream") || contentType.includes("stream"))
+      ? await readCompletionStream(response, {
+          idleMs: options.idleMs ?? config.llm.streamIdleMs,
+          maxTotalMs: options.timeoutMs ?? config.agent?.maxTurnTimeoutMs ?? 480000,
+          onProgress: options.onProgress,
+          progressMs: options.progressMs,
+          startedAt,
+        })
+      : null;
+
+  let text;
+  let usage;
+  let metrics;
+
+  if (streamed) {
+    text = streamed.text;
+    usage = streamed.usage;
+    metrics = { ...streamed.metrics, via: "api" };
+  } else {
+    const payload = await response.json();
+    text = payload?.choices?.[0]?.message?.content;
+    usage = payload?.usage ?? null;
+    metrics = {
+      firstTokenMs: Date.now() - startedAt,
+      totalMs: Date.now() - startedAt,
+      outChars: typeof text === "string" ? text.length : 0,
+      via: "api",
+    };
+  }
+
+  if (!text) throw new LlmError("The model returned an empty response");
 
   return {
-    text: content,
-    json: parseModelJson(content),
-    usage: payload.usage ?? null,
+    text,
+    json: parseModelJson(text),
+    usage,
+    metrics,
   };
 }
 

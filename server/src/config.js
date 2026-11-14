@@ -43,6 +43,15 @@ export const config = {
     claudeBin: process.env.CLAUDE_BIN || "claude",
     model: process.env.COMMAND_CODE_MODEL || "",
     effort: process.env.COMMAND_CODE_EFFORT || "",
+    /**
+     * Reasoning effort for build/repair turns. `low` keeps a heavy brief inside its
+     * step budget; COMMAND_CODE_EFFORT (an explicit user choice) wins over it.
+     */
+    buildEffort: (process.env.AGENT_BUILD_EFFORT || "low").toLowerCase(),
+    /** AGENT_CLI_SAFE_MODE=1 adds `--safe-mode` (built-in mods only). Off by default. */
+    cliSafeMode: process.env.AGENT_CLI_SAFE_MODE === "1",
+    /** AGENT_CLI_NO_SKILLS=0 keeps skill discovery on for CLI design runs. */
+    cliNoSkills: process.env.AGENT_CLI_NO_SKILLS !== "0",
     /** Per model call. Kept for older callers; the step values below are the real budget. */
     timeoutMs: Number(process.env.AGENT_TIMEOUT || 240000),
     /** Skeleton pass of a new family (geometry + parameters). */
@@ -52,15 +61,22 @@ export const config = {
     /** Connector / material / edit passes. */
     editTimeoutMs: Number(process.env.AGENT_EDIT_TIMEOUT || 120000),
     /**
-     * Hard ceiling for one model call. A stale AGENT_TIMEOUT=600000 in .env used to
-     * make a single hung run block the studio for ten minutes; 5 minutes is enough
-     * for the longest family and leaves room for a retry inside the total budget.
+     * Hard ceiling for one model call. A heavy 5-section brief has been measured at
+     * 5m46s on deepseek flash, so 5 minutes cut healthy runs; 8 minutes leaves room
+     * while a hung call is still bounded and never retried on the same prompt.
      */
-    maxTurnTimeoutMs: Number(process.env.AGENT_MAX_TURN_TIMEOUT || 300000),
+    maxTurnTimeoutMs: Number(process.env.AGENT_MAX_TURN_TIMEOUT || 480000),
     /** Whole request, all steps together (a split LOD 400 brief runs 4-5 passes). */
     totalTimeoutMs: Number(process.env.AGENT_TOTAL_TIMEOUT || 1500000),
     /** A new brief longer than this is split into skeleton + connectors + materials. */
     splitThreshold: Number(process.env.AGENT_SPLIT_THRESHOLD || 3000),
+    /**
+     * A brief with explicit "##" sections longer than this is built section by
+     * section from the start. One giant answer times out on slow providers and the
+     * timeout fallback would waste the whole first turn before splitting anyway.
+     * AGENT_SECTION_SPLIT=0 turns the proactive split off.
+     */
+    sectionSplitMinChars: Number(process.env.AGENT_SECTION_SPLIT_MIN_CHARS || 2500),
     /** SSE keep-alive while a design run is in flight. */
     heartbeatMs: Number(process.env.DESIGN_HEARTBEAT_MS || 15000),
     /**
@@ -72,6 +88,26 @@ export const config = {
     retryMax: Number(process.env.AGENT_RETRY_MAX || 3),
     /** 2000 ms base -> 2 s, 5 s, 12 s with the default schedule. */
     retryBaseMs: Number(process.env.AGENT_RETRY_BASE_MS || 2000),
+    /**
+     * Per-turn budgets of the stable pipeline. Each kind of extra call has its own
+     * budget so a timeout or a supplement round never eats the repair turns.
+     * Counts are EXTRA calls after the first one.
+     */
+    repairMax: Number(process.env.AGENT_REPAIR_MAX || 2),
+    supplementMax: Number(process.env.AGENT_SUPPLEMENT_MAX || 2),
+    layoutMax: Number(process.env.AGENT_LAYOUT_MAX || 1),
+    proseMax: Number(process.env.AGENT_PROSE_MAX || 1),
+    timeoutRetryMax: Number(process.env.AGENT_TIMEOUT_RETRY_MAX || 1),
+    /** Hard ceiling of model calls in one turn, whatever the budgets above say. */
+    turnCallsMax: Number(process.env.AGENT_TURN_CALLS_MAX || 6),
+    /**
+     * The whole request is retried after these waits when the provider is overloaded
+     * before any spec exists (a 503 burst lasts minutes, not seconds).
+     */
+    requestRetryDelays: (process.env.AGENT_REQUEST_RETRY_DELAYS || "20000,45000")
+      .split(",")
+      .map((value) => Number(value.trim()))
+      .filter((value) => Number.isFinite(value) && value >= 0),
     /** Explicit fallback chain; empty = derive from the available CLI models. */
     fallbackModels: (process.env.AGENT_FALLBACK_MODELS || "")
       .split(",")
@@ -110,6 +146,8 @@ export const config = {
     model: process.env.OPENAI_MODEL || "gpt-4o",
     temperature: Number(process.env.OPENAI_TEMPERATURE || 0.2),
     maxTokens: Number(process.env.OPENAI_MAX_TOKENS || 8000),
+    /** Direct API streams tokens; a socket with no new token for this long is dead. */
+    streamIdleMs: Number(process.env.AGENT_STREAM_IDLE_MS || 90000),
   },
   bridge: {
     url: (process.env.REVIT_BRIDGE_URL || "http://127.0.0.1:8765").replace(/\/+$/, ""),

@@ -19,7 +19,7 @@ function normalize(value) {
 }
 
 /** "Corner Rail East North Web" -> "corner rail east north" */
-function unitKey(part) {
+export function partUnitKey(part) {
   const base = normalize(`${part.name ?? ""} ${part.id ?? ""}`);
   return base.replace(ROLE_SUFFIX, " ").replace(/\s+/g, " ").trim();
 }
@@ -249,7 +249,7 @@ function countUnits(parts, matcher, exclude) {
     const text = normalize(`${part.name ?? ""} ${part.id ?? ""}`);
     if (!matcher.test(text)) continue;
     if (exclude && exclude.test(text)) continue;
-    units.add(unitKey(part) || part.id || part.name);
+    units.add(partUnitKey(part) || part.id || part.name);
   }
   return units.size;
 }

@@ -7,6 +7,7 @@ import test, { beforeEach } from "node:test";
 import { checkCompleteness, extractChecklistHeuristic } from "../src/checklist.js";
 import { config } from "../src/config.js";
 import { design, turnTimeoutMs } from "../src/designer.js";
+import { extractTemplateOptions } from "../src/templates/cable-ladder.js";
 import { clearCachedResults } from "../src/result-cache.js";
 
 process.env.AGENT_EXPERIMENTAL_PIPELINE = "0";
@@ -299,14 +300,15 @@ test("a valid but incomplete answer is supplemented with exactly the missing gro
 test("still incomplete after three turns: reported as incomplete, never as success", async () => {
   const calls = [];
   const result = await design({
-    prompt: "ngã tư thang cáp 400x100, 4 thành góc, 6 bậc thang, 4 connector",
+    // No cable-ladder template for this family: nothing may be invented.
+    prompt: "khung đỡ thiết bị 500x120, 6 bậc thang",
     currentSpec: null,
     lod: 300,
     emit: () => {},
     model: "cheap-model",
     generate: async () => {
       calls.push(1);
-      return { json: crossSpec({ withRungs: false }), text: "", usage: null };
+      return { json: ladderSpec(), text: "", usage: null };
     },
   });
 
@@ -371,20 +373,21 @@ test("a split build keeps the sections that worked when a later one fails", asyn
 
   assert.equal(result.analysis.ok, true);
   assert.equal(result.analysis.spec.name, "Phần 1");
-  assert.ok(result.stats.warnings.some((item) => /giữ phần đã dựng/.test(item)));
+  // A slow section is skipped (later sections may still be built) and reported.
+  assert.ok(result.stats.warnings.some((item) => /hết thời gian/.test(item)));
 });
 
 test("a supplement turn that times out reports the incomplete spec, not an error", async () => {
   let calls = 0;
   const result = await design({
-    prompt: "ngã tư thang cáp 400x100, 4 thành góc, 6 bậc thang, 4 connector",
+    prompt: "khung đỡ thiết bị 500x120, 6 bậc thang",
     currentSpec: null,
     lod: 300,
     emit: () => {},
     model: "cheap-model",
     generate: async () => {
       calls += 1;
-      if (calls === 1) return { json: crossSpec({ withRungs: false }), text: "", usage: null };
+      if (calls === 1) return { json: ladderSpec(), text: "", usage: null };
       throw new Error("Agent run timed out after 240s");
     },
   });
@@ -453,16 +456,124 @@ test("a sectioned creation that times out is rebuilt section by section", async 
     model: "cheap-model",
     generate: async (messages) => {
       calls.push(String(messages.at(-1).content));
-      // Both the first answer and its timeout retry fail; then the split runs.
-      if (calls.length <= 2) throw new Error("Agent run timed out after 300s");
-      return { json: ladderSpec(`Phần ${calls.length - 2}`), text: "", usage: null };
+      // The first answer times out; a sectioned brief is split instead of retried.
+      if (calls.length === 1) throw new Error("Agent run timed out after 300s");
+      return { json: ladderSpec(`Phần ${calls.length - 1}`), text: "", usage: null };
     },
   });
 
-  assert.equal(calls.length, 4, "2 failed calls + one per section");
-  assert.match(calls[2], /Khung thép 1200 x 600/, "the first section runs alone");
-  assert.match(calls[3], /Cửa thăm 300 x 300/, "the second section runs next");
+  assert.equal(calls.length, 3, "1 timed-out call + one per section, no second wait");
+  assert.match(calls[1], /Khung thép 1200 x 600/, "the first section runs alone");
+  assert.match(calls[2], /Cửa thăm 300 x 300/, "the second section runs next");
   assert.ok(result.analysis.ok);
+});
+
+test("missing rungs are completed from the cable-ladder template, not left out", async () => {
+  const result = await design({
+    prompt: "ngã tư thang cáp 400x100, 4 thành góc, 6 bậc thang, 4 connector",
+    currentSpec: null,
+    lod: 300,
+    emit: () => {},
+    model: "cheap-model",
+    generate: async () => ({ json: crossSpec({ withRungs: false }), text: "", usage: null }),
+  });
+
+  assert.equal(result.stats.complete, true);
+  assert.deepEqual(result.stats.missing, []);
+  assert.equal(result.analysis.spec.parts.length, 10, "4 rails + 6 rungs");
+  assert.ok(
+    result.analysis.spec.parts.some((part) => /rung/i.test(part.name)),
+    "the template rungs are in the spec",
+  );
+  assert.ok(result.stats.warnings.some((item) => item.startsWith("Đã bổ sung 6 bậc thang")));
+});
+
+test("a family without a template is never filled with invented parts", async () => {
+  const result = await design({
+    prompt: "khung đỡ thiết bị 500x120, 4 connector",
+    currentSpec: null,
+    lod: 300,
+    emit: () => {},
+    model: "cheap-model",
+    generate: async () => ({ json: ladderSpec(), text: "", usage: null }),
+  });
+
+  assert.equal(result.stats.complete, false);
+  assert.equal(result.stats.parts, 1, "no part was invented");
+  assert.ok(!result.stats.warnings.some((item) => item.startsWith("Đã bổ sung")));
+});
+
+test("a long sectioned brief is built section by section from the first call", async () => {
+  const section = (title) => `## ${title}\n${"Chi tiết kỹ thuật cho phần này. ".repeat(60)}`;
+
+  const brief = [
+    "Tạo ngã tư thang cáp 400x100.",
+    "",
+    section("Khung"),
+    section("Cửa thăm"),
+  ].join("\n");
+
+  const calls = [];
+  await design({
+    prompt: brief,
+    currentSpec: null,
+    lod: 300,
+    emit: () => {},
+    model: "cheap-model",
+    generate: async (messages) => {
+      calls.push(String(messages.at(-1).content));
+      return { json: ladderSpec(`Phần ${calls.length}`), text: "", usage: null };
+    },
+  });
+
+  assert.ok(calls.length >= 2, "each section is its own call");
+  assert.ok(
+    !calls[0].includes("Cửa thăm"),
+    "the first call must not carry the whole brief",
+  );
+  assert.match(calls[0], /Khung/);
+});
+
+test("an unusable model answer falls back to the verified cable-ladder template", async () => {
+  const result = await design({
+    prompt: "ngã tư thang cáp 400x100, 4 thành góc, 6 bậc thang, 4 connector",
+    currentSpec: null,
+    lod: 300,
+    emit: () => {},
+    model: "cheap-model",
+    generate: async () => ({
+      json: {
+        schemaVersion: "1.0",
+        name: "Untitled",
+        category: "Generic Model",
+        units: "mm",
+        parameters: [],
+        materials: [],
+        parts: [],
+        connectors: [],
+      },
+      text: "",
+      usage: null,
+    }),
+  });
+
+  assert.equal(result.analysis.ok, true);
+  assert.ok(result.analysis.spec.parts.length >= 18, "the full template is used");
+  assert.equal(result.analysis.spec.connectors.length, 4);
+  assert.equal(result.stats.complete, true);
+  assert.ok(
+    result.stats.warnings.some((item) => item.includes("dùng nguyên mẫu")),
+    "the user is told where the geometry came from",
+  );
+});
+
+test("the overall 940x940x100 sentence does not override the template widths", () => {
+  const options = extractTemplateOptions(
+    "Ngã tư thang cáp 400x100. Kích thước phủ bì đạt chuẩn **940 x 940 x 100 mm**.",
+  );
+
+  assert.equal(options.ladderWidth1, undefined, "940 is the result, not the inlet width");
+  assert.equal(options.ladderHeight, undefined);
 });
 
 const PHOTO = Buffer.from(
@@ -527,3 +638,259 @@ test("a text-only provider keeps the c709e4c read_file instruction", async () =>
   assert.equal(typeof lastContent(messages), "string");
   assert.match(messages.map((message) => String(message.content)).join("\n"), /read_file/);
 });
+
+test("a timeout on the first call does not eat the repair budget", async () => {
+  const calls = [];
+  const result = await design({
+    prompt: "khung đỡ thiết bị 500x120",
+    currentSpec: null,
+    lod: 300,
+    emit: () => {},
+    model: "cheap-model",
+    generate: async (messages) => {
+      calls.push(messages);
+      if (calls.length === 1) throw new Error("Agent run timed out after 300s");
+      if (calls.length === 2) return { json: brokenSpec(), text: "", usage: null };
+      return { json: ladderSpec("Sau sửa"), text: "", usage: null };
+    },
+  });
+
+  assert.equal(calls.length, 3, "timeout + broken + repaired");
+  assert.equal(result.analysis.ok, true);
+  assert.equal(result.analysis.spec.name, "Sau sửa");
+});
+
+test("a supplement answer that loses parts never replaces the better spec", async () => {
+  const calls = [];
+  const result = await design({
+    prompt: "ngã tư thang cáp 400x100, 4 thành góc, 6 bậc thang, 4 connector",
+    currentSpec: null,
+    lod: 300,
+    emit: () => {},
+    model: "cheap-model",
+    generate: async () => {
+      calls.push(1);
+      // 1st: rails + connectors (no rungs). Later: an almost empty spec.
+      const spec = calls.length === 1 ? crossSpec({ withRungs: false }) : ladderSpec("Rỗng");
+      return { json: spec, text: "", usage: null };
+    },
+  });
+
+  assert.notEqual(result.analysis.spec.name, "Rỗng", "the regressed answer must not win");
+});
+
+test("a provider error after a first spec keeps that spec instead of failing", async () => {
+  const calls = [];
+  const result = await design({
+    prompt: "khung đỡ thiết bị 500x120",
+    currentSpec: null,
+    lod: 300,
+    emit: () => {},
+    model: "cheap-model",
+    generate: async () => {
+      calls.push(1);
+      if (calls.length === 1) return { json: brokenSpec(), text: "", usage: null };
+      throw new Error("socket hang up");
+    },
+  });
+
+  assert.equal(calls.length, 2);
+  assert.equal(result.analysis.spec.name, "Hỏng");
+  assert.ok(result.stats.warnings.some((item) => /socket hang up/.test(item)));
+});
+
+test("an incomplete result is never cached", async () => {
+  let calls = 0;
+  const run = () =>
+    design({
+      prompt: "khung đỡ thiết bị 500x120, 6 bậc thang",
+      currentSpec: null,
+      lod: 300,
+      emit: () => {},
+      model: "cheap-model",
+      generate: async () => {
+        calls += 1;
+        return { json: ladderSpec(), text: "", usage: null };
+      },
+    });
+
+  const first = await run();
+  assert.equal(first.stats.complete, false);
+  const callsAfterFirst = calls;
+  const second = await run();
+  assert.ok(calls > callsAfterFirst, "the second run must reach the model again");
+  assert.notEqual(second.stats.cached, true);
+});
+
+test("repair prompts do not grow with the number of attempts", async () => {
+  const sizes = [];
+  await design({
+    prompt: "khung đỡ thiết bị 500x120",
+    currentSpec: null,
+    lod: 300,
+    emit: () => {},
+    model: "cheap-model",
+    generate: async (messages) => {
+      sizes.push(JSON.stringify(messages).length);
+      return { json: brokenSpec(), text: "", usage: null };
+    },
+  });
+
+  assert.equal(sizes.length, 3);
+  assert.ok(sizes[2] <= sizes[1] * 1.1, `3rd prompt ${sizes[2]} vs 2nd ${sizes[1]}`);
+});
+
+test("an invalid section is skipped and never becomes the base of the next one", async () => {
+  const brief = [
+    "## Khung", "Khung thép 1200 x 600 mm.", "",
+    "## Cửa thăm", "Cửa thăm 300 x 300 mm ở mặt trước.", "",
+    "## Chân đế", "Chân đế cao 150 mm.",
+  ].join("\n");
+
+  const calls = [];
+  const result = await design({
+    prompt: brief,
+    currentSpec: null,
+    lod: 300,
+    emit: () => {},
+    model: "cheap-model",
+    generate: async (messages) => {
+      calls.push(messages);
+      if (calls.length === 1) {
+        const error = new Error("Model output ended (OUTPUT_LIMIT)");
+        error.code = "OUTPUT_LIMIT";
+        throw error;
+      }
+      const last = String(messages.at(-1).content);
+      if (last.includes("Chân đế cao")) return { json: ladderSpec("Chân đế"), text: "", usage: null };
+      if (last.includes("Cửa thăm 300")) return { json: brokenSpec(), text: "", usage: null };
+      return { json: ladderSpec("Khung"), text: "", usage: null };
+    },
+  });
+
+  const lastCall = calls.at(-1).map((message) => String(message.content)).join("\n");
+  assert.match(lastCall, /"name":"Khung"/, "section 3 builds on the last valid spec");
+  assert.doesNotMatch(lastCall, /Missing Parameter/, "the broken section is not carried");
+  assert.equal(result.analysis.ok, true);
+  assert.ok(result.stats.warnings.some((item) => /Cửa thăm|chưa hợp lệ/.test(item)));
+});
+
+test("a patch answer from a section turn is merged into the spec built so far", async () => {
+  const longLine = "Kích thước thân hộp 600 x 400 x 200 mm, thép tấm 1.5 mm, sơn tĩnh điện.";
+  const brief = [
+    "Hộp điện 600x400x200",
+    "",
+    "## Thân hộp",
+    ...Array.from({ length: 26 }, () => longLine),
+    "",
+    "## Cổng kết nối",
+    "Cổng cáp vào ở mặt dưới, cổng ra ở mặt sau.",
+    ...Array.from({ length: 26 }, () => "Mỗi cổng có cổ bích nhô ra 25 mm."),
+  ].join("\n");
+
+  const body = {
+    id: "body",
+    name: "Thân hộp",
+    solid: { kind: "box", origin: { x: 0, y: 0, z: 0 }, size: { x: 600, y: 400, z: 200 } },
+  };
+  const skeleton = {
+    schemaVersion: "1.0",
+    name: "Hộp điện",
+    category: "Electrical Equipment",
+    units: "mm",
+    parameters: [{ name: "Box Width", type: "Length", group: "Dimensions", value: 600 }],
+    materials: [{ name: "Galvanized Steel", color: "#b9bec2" }],
+    connectors: [],
+    parts: [body],
+    notes: [],
+  };
+
+  const calls = [];
+  const result = await design({
+    prompt: brief,
+    currentSpec: null,
+    lod: 300,
+    emit: () => {},
+    model: "cheap-model",
+    generate: async (messages) => {
+      calls.push(JSON.stringify(messages));
+      if (calls.length === 1) return { json: skeleton, text: "", usage: null };
+      // Every later turn answers with a patch, never the whole family.
+      return {
+        json: {
+          addParts: [
+            {
+              id: "port-in",
+              name: "Cổng cáp vào",
+              solid: { kind: "cylinder", base: { x: 0, y: 0, z: -200 }, radius: 30, height: 25 },
+            },
+          ],
+          addParameters: [{ name: "Port Diameter", type: "Length", group: "Dimensions", value: 60 }],
+        },
+        text: "",
+        usage: null,
+      };
+    },
+  });
+
+  const ids = result.analysis.spec.parts.map((part) => part.id);
+  assert.ok(ids.includes("body"), "the skeleton part survives a patch turn");
+  assert.ok(ids.includes("port-in"), "the patched part is merged in");
+  assert.equal(ids.filter((id) => id === "port-in").length, 1, "a repeated patch does not duplicate");
+  assert.ok(
+    result.analysis.spec.parameters.some((parameter) => parameter.name === "Port Diameter"),
+    "patched parameters are merged",
+  );
+  assert.match(calls.at(-1), /PATCH ANSWER/, "later sections are asked for a patch");
+  assert.doesNotMatch(calls[0], /PATCH ANSWER/, "the skeleton is asked for a full spec");
+});
+
+test("a section turn that returns a complete spec is still accepted", async () => {
+  const longLine = "Khung thép 1200 x 600 mm, thanh hộp 40 x 40 mm, hàn góc.";
+  const brief = [
+    "Khung đỡ thiết bị",
+    "",
+    "## Khung",
+    ...Array.from({ length: 26 }, () => longLine),
+    "",
+    "## Chân đế",
+    ...Array.from({ length: 26 }, () => "Chân đế cao 150 mm, mặt bích 200 x 200 mm."),
+  ].join("\n");
+
+  const fullSpec = () => ({
+    schemaVersion: "1.0",
+    name: "Khung đỡ",
+    category: "Generic Model",
+    units: "mm",
+    parameters: [{ name: "Frame Width", type: "Length", group: "Dimensions", value: 1200 }],
+    materials: [],
+    connectors: [],
+    parts: [
+      {
+        id: "frame",
+        name: "Khung",
+        solid: { kind: "box", origin: { x: 0, y: 0, z: 0 }, size: { x: 1200, y: 600, z: 40 } },
+      },
+      {
+        id: "base",
+        name: "Chân đế",
+        solid: { kind: "box", origin: { x: 0, y: 0, z: 0 }, size: { x: 200, y: 200, z: 150 } },
+      },
+    ],
+    notes: [],
+  });
+
+  const result = await design({
+    prompt: brief,
+    currentSpec: null,
+    lod: 300,
+    emit: () => {},
+    model: "cheap-model",
+    generate: async () => ({ json: fullSpec(), text: "", usage: null }),
+  });
+
+  const ids = result.analysis.spec.parts.map((part) => part.id);
+  assert.deepEqual(ids.sort(), ["base", "frame"]);
+  assert.equal(result.analysis.ok, true);
+});
+

@@ -15,6 +15,7 @@ import {
   checkCompleteness,
   extractChecklist,
   extractChecklistHeuristic,
+  partUnitKey,
 } from "./checklist.js";
 import {
   allowedParameterNames,
@@ -23,7 +24,7 @@ import {
   resolutionNotes,
 } from "./design-evidence.js";
 import { checkPlausibility } from "./plausibility.js";
-import { recordUserEdit, resolvedToTemplateOptions } from "./rules.js";
+import { matcherForKind, recordUserEdit, resolvedToTemplateOptions } from "./rules.js";
 import { extractDocumentText } from "./documents.js";
 import { applyFastParameterEdit, parseFastParameterEdit } from "./fast-edit.js";
 import {
@@ -47,6 +48,8 @@ import {
 } from "./retry.js";
 import { cacheKey, readCachedResult, writeCachedResult } from "./result-cache.js";
 import { findClosestSample } from "./samples.js";
+import { applySpecPatch, describeSpecPatch, isFullSpec } from "./patch.js";
+import { buildSystemPrompt } from "./prompt-blocks.js";
 import {
   buildTemplateSpec,
   extractTemplateOptions,
@@ -539,6 +542,20 @@ Return exactly one JSON object and nothing else.
 - Put every dimension, part and material inside the JSON fields. A human-readable design document is invalid.`;
 
 /**
+ * Section, supplement and repair turns already have a valid spec: they return only
+ * what changed, which keeps the answer far below the output-token cap.
+ */
+const SPEC_PATCH_CONTRACT = `PATCH ANSWER (this turn only)
+Do NOT repeat the whole family. Return ONE JSON patch object:
+{"addParts":[],"updateParts":[{"id":"..."}],"removePartIds":[],"addParameters":[],"updateParameters":[{"name":"..."}],"addConnectors":[],"updateConnectors":[{"id":"..."}],"materials":[]}
+- addParts: only NEW parts, each with a new unique id.
+- updateParts: only the fields that change; the part is matched by id and everything else is kept.
+- removePartIds: ids of parts to delete.
+- updateParameters / updateConnectors: matched by name / id.
+- Omit the keys you do not need. A patch that changes nothing is a failure.
+- Only if the whole family must be rebuilt, answer with a complete spec (schemaVersion + parts).`;
+
+/**
  * A retry only needs the spec, not the model's prose or pretty-printed whitespace.
  * Compact JSON keeps the second and third attempts from doubling the input tokens.
  */
@@ -614,11 +631,32 @@ export function lodStandard(lod) {
 Ghi rõ mức LOD ${level} đã dựng vào mảng \`notes\` (tiếng Việt).`;
 }
 
-function systemPrompt(lod, family = null) {
-  const base = designerPrompt.replace("{{lodStandard}}", lodStandard(lod));
+function systemPrompt(lod, family = null, { text = "", patch = false, edit = false, datasheet = false } = {}) {
+  const standard = lodStandard(lod);
+  // designer.md is split by section: only the blocks this brief and turn need are
+  // sent, and the budget keeps the whole system prompt under 10 KB.
+  const { prompt, blocks, dropped } = buildSystemPrompt(designerPrompt, {
+    text,
+    options: {
+      patch,
+      edit,
+      datasheet,
+      budget: Math.max(6000, DEFAULT_SYSTEM_BUDGET - standard.length),
+    },
+  });
+  const base = prompt.replace("{{lodStandard}}", standard);
   const defaults = familyDefaultsBlock(family);
-  return defaults ? `${base}\n\n${defaults}` : base;
+  const result = defaults ? `${base}\n\n${defaults}` : base;
+
+  console.log(
+    `[prompt] system=${result.length} chars blocks=${blocks.length}` +
+      `${dropped.length ? ` dropped=${dropped.length}` : ""} patch=${patch} edit=${edit}`,
+  );
+  return result;
 }
+
+/** Whole system prompt budget, including the expanded LOD standard. */
+const DEFAULT_SYSTEM_BUDGET = 10000;
 
 function summarise(spec, model) {
   const bounds = model.bounds;
@@ -1051,7 +1089,7 @@ export function turnTimeoutMs({ hasCurrentSpec = false, remainingMs = Infinity }
 
 async function designStable(options) {
   const startedAt = Date.now();
-  const { prompt, currentSpec, lod, emit, model, customApiConfig, attachments, signal } = options;
+  const { prompt, currentSpec, lod, emit, model, customApiConfig, commandCodeApiKey, attachments, signal } = options;
   const send = typeof emit === "function" ? emit : () => {};
   const generate = options.generate ?? generateJson;
   const level = LOD_LEVELS.includes(Number(lod)) ? Number(lod) : DEFAULT_LOD;
@@ -1113,7 +1151,6 @@ async function designStable(options) {
     }
   }
 
-  const systemMessage = { role: "system", content: systemPrompt(level) };
   const imageParts = imagePartsFor(attachments, customApiConfig);
   // A photo sent as an image part needs no "read this file" instruction.
   const documents = await documentMessages(
@@ -1125,6 +1162,8 @@ async function designStable(options) {
 
   let modelCalls = 0;
   let usage = null;
+  /** Per-call metrics shown in the studio's stats panel. */
+  const callStats = [];
 
   // Deterministic requirement checklist from the brief (no model call). A valid spec
   // that silently drops a requested group ("6 bậc thang") is still incomplete.
@@ -1150,156 +1189,424 @@ async function designStable(options) {
       .map((item) => item.label ?? item.message)
       .join(", ");
 
-  /** One conversation turn set: up to MAX_ATTEMPTS model calls, repairs in between. */
-  const runTurn = async (text, spec, { enforceCompleteness = true } = {}) => {
-    const messages = [systemMessage, ...documents];
+  /**
+   * A model can ignore two supplement turns and still return no rungs. For the
+   * cable-ladder families the verified template already contains that group, so the
+   * missing parts are appended deterministically instead of shipping half a family.
+   */
+  const fillMissingFromTemplate = (spec, gaps) => {
+    if (!config.agent.useTemplates) return null;
 
-    if (spec) {
-      const dependencyMap = parameterDependencySummary(spec, 6000, text);
-      const dependencyBlock = dependencyMap
-        ? `${dependencyMap}\n\nUse this map before changing anything: update the base parameter and every dependent parameter/part it reaches. Do not hard-code a value that the map says is derived.\n\n`
+    const family = matchTemplateFamily(prompt);
+    if (!family) return null;
+
+    let template;
+    try {
+      template = analyzeSpec(
+        autoHealSpec(buildTemplateSpec(family, extractTemplateOptions(prompt))),
+      );
+    } catch {
+      return null;
+    }
+    if (!template.ok) return null;
+
+    // The model answered with prose or an empty shell: the verified template is a far
+    // better answer than a half-built family with invented coordinates.
+    if ((spec?.parts ?? []).length === 0) {
+      const recheck = checkCompleteness(template.spec, checklist, {
+        bounds: template.model?.bounds?.size ?? null,
+      });
+      return {
+        analysis: template,
+        gaps: recheck,
+        note: `Model không trả về spec dùng được — dùng nguyên mẫu thang cáp (${family}).`,
+      };
+    }
+
+    const materials = (spec.materials ?? []).map((material) => ({ ...material }));
+    const known = new Set(materials.map((material) => material.name));
+    const existingIds = new Set((spec.parts ?? []).map((part) => part.id));
+    const additions = [];
+    const connectorAdditions = [];
+    const roles = [];
+
+    for (const item of gaps.missing) {
+      if (item.kind === "connectors") {
+        const needed = Math.max(0, Number(item.expected) - Number(item.actual));
+        const pool = template.model.connectors ?? [];
+        const taken = pool.slice(0, needed).map((connector, index) => ({
+          ...connector,
+          id: `${connector.id ?? `conn-${index + 1}`}-fix`,
+        }));
+        connectorAdditions.push(...taken);
+        if (taken.length > 0) roles.push(`${taken.length} connector`);
+        continue;
+      }
+
+      if (item.kind !== "parts") continue;
+      const needed = Math.max(0, Number(item.expected) - Number(item.actual));
+      if (!needed) continue;
+
+      const matcher = matcherForKind(item.role);
+      // A "corner rail" is one unit made of a web and two flanges: append whole
+      // units, otherwise the fill adds half a corner.
+      const units = new Map();
+      for (const part of template.model.parts) {
+        const text = String(part.name ?? "").toLowerCase();
+        if (!matcher.test(text)) continue;
+        const key = partUnitKey(part) || part.id;
+        if (!units.has(key)) units.set(key, []);
+        units.get(key).push(part);
+      }
+
+      let addedUnits = 0;
+      for (const group of units.values()) {
+        if (addedUnits >= needed) break;
+
+        const fresh = group.filter((part) => !existingIds.has(`${part.id}-fix`));
+        if (fresh.length === 0) continue;
+
+        for (const part of fresh) {
+          const id = `${part.id}-fix`;
+          existingIds.add(id);
+          additions.push({ ...part, id });
+
+          if (part.material && !known.has(part.material)) {
+            const source = (template.spec.materials ?? []).find((m) => m.name === part.material);
+            if (source) {
+              materials.push(source);
+              known.add(source.name);
+            }
+          }
+        }
+        addedUnits += 1;
+      }
+
+      if (addedUnits > 0) roles.push(`${addedUnits} ${item.role === "rung" ? "bậc thang" : item.role}`);
+    }
+
+    if (additions.length === 0 && connectorAdditions.length === 0) return null;
+
+    const merged = autoHealSpec({
+      ...spec,
+      materials,
+      parts: [...(spec.parts ?? []), ...additions],
+      connectors: [...(spec.connectors ?? []), ...connectorAdditions],
+    });
+    const analysis = analyzeSpec(merged);
+    if (!analysis.ok) return null;
+
+    const recheck = checkCompleteness(analysis.spec, checklist, {
+      bounds: analysis.model?.bounds?.size ?? null,
+    });
+    // A partial improvement is still worth keeping: the remaining gaps are reported.
+    if (recheck.missing.length >= gaps.missing.length) return null;
+
+    return {
+      analysis,
+      gaps: recheck,
+      note: `Đã bổ sung ${roles.join(", ")} còn thiếu từ mẫu thang cáp (${family}).`,
+    };
+  };
+
+  const warnings = [];
+
+  /**
+   * Every model call gets a fresh, bounded conversation: system + documents + the
+   * spec to work on + one instruction. Repairs never append to the previous turn,
+   * so the prompt does not grow with the number of attempts.
+   */
+  const freshMessages = (
+    instruction,
+    baseSpec,
+    { dependencyMap = true, focus = "", patch = false } = {},
+  ) => {
+    // The system prompt is chosen per turn: a patch answer needs no output-shape
+    // example, and the brief decides which product-family blocks are relevant.
+    const out = [
+      {
+        role: "system",
+        content: systemPrompt(level, null, {
+          text: focus || instruction,
+          patch,
+          edit: Boolean(baseSpec),
+          datasheet: documents.length > 0,
+        }),
+      },
+      ...documents,
+    ];
+
+    if (baseSpec) {
+      const map = dependencyMap ? parameterDependencySummary(baseSpec, 6000, focus) : "";
+      const dependencyBlock = map
+        ? `${map}\n\nUse this map before changing anything: update the base parameter and every dependent parameter/part it reaches. Do not hard-code a value that the map says is derived.\n\n`
         : "";
-      messages.push({
+      out.push({
         role: "user",
-        content: `Here is the current spec. Apply my next request to it.\n${dependencyBlock}${JSON.stringify(spec)}`,
+        content: `Here is the current spec. Apply my next request to it.\n${dependencyBlock}${JSON.stringify(baseSpec)}`,
       });
     }
 
-    const request = `${text}\n\n---\n${JSON_OUTPUT_CONTRACT}`;
-    messages.push({
+    const request = `${instruction}\n\n---\n${JSON_OUTPUT_CONTRACT}${patch ? `\n\n${SPEC_PATCH_CONTRACT}` : ""}`;
+    out.push({
       role: "user",
-      content:
-        imageParts.length > 0
-          ? [{ type: "text", text: request }, ...imageParts]
-          : request,
+      content: imageParts.length > 0 ? [{ type: "text", text: request }, ...imageParts] : request,
     });
+    return out;
+  };
 
+  /** Lower is better, compared element by element. */
+  const scoreOf = (candidate) => {
+    const gaps = hasRequirements && candidate?.spec ? gapsFor(candidate) : null;
+    return [
+      candidate?.ok ? 0 : 1,
+      gaps ? gaps.missing.length : 0,
+      candidate?.errors?.length ?? 999,
+      candidate?.issues?.length ?? 999,
+      -(candidate?.spec?.parts?.length ?? 0),
+    ];
+  };
+
+  /** True when `next` should replace `best`. A full tie keeps the newer answer. */
+  const isBetter = (next, best) => {
+    if (!best) return true;
+    const a = scoreOf(next);
+    const b = scoreOf(best);
+    for (let index = 0; index < a.length; index += 1) {
+      if (a[index] !== b[index]) return a[index] < b[index];
+    }
+    return true;
+  };
+
+  /** One conversation turn set: bounded model calls with per-kind budgets. */
+  const runTurn = async (text, spec, { enforceCompleteness = true, section = false } = {}) => {
+    const budget = {
+      repair: config.agent.repairMax,
+      supplement: config.agent.supplementMax,
+      layout: config.agent.layoutMax,
+      prose: config.agent.proseMax,
+      timeout: config.agent.timeoutRetryMax,
+      maxTurns: 1,
+    };
+    const callsMax = Math.max(1, config.agent.turnCallsMax);
+    // An edit keeps the user's family: a candidate that blows up its size is suspect.
+    const editBefore = spec && !section ? boundsOf(spec) : null;
+
+    let messages = freshMessages(text, spec, { focus: text, patch: Boolean(spec) && section });
+    /** Spec the current messages ask the model to patch, if it is a patch turn. */
+    let patchBase = spec && section ? spec : null;
     let analysis = null;
     let bestAnalysis = null;
     let attempts = 0;
-    let proseRetries = 0;
-    let timeoutRetries = 0;
-    let layoutPassUsed = false;
+    let timeoutCap = Number.POSITIVE_INFINITY;
     let latestGaps = null;
     let nextReason = null;
+    /** Extra CLI turns granted after a MAX_TURNS stop. */
+    let turnExtraTurns = 0;
+    /** Set right before each model call so a failure can still be logged with its size. */
+    let callLog = null;
+    // Once a repair ran, the answer is already the best of a damaged sequence:
+    // asking for extra parts in the same turn only burns calls.
+    let repairsUsed = 0;
 
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
-      attempts = attempt;
-
+    while (attempts < callsMax) {
       const remaining = deadline - Date.now();
-      if (attempt > 1 && remaining <= 5000) break;
-      // An edit of an existing family must not wait as long as a fresh build.
-      const timeoutMs = turnTimeoutMs({ hasCurrentSpec: Boolean(spec), remainingMs: remaining });
+      if (attempts > 0 && remaining <= 5000) break;
+      attempts += 1;
 
-      if (attempt === 1) {
+      const timeoutMs = Math.max(
+        5000,
+        Math.min(
+          turnTimeoutMs({ hasCurrentSpec: Boolean(spec) && !section, remainingMs: remaining }),
+          timeoutCap,
+        ),
+      );
+
+      if (attempts === 1) {
         send({ type: "stage", stage: "generating", message: "Đang dựng…" });
       } else if (nextReason) {
         send({ type: "stage", stage: "repairing", message: nextReason });
         nextReason = null;
-      } else if (analysis) {
-        send({
-          type: "stage",
-          stage: "repairing",
-          message: `Sửa ${analysis.errors.length} lỗi`,
-        });
       }
 
       let result;
+      const turnStartedAt = Date.now();
+      const ticker = setInterval(() => {
+        const seconds = Math.round((Date.now() - turnStartedAt) / 1000);
+        send({ type: "stage", stage: "working", message: `Đang dựng… ${seconds}s` });
+      }, 15000);
+      ticker.unref?.();
 
       try {
         modelCalls += 1;
+        const promptBytes = JSON.stringify(messages).length;
+        const turnStart = Date.now();
+        callLog = () =>
+          `[design] call #${modelCalls} model=${model || "default"} prompt=${promptBytes}B ` +
+          `elapsed=${Math.round((Date.now() - turnStart) / 1000)}s`;
+
         result = await generate(messages, {
           ...(model ? { model } : {}),
           ...(customApiConfig ? { customApiConfig } : {}),
+          ...(commandCodeApiKey ? { commandCodeApiKey } : {}),
           ...(signal ? { signal } : {}),
           timeoutMs,
+          commandCodeMaxTurns: turnExtraTurns,
+          effort: config.agent.buildEffort,
           onProgress: (message) => send({ type: "stage", stage: "working", message }),
         });
+        console.log(`${callLog()} reason=ok`);
+        callLog = null;
+
+        const metrics = result.metrics ?? {};
+        const totalMs = metrics.totalMs ?? Date.now() - turnStart;
+        const firstTokenMs = metrics.firstTokenMs ?? null;
+        const via = metrics.via ?? (customApiConfig ? "api" : "cli");
+        callStats.push({
+          model: result.model || model || "default",
+          inChars: promptBytes,
+          outChars: metrics.outChars ?? result.text?.length ?? 0,
+          firstTokenMs,
+          totalMs,
+          effort: config.agent.buildEffort || null,
+          via,
+        });
+        console.log(
+          `[model] ${result.model || model || "default"} in=${promptBytes} ` +
+            `out=${callStats[callStats.length - 1].outChars} ` +
+            `first-token=${firstTokenMs === null ? "-" : Math.round(firstTokenMs / 1000)}s ` +
+            `total=${Math.round(totalMs / 1000)}s effort=${config.agent.buildEffort || "default"} via=${via}`,
+        );
       } catch (error) {
-        // Sent the answer cut off at the token limit: the caller splits and retries.
+        // Every call is logged with the model, prompt size, duration and why it ended.
+        if (callLog) {
+          const reason = isOutputLimitError(error)
+            ? "output_limit"
+            : error?.code === "MAX_TURNS"
+              ? "max_turns"
+              : isTimeoutError(error)
+                ? "timeout"
+                : signal?.aborted
+                  ? "cancelled"
+                  : "error";
+          console.log(`${callLog()} reason=${reason} detail=${String(error?.message ?? error).slice(0, 160)}`);
+          callLog = null;
+        }
+        // Cancelled by the user / closed request: never swallow.
+        if (signal?.aborted || error?.name === "AbortError") throw error;
+        // Cut off at the token limit: the caller splits and retries.
         if (isOutputLimitError(error)) throw error;
 
-        // A hung turn is retried once with a shorter instruction instead of failing
-        // the whole request after waiting the full timeout.
         if (
           isTimeoutError(error) &&
-          timeoutRetries < 1 &&
-          attempt < MAX_ATTEMPTS &&
+          budget.timeout > 0 &&
+          attempts < callsMax &&
           deadline - Date.now() > 60000
         ) {
-          timeoutRetries += 1;
+          if (!spec) {
+            const sections = splitNewBrief(text, 0);
+            if (sections && sections.length > 1) throw error;
+          }
+          budget.timeout -= 1;
+          timeoutCap = Math.max(60000, Math.round(timeoutMs / 2));
           send({
             type: "stage",
             stage: "retrying",
-            message: `Hết thời gian lượt ${attempt} — thử lại với yêu cầu gọn hơn`,
+            message: `Hết thời gian lượt ${attempts} — thử lại với yêu cầu gọn hơn`,
           });
-          messages.push({ role: "user", content: TIMEOUT_RETRY });
+          messages = freshMessages(`${text}\n\n${TIMEOUT_RETRY}`, spec, { focus: text });
           continue;
         }
 
-        if (bestAnalysis?.ok) {
-          console.warn(`[design] attempt ${attempt} failed, keeping the best valid spec:`, error.message);
+        // A later call failed but an earlier one produced a spec: keep it instead of
+        // throwing the user's whole request away. Only a permanent error (bad key,
+        // 400) still propagates when nothing was built.
+        if (bestAnalysis?.spec) {
+          console.warn(`[design] attempt ${attempts} failed, keeping the best spec so far:`, error?.message);
+          warnings.push(
+            `Lượt ${attempts} lỗi (${error?.message ?? error}) — giữ bản tốt nhất đã dựng.`,
+          );
           analysis = bestAnalysis;
           break;
+        }
+
+        // The CLI ran out of turns before answering: one more turn usually finishes.
+        if (error?.code === "MAX_TURNS" && budget.maxTurns > 0 && attempts < callsMax) {
+          budget.maxTurns -= 1;
+          send({
+            type: "stage",
+            stage: "retrying",
+            message: "Model hết lượt của CLI — thử lại với thêm 1 lượt",
+          });
+          messages = freshMessages(`${text}\n\n${TIMEOUT_RETRY}`, spec, { focus: text });
+          turnExtraTurns += 1;
+          continue;
         }
 
         if (error?.name !== "LlmError") throw error;
 
         const proseText = typeof error.text === "string" ? error.text.trim() : "";
-        if (!proseText || proseRetries >= 1 || attempt >= MAX_ATTEMPTS) throw error;
+        if (!proseText || budget.prose <= 0 || attempts >= callsMax) throw error;
 
-        proseRetries += 1;
+        budget.prose -= 1;
         send({
           type: "stage",
           stage: "repairing",
           message: "The answer was prose — asking for the JSON spec again",
         });
-        messages.push({ role: "user", content: PROSE_REPAIR });
+        messages = freshMessages(`${PROSE_REPAIR}\n\nOriginal request:\n${text}`, spec, { focus: text });
         continue;
+      } finally {
+        clearInterval(ticker);
       }
 
       usage = result.usage ?? usage;
-
       console.log(
-        `[design] attempt ${attempt} answered in ${Math.round((Date.now() - startedAt) / 1000)}s` +
+        `[design] attempt ${attempts} answered in ${Math.round((Date.now() - startedAt) / 1000)}s` +
           `${result.usage?.total_tokens ? `, ${result.usage.total_tokens} tokens` : ""}`,
       );
-
       send({ type: "stage", stage: "checking", message: "Đang tự kiểm tra…" });
 
       if (result?.json && typeof result.json === "object") {
+        // A patch turn merges its delta into the spec it was given; a full spec is
+        // still accepted untouched so an older/stronger model keeps working.
+        if (patchBase && !isFullSpec(result.json)) {
+          const delta = result.json;
+          result.json = applySpecPatch(patchBase, delta);
+          console.log(
+            `[design] patch merged (${describeSpecPatch(delta)}) parts=${(result.json.parts ?? []).length}`,
+          );
+        }
         result.json = autoHealSpec(result.json);
       }
-
       analysis = analyzeSpec(result.json);
 
-      if (
-        !bestAnalysis ||
-        (analysis.ok && !bestAnalysis.ok) ||
-        (analysis.ok && (analysis.issues?.length ?? 0) <= (bestAnalysis.issues?.length ?? 0)) ||
-        (!analysis.ok &&
-          !bestAnalysis.ok &&
-          (analysis.errors?.length ?? 999) < (bestAnalysis.errors?.length ?? 999))
-      ) {
+      // An edit whose answer changed the family's size/part count wildly is not
+      // allowed to replace a sane earlier candidate.
+      const drifted =
+        editBefore && analysis.ok && bestAnalysis?.ok
+          ? geometryDrift(editBefore, analysis.model?.bounds, spec, analysis.spec)
+          : null;
+      if (!drifted && isBetter(analysis, bestAnalysis)) {
         bestAnalysis = analysis;
+      } else if (drifted) {
+        console.warn(`[design] attempt ${attempts} drifted, keeping the earlier spec: ${drifted}`);
       }
 
+      if (attempts >= callsMax) break;
+
       if (analysis.ok) {
-        // A valid spec can still be missing a requested group. Ask for exactly the
-        // gaps before the turn is considered done; never report success without them.
         if (enforceCompleteness && hasRequirements) {
           const gaps = gapsFor(analysis);
           latestGaps = gaps;
-          if (!gaps.ok && attempt < MAX_ATTEMPTS) {
-            send({
-              type: "stage",
-              stage: "completing",
-              message: `Thiếu ${describeGaps(gaps)} — bổ sung`,
-            });
-            messages.push({ role: "assistant", content: compactSpec(result) });
-            messages.push({
-              role: "user",
-              content: buildSupplementPrompt(gaps.missing, text),
+          if (!gaps.ok && budget.supplement > 0 && repairsUsed === 0) {
+            budget.supplement -= 1;
+            send({ type: "stage", stage: "completing", message: `Thiếu ${describeGaps(gaps)} — bổ sung` });
+            // Adding missing parts is a patch, not a new family.
+            patchBase = result.json;
+            messages = freshMessages(buildSupplementPrompt(gaps.missing, text), patchBase, {
+              focus: text,
+              patch: true,
             });
             continue;
           }
@@ -1307,54 +1614,57 @@ async function designStable(options) {
 
         const layoutIssues = analysis.issues.filter((issue) => issue.path.startsWith("logic."));
         const severeLayout = layoutIssues.some((issue) => issue.path.startsWith("logic.drain-pan"));
-        const layoutPassEnabled = process.env.LAYOUT_PASS !== "0";
         if (
-          layoutPassEnabled &&
+          process.env.LAYOUT_PASS !== "0" &&
           (severeLayout || layoutIssues.length >= 2) &&
-          !layoutPassUsed &&
-          attempt < MAX_ATTEMPTS
+          budget.layout > 0
         ) {
-          layoutPassUsed = true;
+          budget.layout -= 1;
           nextReason = `Sửa ${layoutIssues.length} lỗi hình học`;
           send({
             type: "stage",
             stage: "repairing",
-            message: `Sửa ${layoutIssues.length} lỗi hình học`,
+            message: nextReason,
             issues: layoutIssues.slice(0, 12),
           });
-          messages.push({ role: "assistant", content: compactSpec(result) });
-          messages.push({
-            role: "user",
-            content: repairInstructions(result.json, layoutIssues, text),
-          });
+          // A repair only changes the broken parts: ask for a patch.
+          patchBase = result.json;
+          messages = freshMessages(
+            `Original request:\n${text}\n\n${repairInstructions(result.json, layoutIssues, text)}`,
+            patchBase,
+            { dependencyMap: false, patch: true },
+          );
           continue;
         }
         break;
       }
 
-      if (attempt < MAX_ATTEMPTS) {
-        send({
-          type: "stage",
-          stage: "repairing",
-          message: `Còn ${analysis.errors.length} lỗi`,
-          issues: analysis.errors.slice(0, 12),
-        });
-        messages.push({ role: "assistant", content: compactSpec(result) });
-        messages.push({
-          role: "user",
-          content: repairInstructions(result.json, analysis.errors, text),
-        });
-      }
+      if (budget.repair <= 0) break;
+      budget.repair -= 1;
+      repairsUsed += 1;
+      send({
+        type: "stage",
+        stage: "repairing",
+        message: `Còn ${analysis.errors.length} lỗi`,
+        issues: analysis.errors.slice(0, 12),
+      });
+      patchBase = result.json;
+      messages = freshMessages(
+        `Original request:\n${text}\n\n${repairInstructions(result.json, analysis.errors, text)}`,
+        patchBase,
+        { dependencyMap: false, patch: true },
+      );
     }
 
-    if (bestAnalysis && (!analysis || (!analysis.ok && bestAnalysis.ok))) {
+    if (bestAnalysis && (!analysis || isBetter(bestAnalysis, analysis))) {
       analysis = bestAnalysis;
     }
+    // The returned gaps must describe the spec actually returned.
+    if (hasRequirements && enforceCompleteness && analysis?.spec) latestGaps = gapsFor(analysis);
 
     return { analysis, attempts, gaps: latestGaps };
   };
 
-  const warnings = [];
   let outcome;
 
   /** Build a sectioned brief one "##" section at a time, keeping what worked. */
@@ -1370,45 +1680,90 @@ async function designStable(options) {
     let stepsDone = 0;
     let totalAttempts = 0;
     let finalGaps = null;
+    // A skeleton too big for one answer is re-split, so the work list can grow.
+    const queue = [...steps];
 
-    for (const [index, step] of steps.entries()) {
+    for (const [index, step] of queue.entries()) {
       try {
         const stepOutcome = await runTurn(step.prompt, spec, {
-          // Later sections are still missing from an early spec: only the last step
-          // can satisfy the whole brief.
-          enforceCompleteness: index === steps.length - 1,
+          enforceCompleteness: index === queue.length - 1,
+          section: true,
         });
         totalAttempts += stepOutcome.attempts;
-        if (stepOutcome.analysis?.spec) {
+        if (stepOutcome.gaps) finalGaps = stepOutcome.gaps;
+
+        if (stepOutcome.analysis?.ok) {
+          // Only a valid spec is a safe base for the next section.
           spec = stepOutcome.analysis.spec;
           stepsDone += 1;
-        }
-        if (stepOutcome.gaps) finalGaps = stepOutcome.gaps;
-        if (!stepOutcome.analysis?.ok) {
+        } else {
           warnings.push(
-            `Bước "${step.label}" chưa hợp lệ: ${formatIssues(stepOutcome.analysis?.errors ?? [])}`,
+            `Bước "${step.label}" chưa hợp lệ: ${formatIssues(stepOutcome.analysis?.errors ?? [])} — bỏ qua, giữ bản trước.`,
           );
         }
       } catch (stepError) {
+        if (signal?.aborted || stepError?.name === "AbortError") throw stepError;
+        const reason = stepError?.message ?? String(stepError);
+
+        // A token cap on the FIRST section means the section itself is too big: split
+        // it again instead of stopping with nothing built.
+        if (isOutputLimitError(stepError) && stepsDone === 0 && index === 0) {
+          const finer = splitNewBrief(step.prompt, Math.max(600, Math.floor(step.prompt.length / 3)));
+          if (finer && finer.length > 1) {
+            console.warn(`[design] skeleton hit OUTPUT_LIMIT — splitting into ${finer.length} smaller parts`);
+            queue.push(...finer.map((part, offset) => ({ ...part, label: `${step.label}.${offset + 1}` })));
+            warnings.push(
+              `Mục "${step.label}" quá dài — chia nhỏ thành ${finer.length} phần rồi dựng tiếp.`,
+            );
+            continue;
+          }
+        }
+
         if (isOutputLimitError(stepError)) {
-          warnings.push(`Bước "${step.label}" vượt giới hạn độ dài — dừng chia nhỏ.`);
+          warnings.push(
+            `Bước "${step.label}" vượt giới hạn độ dài (${reason}) — dừng chia nhỏ.`,
+          );
           break;
         }
-        // A later section failed: keep what the earlier sections built instead of
-        // throwing away a working family.
-        const reason = stepError?.message ?? String(stepError);
+
+        // One slow section should not cancel the remaining ones.
+        if (isTimeoutError(stepError)) {
+          warnings.push(`Bước "${step.label}" hết thời gian — bỏ qua, dựng tiếp các bước sau.`);
+          continue;
+        }
         warnings.push(`Bước "${step.label}" lỗi (${reason}) — giữ phần đã dựng.`);
         break;
       }
     }
 
-    if (stepsDone === 0) return null;
+    if (stepsDone === 0) {
+      // Name the real reason instead of a generic "nothing built".
+      return null;
+    }
     return { analysis: analyzeSpec(spec), attempts: totalAttempts, gaps: finalGaps };
   };
 
-  try {
-    outcome = await runTurn(prompt, currentSpec);
-  } catch (error) {
+  // A long brief with explicit "##" sections is built section by section from the
+  // start: one giant answer makes a slow model time out and burns the whole turn.
+  const plannedSections =
+    !currentSpec &&
+    process.env.AGENT_SECTION_SPLIT !== "0" &&
+    String(prompt ?? "").length >= config.agent.sectionSplitMinChars
+      ? splitNewBrief(prompt, 0)
+      : null;
+
+  if (plannedSections && plannedSections.length > 1) {
+    const built = await buildBySections(plannedSections);
+    if (!built) {
+      // Say which step failed and why; a bare "nothing built" hides the real cause.
+      const reasons = warnings.length > 0 ? warnings.join(" · ") : "không rõ nguyên nhân";
+      throw new Error(`Không dựng được mục nào trong brief đã chia — ${reasons}`);
+    }
+    outcome = built;
+  } else {
+    try {
+      outcome = await runTurn(prompt, currentSpec);
+    } catch (error) {
     // A new family whose first answer was cut off or timed out is rebuilt section by
     // section, instead of losing the whole request after one ten-minute wait.
     const sections = !currentSpec && (isOutputLimitError(error) || isTimeoutError(error))
@@ -1417,7 +1772,13 @@ async function designStable(options) {
 
     if (sections && sections.length > 1) {
       const built = await buildBySections(sections);
-      if (!built) throw error;
+      if (!built) {
+        const reasons = warnings.length > 0 ? warnings.join(" · ") : (error?.message ?? "không rõ nguyên nhân");
+        const failure = new Error(`Không dựng được mục nào trong brief đã chia — ${reasons}`);
+        failure.code = error?.code;
+        failure.detail = error?.detail ?? error?.message ?? undefined;
+        throw failure;
+      }
       outcome = built;
     } else if (currentSpec) {
       // An edit that failed (timeout, provider error) must not discard the family the
@@ -1431,19 +1792,32 @@ async function designStable(options) {
           "Giữ nguyên mô hình hiện tại — gửi lại, hoặc chọn model nhanh hơn.",
       );
       console.log(`[design] edit failed, keeping the current spec: ${error?.message ?? error}`);
-      outcome = { analysis: kept, attempts: 0, gaps: null };
+      outcome = { analysis: kept, attempts: 0, gaps: null, unchanged: true };
     } else {
       throw error;
     }
+    }
   }
 
-  const { analysis } = outcome;
+  let analysis = outcome.analysis;
   if (analysis?.spec) analysis.spec.lod = level;
 
   // Recomputed from the final spec: the checklist is the promise made to the user.
   let completeness = null;
   if (hasRequirements && analysis?.spec) {
     completeness = gapsFor(analysis);
+
+    if (!completeness.ok) {
+      const filled = fillMissingFromTemplate(analysis.spec, completeness);
+      if (filled) {
+        analysis = filled.analysis;
+        analysis.spec.lod = level;
+        completeness = filled.gaps;
+        warnings.push(filled.note);
+        console.log(`[design] ${filled.note}`);
+      }
+    }
+
     if (!completeness.ok) warnings.push(`Chưa đầy đủ: ${describeGaps(completeness)}`);
   }
 
@@ -1458,6 +1832,7 @@ async function designStable(options) {
     usage,
     model: model || null,
     modelCalls,
+    calls: callStats,
     promptChars,
     ...(completeness
       ? {
@@ -1466,9 +1841,14 @@ async function designStable(options) {
         }
       : {}),
     ...(warnings.length > 0 ? { warnings } : {}),
+    ...(outcome.unchanged ? { unchanged: true } : {}),
   };
 
-  if (resultKey && analysis.ok) writeCachedResult(resultKey, { analysis, stats });
+  // Only a clean, complete answer may be replayed: an incomplete one cached for 30
+  // minutes would come back every time the user resends the same brief.
+  const cacheable =
+    analysis.ok && (!completeness || completeness.ok) && warnings.length === 0;
+  if (resultKey && cacheable) writeCachedResult(resultKey, { analysis, stats });
 
   return { analysis, stats };
 }

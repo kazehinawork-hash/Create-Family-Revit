@@ -312,9 +312,15 @@ test("output-limit errors are recognised through wrapping and never treated as t
 });
 
 test("isTruncatedFrame spots a CLI answer stopped by its limits", () => {
-  assert.equal(isTruncatedFrame({ type: "result", stopReason: "max_turns", finalText: "" }), true);
-  assert.equal(isTruncatedFrame({ type: "result", stopReason: "end_turn" }, "Warning: Reached maximum conversation turns (1)."), true);
+  assert.equal(isTruncatedFrame({ type: "result", stopReason: "max_tokens", finalText: "" }), true);
+  assert.equal(isTruncatedFrame({ type: "result", stopReason: "end_turn" }, "Warning: maximum output tokens reached"), true);
   assert.equal(isTruncatedFrame({ type: "result", stopReason: "end_turn", finalText: "{}" }), false);
+  // A turn cap is not an output cap: it gets its own error and its own retry.
+  assert.equal(isTruncatedFrame({ type: "result", stopReason: "max_turns", finalText: "" }), false);
+  assert.equal(
+    isTruncatedFrame({ type: "result", stopReason: "end_turn" }, "Warning: Reached maximum conversation turns (1)."),
+    false,
+  );
 });
 
 test("the server root exists so JOBS_DIR stays inside it", () => {
