@@ -32,6 +32,26 @@ export function isPermanentError(error) {
 }
 
 /**
+ * User-facing failure class for the studio. It decides the Vietnamese advice and
+ * whether "Gửi lại" makes sense at all.
+ */
+export function classifyDesignError(error) {
+  const text = String(error?.message ?? "");
+  const status = statusOf(error);
+
+  if (error?.name === "ZodError") return "invalid-request";
+  if (isOutputLimitError(error)) return "output-limit";
+  if (status === 401 || status === 403) return "auth";
+  if (!status && /api key is missing|missing for|invalid api key|unauthorized|forbidden/i.test(text)) {
+    return "auth";
+  }
+  if (LOCAL_TIMEOUT.test(text) || /timed out/i.test(text)) return "timeout";
+  if (status && TRANSIENT_STATUS.has(status)) return "overloaded";
+  if (TRANSIENT_TEXT.test(text)) return status === 429 ? "overloaded" : "network";
+  return "unknown";
+}
+
+/**
  * The model wrote until the CLI cut it off. Retrying or switching model reproduces
  * the same over-long answer, so the brief has to be split instead.
  */
@@ -82,6 +102,33 @@ export function defaultSleep(ms, signal) {
 
     signal.addEventListener("abort", onAbort, { once: true });
   });
+}
+
+/**
+ * A whole request can fail before any spec exists: the provider is down for minutes,
+ * not seconds. One model call already retries quickly; this layer waits longer and
+ * runs the design again, so a 503 burst no longer throws away the user's brief.
+ */
+export async function retryWholeRequest(run, { delays = [20000, 45000], signal, sleep = defaultSleep, onWait } = {}) {
+  let lastError = null;
+
+  for (let attempt = 0; attempt <= delays.length; attempt += 1) {
+    try {
+      return await run();
+    } catch (error) {
+      lastError = error;
+
+      if (attempt === delays.length) throw error;
+      if (signal?.aborted) throw error;
+      if (!isTransientError(error)) throw error;
+
+      const delayMs = delays[attempt];
+      onWait?.({ attempt: attempt + 1, total: delays.length, delayMs, error });
+      await sleep(delayMs, signal);
+    }
+  }
+
+  throw lastError;
 }
 
 /**
@@ -242,6 +289,9 @@ export async function runWithModelFallback({
           modelsTried.length > 1 ? `${friendly} Model đã thử: ${modelsTried.join(" → ")}.` : friendly,
           statusOf(error) ?? undefined,
         );
+        // A typed failure (OUTPUT_LIMIT, MAX_TURNS) must survive the wrapping: the
+        // designer branches on it to split the brief or grant another turn.
+        if (error?.code) finalError.code = error.code;
         finalError.detail = String(error.message ?? error).slice(0, 1500);
         finalError.attempts = attemptCount(error);
         finalError.models = modelsTried;

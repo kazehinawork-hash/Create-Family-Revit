@@ -88,11 +88,13 @@ export function extractTemplateOptions(prompt) {
   if (rungs) options.rungCount = rungs;
 
   // "400x400x100" also sets the two widths and the height — but never the size of a
-  // sentence like "bounding box 940 x 940 x 100", which describes the result.
+  // sentence like "kích thước phủ bì 940 x 940 x 100", which describes the result.
   const triples = [...text.matchAll(/(\d{2,4})\s*x\s*(\d{2,4})\s*x\s*(\d{2,4})/gi)];
   const triple = triples.find((match) => {
-    const prefix = text.slice(Math.max(0, match.index - 48), match.index);
-    return !/(bounding|bbox|kiem tra|check|kích thước tổng|kich thuoc tong)/i.test(prefix);
+    const prefix = text.slice(Math.max(0, match.index - 120), match.index);
+    return !/(bounding|bbox|overall|phủ bì|phu bi|kích thước tổng|kich thuoc tong|bao hình|bao hinh|tổng thể|tong the)/i.test(
+      prefix,
+    );
   });
 
   if (triple && !(w1 && w2 && height)) {

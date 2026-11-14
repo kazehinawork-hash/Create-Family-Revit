@@ -33,7 +33,7 @@ async function loadMiteredTee(page: Page) {
   );
 
   await page.goto("/");
-  await page.locator("button", { hasText: "Library" }).first().click();
+  await page.locator("button", { hasText: "Thư viện" }).first().click();
   await page.locator(".saved-model-card").first().click();
   await page.getByTestId("tab-types").click();
   await expect(page.getByTestId("types-panel")).toBeVisible();

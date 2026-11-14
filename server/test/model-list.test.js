@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { extractModelIds, normalizeModelBaseUrl } from "../src/model-list.js";
+import {
+  extractModelCatalog,
+  extractModelIds,
+  extractModelNames,
+  normalizeModelBaseUrl,
+} from "../src/model-list.js";
 
 test("extracts chat models from an OpenAI-compatible /models payload", () => {
   const ids = extractModelIds("openai", {
@@ -37,6 +42,32 @@ test("extracts Anthropic models and avoids duplicates", () => {
 test("returns an empty list for unrecognised payloads", () => {
   assert.deepEqual(extractModelIds("openai", null), []);
   assert.deepEqual(extractModelIds("openai", { data: "nope" }), []);
+});
+
+test("keeps only models that speak /chat/completions and returns their names", () => {
+  const catalog = extractModelCatalog("openai", {
+    data: [
+      { id: "deepseek/deepseek-v4-flash", name: "DeepSeek V4 Flash", supported_endpoints: ["/chat/completions"] },
+      { id: "claude-fable-5", name: "Claude Fable 5", supported_endpoints: ["/messages"] },
+      { id: "plain-model" },
+    ],
+  });
+
+  assert.deepEqual(catalog.models, ["deepseek/deepseek-v4-flash", "plain-model"]);
+  assert.equal(catalog.names["deepseek/deepseek-v4-flash"], "DeepSeek V4 Flash");
+  assert.equal(catalog.names["claude-fable-5"], undefined, "the dropped model has no name");
+});
+
+test("extractModelNames maps only the kept models to their display name", () => {
+  const names = extractModelNames("openai", {
+    data: [
+      { id: "deepseek/deepseek-v4-flash", name: "DeepSeek V4 Flash" },
+      { id: "same-name", name: "same-name" },
+      { id: "no-name" },
+    ],
+  });
+
+  assert.deepEqual(names, { "deepseek/deepseek-v4-flash": "DeepSeek V4 Flash" });
 });
 
 test("normalizes full chat URLs back to the model-catalog root", () => {

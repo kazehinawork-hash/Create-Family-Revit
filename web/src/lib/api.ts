@@ -21,10 +21,25 @@ export interface DesignStats {
   modelCalls?: number;
   promptChars?: number;
   savedCalls?: number;
-  calls?: Array<{ tier: number; model: string; promptChars: number; modelCalls: number }>;
+  calls?: Array<{
+    tier?: number;
+    model: string;
+    promptChars?: number;
+    /** Characters sent to the model for this call. */
+    inChars?: number;
+    /** Characters the model answered with. */
+    outChars?: number;
+    modelCalls?: number;
+    firstTokenMs?: number | null;
+    totalMs?: number;
+    effort?: string | null;
+    via?: string;
+  }>;
   step?: { index: number; total: number; label: string; partial?: boolean };
   steps?: Array<{ label: string; ms: number; ok: boolean; error?: string }>;
   warnings?: string[];
+  /** The design failed and the previous spec was kept unchanged. */
+  unchanged?: boolean;
   /** Product type, rule pack origin and the values the agent actually used. */
   productType?: string | null;
   ruleSource?: "builtin" | "learned" | "learned-new" | null;
@@ -58,6 +73,8 @@ export interface SpecEvent {
   issues: Issue[];
   errors: Issue[];
   stats: DesignStats;
+  /** Server-side verdict, so "unchanged" is never read as an update. */
+  outcome?: "ok" | "incomplete" | "has-errors" | "unchanged";
 }
 
 export interface ErrorEvent {
@@ -66,6 +83,8 @@ export interface ErrorEvent {
   /** Raw provider text, shown inside the collapsible "details" block. */
   details?: string;
   retryable?: boolean;
+  /** auth | overloaded | network | timeout | output-limit | invalid-request | unknown */
+  kind?: string;
 }
 
 /** First frame of every design stream: the id used to recover a result later. */
@@ -209,6 +228,8 @@ export async function streamDesign(
     /** Never switch to a fallback model, even if the selected one is overloaded. */
     lockModel?: boolean;
     customApiConfig?: CustomApiConfig;
+    /** Command Code API key used to authenticate the local CLI (no cmd login needed). */
+    commandCodeApiKey?: string;
     attachments?: { path: string; name: string }[];
   },
   onEvent: (event: DesignEvent) => void,
@@ -423,6 +444,74 @@ export interface SavedModelMeta {
   updatedAt: number;
   partsCount: number;
   paramsCount: number;
+  /** "" means Chưa nhóm. Stored next to the spec, never inside it. */
+  group?: string;
+  lod?: number | null;
+  typeName?: string;
+  /** Snapshot of the viewer, or null when the family was saved without one. */
+  thumbUrl?: string | null;
+}
+
+export interface LibraryGroupSummary {
+  name: string;
+  count: number;
+  createdAt?: number;
+}
+
+export interface LibrarySnapshot {
+  groups: LibraryGroupSummary[];
+  ungrouped: number;
+  total: number;
+}
+
+export async function fetchLibraryGroups(): Promise<LibrarySnapshot> {
+  try {
+    const res = await fetch("/api/library/groups");
+    if (!res.ok) return { groups: [], ungrouped: 0, total: 0 };
+    const data = await res.json();
+    return {
+      groups: Array.isArray(data.groups) ? data.groups : [],
+      ungrouped: Number(data.ungrouped) || 0,
+      total: Number(data.total) || 0,
+    };
+  } catch {
+    return { groups: [], ungrouped: 0, total: 0 };
+  }
+}
+
+async function libraryRequest<T>(url: string, method: string, body?: unknown): Promise<T> {
+  const res = await fetch(url, {
+    method,
+    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.ok === false) {
+    throw new Error(data.error || `Yêu cầu thất bại (${res.status})`);
+  }
+  return data as T;
+}
+
+export function createLibraryGroup(name: string): Promise<LibrarySnapshot & { name: string }> {
+  return libraryRequest("/api/library/groups", "POST", { name });
+}
+
+export function renameLibraryGroup(
+  from: string,
+  name: string,
+): Promise<LibrarySnapshot & { name: string; previous: string; updated: number }> {
+  return libraryRequest(`/api/library/groups/${encodeURIComponent(from)}`, "PATCH", { name });
+}
+
+export function deleteLibraryGroup(name: string): Promise<LibrarySnapshot & { updated: number }> {
+  return libraryRequest(`/api/library/groups/${encodeURIComponent(name)}`, "DELETE");
+}
+
+export function moveModelToGroup(
+  id: string,
+  group: string,
+): Promise<{ ok: boolean; id: string; group: string }> {
+  return libraryRequest(`/api/models/${encodeURIComponent(id)}/group`, "PATCH", { group });
 }
 
 export interface SavedModelDetail {
@@ -485,7 +574,16 @@ export async function fetchModelRevision(id: string, stamp: string): Promise<Sav
   }
 }
 
-export async function saveModel(payload: { id?: string; name?: string; spec: FamilySpec; entries?: any[] }): Promise<{ ok: boolean; id?: string }> {
+export async function saveModel(payload: {
+  id?: string;
+  name?: string;
+  spec: FamilySpec;
+  entries?: any[];
+  /** Only used for a new model; the server keeps an existing model's group. */
+  group?: string;
+  /** Data URL of a 320px viewer snapshot (JPEG/WebP). */
+  thumbnail?: string;
+}): Promise<{ ok: boolean; id?: string; group?: string }> {
   const res = await fetch("/api/models", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

@@ -10,7 +10,7 @@ import { auditBuild } from "./build-qa.js";
 import { agentStatus, detectAgentBackends, getCmdcModels } from "./agents.js";
 import { bridgeAlive, ensureBridge, findRevitExe } from "./revit.js";
 import { createPortablePackage } from "./portable.js";
-import { extractModelIds, normalizeModelBaseUrl } from "./model-list.js";
+import { extractModelCatalog, extractModelIds, normalizeModelBaseUrl } from "./model-list.js";
 import {
   createDesignJob,
   designJobSeenSince,
@@ -21,6 +21,17 @@ import {
 } from "./jobs.js";
 import { checkModel } from "./model-check.js";
 import { writeJsonAtomic } from "./files.js";
+import {
+  deleteGroup,
+  ensureGroup,
+  isModelFile,
+  librarySnapshot,
+  normalizeGroupName,
+  readModelFile,
+  renameGroup,
+  setModelGroup,
+} from "./library.js";
+import { retryWholeRequest, classifyDesignError } from "./retry.js";
 import {
   checkOutboundUrl,
   createRateLimiter,
@@ -34,12 +45,16 @@ import {
   buildRequest,
   designRequest,
   firstIssue,
+  groupCreateRequest,
+  groupRenameRequest,
+  modelGroupRequest,
   modelSaveRequest,
   uploadRequest,
 } from "./schemas.js";
 import { v1Router } from "./routes/api-v1.js";
 
-const app = express();
+/** The express app, exported so tests can mount it without opening the real port. */
+export const app = express();
 app.disable("x-powered-by");
 
 app.use((_req, res, next) => {
@@ -78,6 +93,20 @@ app.use((req, res, next) => {
 
 const designLimiter = createRateLimiter({ windowMs: 60_000, max: 6 });
 const buildLimiter = createRateLimiter({ windowMs: 60_000, max: 12 });
+
+/** Vietnamese wording for a rejected design request (zod issues are English). */
+function designValidationMessage(parsed) {
+  const issue = parsed?.error?.issues?.[0];
+  const path = String(issue?.path?.join(".") ?? "");
+  const message = String(issue?.message ?? "");
+
+  if (path === "prompt") {
+    return /too long|50000|50,000/i.test(message)
+      ? "Nội dung mô tả quá dài (tối đa 50.000 ký tự)."
+      : "Hãy mô tả thiết bị bạn cần dựng.";
+  }
+  return path ? `Yêu cầu không hợp lệ ở "${path}".` : "Yêu cầu không hợp lệ.";
+}
 
 app.use(express.json({ limit: "30mb" }));
 
@@ -262,6 +291,7 @@ app.post("/api/verify-api", async (req, res) => {
 
     // Default: OpenAI compatible endpoint (OpenAI, DeepSeek, OpenRouter, Ollama...).
     const endpoint = modelBase;
+    const providerLabel = url.includes("commandcode.ai") ? "Command Code" : "OpenAI Compatible";
     const testUrl = `${endpoint}/models`;
     const testRes = await fetch(testUrl, {
       headers: { Authorization: `Bearer ${trimmedKey}` },
@@ -278,7 +308,7 @@ app.post("/api/verify-api", async (req, res) => {
       if (testRes.status === 404 || testRes.status === 405) {
         return res.json({
           ok: true,
-          provider: "OpenAI Compatible",
+          provider: providerLabel,
           models: [],
           warning: "Endpoint không cung cấp /models; hãy nhập model thủ công.",
         });
@@ -290,10 +320,73 @@ app.post("/api/verify-api", async (req, res) => {
       });
     }
     const payload = await testRes.json().catch(() => null);
+    const catalog = extractModelCatalog("openai", payload);
+
+    if (url.includes("commandcode.ai")) {
+      // The Command Code catalogue is public, so /models proves nothing about the key.
+      // Prove it with one real chat call over the same wire the app uses. A claude-*
+      // model only speaks /messages and is filtered out of the catalog above.
+      const preferred =
+        model && !/\s/.test(String(model).trim()) && catalog.models.includes(String(model).trim())
+          ? String(model).trim()
+          : catalog.models[0] || "deepseek/deepseek-v4-flash";
+
+      try {
+        const probe = await fetch(`${endpoint}/chat/completions`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${trimmedKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: preferred,
+            max_tokens: 1,
+            messages: [{ role: "user", content: "hi" }],
+          }),
+          redirect: "error",
+          signal: AbortSignal.timeout(8000),
+        });
+
+        if (probe.status === 401 || probe.status === 403) {
+          return res.json({
+            ok: false,
+            status: probe.status,
+            error: "API Key Command Code không hợp lệ",
+          });
+        }
+        if (!probe.ok) {
+          // Overloaded or rate-limited: the key may still be fine.
+          return res.json({
+            ok: true,
+            provider: "Command Code",
+            models: catalog.models,
+            modelNames: catalog.names,
+            warning: `Chưa kiểm tra được key (HTTP ${probe.status}); danh sách model vẫn dùng được.`,
+          });
+        }
+      } catch (probeError) {
+        return res.json({
+          ok: true,
+          provider: "Command Code",
+          models: catalog.models,
+          modelNames: catalog.names,
+          warning: `Chưa kiểm tra được key: ${probeError.message || probeError}`,
+        });
+      }
+
+      return res.json({
+        ok: true,
+        provider: "Command Code",
+        models: catalog.models,
+        modelNames: catalog.names,
+      });
+    }
+
     return res.json({
       ok: true,
-      provider: "OpenAI Compatible",
-      models: extractModelIds("openai", payload),
+      provider: providerLabel,
+      models: catalog.models,
+      modelNames: catalog.names,
     });
   } catch (err) {
     return res.json({ ok: false, error: err.message || "Không thể kết nối tới máy chủ API" });
@@ -416,17 +509,27 @@ app.get("/api/health", async (_req, res) => {
   }
 });
 
-app.post("/api/design", async (req, res) => {
-  const limit = designLimiter(req.ip);
+/** "unchanged" (old spec kept), "has-errors", "incomplete", or "ok". */
+export function designOutcome(analysis, stats) {
+  if (stats?.unchanged) return "unchanged";
+  if (!analysis?.ok) return "has-errors";
+  if (stats?.complete === false) return "incomplete";
+  return "ok";
+}
+
+app.post("/api/design", async (req, res) => {  const limit = designLimiter(req.ip);
   if (!limit.allowed) {
     res.setHeader("Retry-After", String(limit.retryAfter));
-    res.status(429).json({ error: "Too many design runs. Wait a few seconds and try again." });
+    res.status(429).json({
+      error: `Bạn gửi hơi nhanh — đợi ${limit.retryAfter} giây rồi thử lại.`,
+      kind: "overloaded",
+    });
     return;
   }
 
   const parsed = designRequest.safeParse(req.body || {});
   if (!parsed.success) {
-    res.status(400).json({ error: firstIssue(parsed) });
+    res.status(400).json({ error: designValidationMessage(parsed), kind: "invalid-request" });
     return;
   }
 
@@ -525,19 +628,45 @@ app.post("/api/design", async (req, res) => {
   }, config.agent.heartbeatMs);
 
   try {
-    const result = await design({
-      prompt,
-      currentSpec: body.spec ?? null,
-      lod: body.lod,
-      model: body.model,
-      lockModel: body.lockModel,
-      customApiConfig: body.customApiConfig,
-      attachments: normalizeAttachments(body.attachments),
-      // Unknown product types get one cheap model call to learn a reusable pack.
-      learnRules: true,
-      signal: controller.signal,
-      emit,
-    });
+    // One model call retries quickly; a provider that is down for minutes needs a
+    // longer wait. The job stays "running" and the studio shows the countdown.
+    const result = await retryWholeRequest(
+      () =>
+        design({
+          prompt,
+          currentSpec: body.spec ?? null,
+          lod: body.lod,
+          model: body.model,
+          lockModel: body.lockModel,
+          customApiConfig: body.customApiConfig,
+          commandCodeApiKey: body.commandCodeApiKey,
+          attachments: normalizeAttachments(body.attachments),
+          // Unknown product types get one cheap model call to learn a reusable pack.
+          learnRules: true,
+          signal: controller.signal,
+          emit,
+        }),
+      {
+        delays: config.agent.requestRetryDelays,
+        signal: controller.signal,
+        onWait: ({ attempt, total, delayMs, error }) => {
+          console.warn(
+            `[design] provider overloaded (${error?.message ?? error}); retry ${attempt}/${total} in ${delayMs} ms`,
+          );
+          emit({
+            type: "stage",
+            stage: "retrying",
+            message:
+              `Nhà cung cấp model đang quá tải — tự thử lại sau ${Math.round(delayMs / 1000)}s` +
+              ` (lần ${attempt}/${total})`,
+          });
+        },
+      },
+    );
+
+    // The studio words the answer from this: a kept old spec must never read as an
+    // update, and a spec with errors must not read as a clean build.
+    const outcome = designOutcome(result.analysis, result.stats);
 
     emit({
       type: "spec",
@@ -545,6 +674,7 @@ app.post("/api/design", async (req, res) => {
       issues: result.analysis.issues,
       errors: result.analysis.errors,
       stats: result.stats,
+      outcome,
     });
 
     finishDesignJob(job.job_id, {
@@ -560,19 +690,22 @@ app.post("/api/design", async (req, res) => {
       emit({
         type: "stage",
         stage: "needs-work",
-        message: `${result.analysis.errors.length} problem${result.analysis.errors.length === 1 ? "" : "s"} left in the model`,
+        message: `Còn ${result.analysis.errors.length} lỗi trong mô hình`,
         issues: result.analysis.errors,
       });
     }
   } catch (error) {
     console.error("design failed:", error);
     const message = error?.message || String(error);
+    const kind = classifyDesignError(error);
+    const retryable = !(kind === "auth" || kind === "invalid-request");
     finishDesignJob(job.job_id, { status: "error", error: message });
     emit({
       type: "error",
       message,
       details: error?.detail ?? undefined,
-      retryable: error?.transient !== false,
+      kind,
+      retryable,
     });
   } finally {
     clearInterval(keepAlive);
@@ -760,6 +893,23 @@ function historyDir(modelId) {
   return path.join(config.dirs.saved, ".history", safeModelId(modelId));
 }
 
+/** Thumbnails live next to the model file, never inside the JSON. */
+function thumbPath(modelId) {
+  return path.join(config.dirs.saved, `${safeModelId(modelId)}.thumb.jpg`);
+}
+
+function saveThumbnail(modelId, dataUrl) {
+  const match = /^data:image\/(?:jpeg|jpg|webp|png);base64,(.+)$/i.exec(String(dataUrl ?? ""));
+  if (!match) return false;
+  try {
+    fs.writeFileSync(thumbPath(modelId), Buffer.from(match[1], "base64"));
+    return true;
+  } catch (error) {
+    console.warn(`[library] could not write thumbnail for ${modelId}: ${error?.message}`);
+    return false;
+  }
+}
+
 /** Every Save keeps the previous file as a revision, so an edit can always be rolled back. */
 function archiveModel(modelId, filePath) {
   if (!modelId || !fs.existsSync(filePath)) return;
@@ -772,21 +922,26 @@ function archiveModel(modelId, filePath) {
 app.get("/api/models", (_req, res) => {
   try {
     ensureSavedDir();
-    const files = fs.readdirSync(config.dirs.saved).filter((f) => f.endsWith(".json"));
+    // `_library.json` (and any other underscore file) is metadata, not a model.
+    const files = fs.readdirSync(config.dirs.saved).filter(isModelFile);
     const models = files
       .map((file) => {
         try {
           const filePath = path.join(config.dirs.saved, file);
-          const raw = fs.readFileSync(filePath, "utf8");
-          const data = JSON.parse(raw);
+          const data = JSON.parse(fs.readFileSync(filePath, "utf8"));
           const stats = fs.statSync(filePath);
+          const id = file.replace(/\.json$/, "");
           return {
-            id: file.replace(/\.json$/, ""),
+            id,
             name: data.spec?.name || data.name || file,
+            typeName: data.spec?.typeName || data.typeName || "",
             category: data.spec?.category || data.category || "Mechanical Equipment",
+            lod: Number(data.spec?.lod) || null,
+            group: typeof data.group === "string" ? data.group : "",
             updatedAt: stats.mtimeMs,
             partsCount: data.spec?.parts?.length || data.parts?.length || 0,
             paramsCount: data.spec?.parameters?.length || data.parameters?.length || 0,
+            thumbUrl: fs.existsSync(thumbPath(id)) ? `/api/models/${encodeURIComponent(id)}/thumb` : null,
           };
         } catch {
           return null;
@@ -796,6 +951,102 @@ app.get("/api/models", (_req, res) => {
       .sort((a, b) => b.updatedAt - a.updatedAt);
 
     res.json({ models });
+  } catch (error) {
+    res.status(500).json({ error: error?.message || String(error) });
+  }
+});
+
+app.get("/api/library/groups", (_req, res) => {
+  try {
+    ensureSavedDir();
+    res.json(librarySnapshot(config.dirs.saved));
+  } catch (error) {
+    res.status(500).json({ error: error?.message || String(error) });
+  }
+});
+
+app.post("/api/library/groups", (req, res) => {
+  try {
+    ensureSavedDir();
+    const parsed = groupCreateRequest.safeParse(req.body || {});
+    if (!parsed.success) {
+      res.status(400).json({ error: firstIssue(parsed) });
+      return;
+    }
+
+    const normalized = normalizeGroupName(parsed.data.name);
+    if (normalized.error || !normalized.name) {
+      res.status(400).json({ error: normalized.error || "Tên nhóm không được để trống." });
+      return;
+    }
+
+    const snapshot = librarySnapshot(config.dirs.saved);
+    if (snapshot.groups.some((group) => group.name.toLowerCase() === normalized.name.toLowerCase())) {
+      res.status(400).json({ error: "Nhóm đã tồn tại." });
+      return;
+    }
+
+    const created = ensureGroup(config.dirs.saved, normalized.name);
+    if (created.error) {
+      res.status(400).json({ error: created.error });
+      return;
+    }
+    res.json({ ok: true, name: created.name, ...librarySnapshot(config.dirs.saved) });
+  } catch (error) {
+    res.status(500).json({ error: error?.message || String(error) });
+  }
+});
+
+app.patch("/api/library/groups/:name", (req, res) => {
+  try {
+    ensureSavedDir();
+    const parsed = groupRenameRequest.safeParse(req.body || {});
+    if (!parsed.success) {
+      res.status(400).json({ error: firstIssue(parsed) });
+      return;
+    }
+
+    const result = renameGroup(config.dirs.saved, req.params.name, parsed.data.name);
+    if (result.error) {
+      res.status(result.status ?? 400).json({ error: result.error });
+      return;
+    }
+    res.json({ ok: true, ...result, ...librarySnapshot(config.dirs.saved) });
+  } catch (error) {
+    res.status(500).json({ error: error?.message || String(error) });
+  }
+});
+
+app.delete("/api/library/groups/:name", (req, res) => {
+  try {
+    ensureSavedDir();
+    const result = deleteGroup(config.dirs.saved, req.params.name);
+    if (result.error) {
+      res.status(result.status ?? 400).json({ error: result.error });
+      return;
+    }
+    // The models stay in the library; only their group is cleared.
+    res.json({ ok: true, ...result, ...librarySnapshot(config.dirs.saved) });
+  } catch (error) {
+    res.status(500).json({ error: error?.message || String(error) });
+  }
+});
+
+app.patch("/api/models/:id/group", (req, res) => {
+  try {
+    ensureSavedDir();
+    const parsed = modelGroupRequest.safeParse(req.body || {});
+    if (!parsed.success) {
+      res.status(400).json({ error: firstIssue(parsed) });
+      return;
+    }
+
+    const result = setModelGroup(config.dirs.saved, safeModelId(req.params.id), parsed.data.group);
+    if (result.error) {
+      res.status(result.status ?? 400).json({ error: result.error });
+      return;
+    }
+    res.json({ ok: true, id: result.id, group: result.group });
   } catch (error) {
     res.status(500).json({ error: error?.message || String(error) });
   }
@@ -812,6 +1063,21 @@ app.get("/api/models/:id", (req, res) => {
     }
     const raw = fs.readFileSync(filePath, "utf8");
     res.json(JSON.parse(raw));
+  } catch (error) {
+    res.status(500).json({ error: error?.message || String(error) });
+  }
+});
+
+app.get("/api/models/:id/thumb", (req, res) => {
+  try {
+    const file = thumbPath(req.params.id);
+    if (!fs.existsSync(file)) {
+      res.status(404).json({ error: "Thumbnail not found" });
+      return;
+    }
+    res.setHeader("Cache-Control", "no-cache");
+    res.type("image/jpeg");
+    res.sendFile(file);
   } catch (error) {
     res.status(500).json({ error: error?.message || String(error) });
   }
@@ -878,24 +1144,35 @@ app.post("/api/models", (req, res) => {
       return;
     }
 
-    const { id, name, spec, entries } = parsed.data;
+    const { id, name, spec, entries, group, thumbnail } = parsed.data;
     const modelId = id
       ? path.basename(id).replace(/[^\w.\- ]+/g, "_")
       : `${Date.now()}-${(name || spec.name).toLowerCase().replace(/[^\w]+/g, "-").slice(0, 50)}`;
 
     const filePath = path.join(config.dirs.saved, `${modelId}.json`);
+    let previousGroup = "";
     // Overwriting an existing model keeps the previous version as a revision.
-    if (id) archiveModel(modelId, filePath);
+    if (id && fs.existsSync(filePath)) {
+      archiveModel(modelId, filePath);
+      // The group lives on the model file, not in the spec: a plain Save must never
+      // drop it. Moving between groups goes through PATCH /api/models/:id/group.
+      const existing = readModelFile(filePath);
+      previousGroup = typeof existing?.group === "string" ? existing.group : "";
+    }
 
     const payload = {
       id: modelId,
       name: name || spec.name,
+      // New models may start in the group selected in the library; overwrites keep theirs.
+      group: previousGroup || normalizeGroupName(group ?? "").name || "",
       spec,
       entries: Array.isArray(entries) ? entries : [],
       savedAt: Date.now(),
     };
     writeJsonAtomic(filePath, payload);
-    res.json({ ok: true, id: modelId, name: payload.name });
+    if (payload.group) ensureGroup(config.dirs.saved, payload.group);
+    if (thumbnail) saveThumbnail(modelId, thumbnail);
+    res.json({ ok: true, id: modelId, name: payload.name, group: payload.group });
   } catch (error) {
     res.status(500).json({ error: error?.message || String(error) });
   }
@@ -964,6 +1241,12 @@ app.delete("/api/models/:id", (req, res) => {
     const filePath = path.join(config.dirs.saved, `${safeId}.json`);
     if (fs.existsSync(filePath)) {
       fs.unlinkSync(filePath);
+    }
+    // The preview belongs to the model: remove it with the model.
+    try {
+      if (fs.existsSync(thumbPath(safeId))) fs.unlinkSync(thumbPath(safeId));
+    } catch {
+      /* a locked thumbnail must not fail the delete */
     }
     res.json({ ok: true, id: safeId });
   } catch (error) {

@@ -16,5 +16,5 @@ test("the studio shell loads and the API is alive", async ({ page, request }) =>
 test("an empty brief is rejected by the API validation", async ({ request }) => {
   const response = await request.post("/api/design", { data: {} });
   expect(response.status()).toBe(400);
-  expect((await response.json()).error).toBe("A prompt is required");
+  expect((await response.json()).error).toBe("Hãy mô tả thiết bị bạn cần dựng.");
 });

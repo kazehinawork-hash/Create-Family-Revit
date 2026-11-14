@@ -13,6 +13,7 @@ import {
 } from "@family/spec-core";
 import { parameterDisplay, parameterUnit, type Units } from "../lib/format";
 import { TypesPanel } from "./TypesPanel";
+import { t } from "../lib/strings";
 
 interface Props {
   spec: FamilySpec;
@@ -412,21 +413,21 @@ export function ParameterPanel({
           className={`tab ${tab === "parameters" ? "active" : ""}`}
           onClick={() => setTab("parameters")}
         >
-          Parameters <span className="count">{spec.parameters.length}</span>
+          {t.parameters} <span className="count">{spec.parameters.length}</span>
         </button>
         <button
           type="button"
           className={`tab ${tab === "parts" ? "active" : ""}`}
           onClick={() => setTab("parts")}
         >
-          Parts <span className="count">{spec.parts.length}</span>
+          {t.parts} <span className="count">{spec.parts.length}</span>
         </button>
         <button
           type="button"
           className={`tab ${tab === "connectors" ? "active" : ""}`}
           onClick={() => setTab("connectors")}
         >
-          Connectors <span className="count">{spec.connectors?.length ?? 0}</span>
+          {t.connectors} <span className="count">{spec.connectors?.length ?? 0}</span>
         </button>
         <button
           type="button"
@@ -434,7 +435,7 @@ export function ParameterPanel({
           onClick={() => setTab("types")}
           data-testid="tab-types"
         >
-          Types <span className="count">{types.length}</span>
+          {t.types} <span className="count">{types.length}</span>
         </button>
       </div>
 
@@ -444,8 +445,8 @@ export function ParameterPanel({
             <input
               value={filter}
               onChange={(event) => setFilter(event.target.value)}
-              placeholder="Filter parameters"
-              aria-label="Filter parameters"
+              placeholder={t.filterParameters}
+              aria-label={t.filterParameters}
             />
           </div>
 
@@ -488,7 +489,7 @@ export function ParameterPanel({
             })}
 
             {groups.length === 0 && (
-              <div style={{ padding: "18px 12px", color: "#8c8e91" }}>No parameter matches that filter.</div>
+              <div className="pane-empty small">Không có tham số nào khớp bộ lọc.</div>
             )}
 
             {adding ? (
@@ -537,7 +538,7 @@ export function ParameterPanel({
             <input
               value={partFilter}
               onChange={(event) => setPartFilter(event.target.value)}
-              placeholder="Filter parts"
+              placeholder={t.filterParts}
               aria-label="Filter parts"
             />
             <label className="parity-filter" title="Chỉ hiện part sẽ khác preview hoặc mất native form">
