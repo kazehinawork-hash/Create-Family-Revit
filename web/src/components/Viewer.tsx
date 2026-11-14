@@ -12,6 +12,7 @@ import {
   type PreviewQuality,
 } from "../lib/three-build";
 import { buildPartGeometryAsync, type BuiltPartGeometry } from "../lib/geometry-pool";
+import { t } from "../lib/strings";
 
 interface PartCacheEntry {
   geometryKey: string;
@@ -47,6 +48,10 @@ interface Props {
   highlightPartIds?: string[];
   focusPartId?: string | null;
   onUpdateParameter?: (name: string, value: number) => void;
+  /** The canvas, so the studio can save a thumbnail of what is on screen. */
+  onCanvasReady?: (canvas: HTMLCanvasElement) => void;
+  /** Empty-state suggestion: start a sample family. */
+  onLoadSample?: () => void;
 }
 
 /**
@@ -196,9 +201,15 @@ export function Viewer({
   highlightPartIds = [],
   focusPartId = null,
   onUpdateParameter,
+  onCanvasReady,
+  onLoadSample,
 }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const cubeHostRef = useRef<HTMLDivElement>(null);
+  // The canvas is created once; this ref lets the parent capture it without
+  // tearing the scene down whenever a callback identity changes.
+  const onCanvasReadyRef = useRef<Props["onCanvasReady"]>(onCanvasReady);
+  onCanvasReadyRef.current = onCanvasReady;
   const stateRef = useRef<SceneState | null>(null);
   // The scene only renders when something actually changed: camera motion fires a
   // "change" event, geometry/style effects mark it dirty. Saves GPU when idle.
@@ -388,9 +399,10 @@ export function Viewer({
     const host = hostRef.current;
     if (!host) return;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setClearColor(0xecebe5, 1);
+    // Transparent canvas: the CSS gradient behind it carries the light/dark theme.
+    renderer.setClearColor(0x000000, 0);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 0.96;
     renderer.shadowMap.enabled = shadowsEnabledRef.current;
@@ -399,6 +411,7 @@ export function Viewer({
     // refresh it when the scene changes instead of re-rendering it every frame.
     renderer.shadowMap.autoUpdate = false;
     renderer.shadowMap.needsUpdate = true;
+    onCanvasReadyRef.current?.(renderer.domElement);
     renderer.domElement.style.width = "100%";
     renderer.domElement.style.height = "100%";
     host.appendChild(renderer.domElement);
@@ -488,9 +501,14 @@ export function Viewer({
     const connectorsGroup = new THREE.Group();
     scene.add(connectorsGroup);
 
-    const grid = new THREE.GridHelper(6000, 30, 0xcfccc4, 0xdedbd4);
+    const grid = new THREE.GridHelper(6000, 30, 0x9aa0a6, 0xb9bec4);
     grid.rotation.x = Math.PI / 2;
     grid.position.z = -0.4;
+    // Faint lines: the model must dominate, not the grid.
+    const gridMaterial = grid.material as THREE.Material;
+    gridMaterial.transparent = true;
+    gridMaterial.opacity = 0.2;
+    gridMaterial.depthWrite = false;
     scene.add(grid);
 
     // Catches the key light's shadow so parts read as sitting on the floor.
@@ -1797,11 +1815,13 @@ export function Viewer({
     }
 
     const limitParts = visiblePartCount > 0 ? visiblePartCount : model.parts.length;
-    const partsToRender = model.parts.slice(0, limitParts);
+    // Parts that are not placed yet stay in the scene as faint ghosts instead of
+    // floating around the origin while the rest of the family assembles.
+    const partsToRender = model.parts;
     const wanted = new Set<string>();
     const materialsKey = materials.map((material) => `${material.name}:${material.color ?? ""}`).join(",");
 
-    const styleOf = (part: ResolvedPart) => {
+    const styleOf = (part: ResolvedPart, ghost = false) => {
       const isClearance =
         part.id.toLowerCase().includes("clearance") || part.name.toLowerCase().includes("clearance");
       const props = partMaterialProps(part, materials);
@@ -1816,6 +1836,7 @@ export function Viewer({
         hasIssue: issuePartIds.includes(part.id),
         isAffected: highlightPartIds.includes(part.id),
         isAnimating: Boolean(animatingPartName) && part.name === animatingPartName,
+        isGhost: ghost,
       };
     };
 
@@ -1825,13 +1846,22 @@ export function Viewer({
       for (const child of entry.group.children) child.name = style.name;
       // Selection keeps the block solid; only "Make transparent" in the context menu
       // turns a part see-through.
-      const transparent = style.isTransparent;
+      const transparent = style.isTransparent || style.isGhost;
       const transparencyChanged = material.transparent !== transparent;
       material.color.set(style.isSelected ? 0xb7cff0 : style.color);
+      // Lift the palette a little: the old flat grey read as "washed out" on the beige
+      // background, especially at low zoom.
+      if (!style.isSelected) material.color.lerp(new THREE.Color(0xffffff), 0.12);
       material.metalness = style.metalness;
       material.roughness = style.roughness;
       material.transparent = transparent;
-      material.opacity = style.isTransparent ? (style.isClearance ? 0.07 : 0.35) : 1;
+      material.opacity = style.isGhost
+        ? 0.1
+        : style.isTransparent
+          ? style.isClearance
+            ? 0.07
+            : 0.35
+          : 1;
       material.depthWrite = !transparent;
       material.emissive.set(style.isSelected ? 0x2f6fd0 : style.color);
       material.emissiveIntensity = style.isSelected ? 0.04 : style.isAnimating ? 0.55 : 0;
@@ -1840,7 +1870,11 @@ export function Viewer({
 
       edgeMaterial.visible = true;
 
-      if (style.isSelected) {
+      if (style.isGhost) {
+        edgeMaterial.color.setHex(0x8a9199);
+        edgeMaterial.opacity = 0.12;
+        edgeMaterial.transparent = true;
+      } else if (style.isSelected) {
         edgeMaterial.color.setHex(0x3f8ce8); // Viền xanh Revit dịu quanh part đang chọn
         edgeMaterial.opacity = 0.75;
         edgeMaterial.transparent = true;
@@ -1871,7 +1905,7 @@ export function Viewer({
       }
 
       for (const child of entry.group.children) {
-        if (child instanceof THREE.Mesh) child.castShadow = !style.isTransparent;
+        if (child instanceof THREE.Mesh) child.castShadow = !style.isTransparent && !style.isGhost;
       }
     };
 
@@ -1880,6 +1914,7 @@ export function Viewer({
       geometryKey: string,
       styleKey: string,
       built: BuiltPartGeometry,
+      ghost = false,
     ): PartCacheEntry => {
       const disposables: { dispose: () => void }[] = [];
       const group = new THREE.Group();
@@ -1939,15 +1974,16 @@ export function Viewer({
 
       state.content.add(group);
       const entry: PartCacheEntry = { geometryKey, styleKey, group, meshMaterial, edgeMaterial, disposables };
-      applyStyle(entry, styleOf(part));
+      applyStyle(entry, styleOf(part, ghost));
       return entry;
     };
 
     let styleChanged = false;
-    const pending: { part: ResolvedPart; geometryKey: string; styleKey: string }[] = [];
+    const pending: { part: ResolvedPart; geometryKey: string; styleKey: string; ghost: boolean }[] = [];
 
-    for (const part of partsToRender) {
+    for (const [index, part] of partsToRender.entries()) {
       if (hiddenPartIds.includes(part.id)) continue;
+      const ghost = visiblePartCount > 0 && index >= limitParts;
 
       const isClearance =
         part.id.toLowerCase().includes("clearance") || part.name.toLowerCase().includes("clearance");
@@ -1967,7 +2003,7 @@ export function Viewer({
       // Geometry only depends on the resolved shape. Name/material/colour changes
       // are style-only and must not cut the solid again.
       const geometryKey = `${shapeKey}|${previewQuality}`;
-      const style = styleOf(part);
+      const style = styleOf(part, ghost);
       const styleKey = [
         part.name,
         part.material ?? "",
@@ -1979,6 +2015,7 @@ export function Viewer({
         style.hasIssue ? "issue" : "",
         style.isAffected ? "affected" : "",
         style.isAnimating ? "hot" : "",
+        style.isGhost ? "ghost" : "",
       ].join("|");
 
       const existing = partCache.get(part.id);
@@ -1993,7 +2030,7 @@ export function Viewer({
       }
 
       if (existing) dropEntry(existing);
-      pending.push({ part, geometryKey, styleKey });
+      pending.push({ part, geometryKey, styleKey, ghost });
     }
 
     for (const [id, entry] of partCache) {
@@ -2023,7 +2060,7 @@ export function Viewer({
       if (cancelled) return;
 
       while (inFlight < 3 && cursor < pending.length) {
-        const { part, geometryKey, styleKey } = pending[cursor];
+        const { part, geometryKey, styleKey, ghost } = pending[cursor];
         cursor += 1;
         inFlight += 1;
 
@@ -2035,7 +2072,7 @@ export function Viewer({
               return;
             }
 
-            partCache.set(part.id, buildEntry(part, geometryKey, styleKey, built));
+            partCache.set(part.id, buildEntry(part, geometryKey, styleKey, built, ghost));
             state.renderer.shadowMap.needsUpdate = true;
             renderDirtyRef.current = true;
           })
@@ -2411,11 +2448,15 @@ export function Viewer({
       state.scene.remove(state.grid);
       state.grid.geometry.dispose();
       state.grid.dispose();
-      const nextGrid = new THREE.GridHelper(gridSize, Math.max(12, Math.round(gridSize / 200)), 0xcfccc4, 0xdedbd4);
+      const nextGrid = new THREE.GridHelper(gridSize, Math.max(12, Math.round(gridSize / 200)), 0x9aa0a6, 0xb9bec4);
       nextGrid.rotation.x = Math.PI / 2;
       nextGrid.position.z = -0.4;
-      nextGrid.visible = showGrid;
+      const nextMaterial = nextGrid.material as THREE.Material;
+      nextMaterial.transparent = true;
+      nextMaterial.opacity = 0.2;
+      nextMaterial.depthWrite = false;
       state.scene.add(nextGrid);
+      nextGrid.visible = showGrid;
       state.grid = nextGrid;
       state.gridSize = gridSize;
     }
@@ -2916,46 +2957,46 @@ export function Viewer({
       <div ref={hostRef} style={{ position: "absolute", inset: 0 }} />
 
       <div className="viewer-tools">
-        <button type="button" className="tool" onClick={fit} title="Fit view (Vừa khung)">
+        <button type="button" className="tool" onClick={fit} title={t.fitView}>
           <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
             <path d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4" />
           </svg>
-          <span className="tool-label">Fit</span>
+          <span className="tool-label">{t.fitView}</span>
         </button>
         <button
           type="button"
           className={`tool ${showGrid ? "active" : ""}`}
           onClick={onToggleGrid}
-          title="Toggle the ground grid"
+          title={t.grid}
         >
           <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2">
             <path d="M2 2h12v12H2zM2 6h12M2 10h12M6 2v12M10 2v12" />
           </svg>
-          <span className="tool-label">Grid</span>
+          <span className="tool-label">{t.grid}</span>
         </button>
         <button
           type="button"
           className={`tool ${shadowsEnabled ? "active" : ""}`}
           onClick={() => setShadowsEnabled((curr) => !curr)}
-          title="Bật/Tắt đổ bóng (Shadows)"
+          title={t.shadows}
         >
           <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3">
             <circle cx="8" cy="7" r="3" />
             <path d="M8 1v1.6M8 11.4V13M2 7h1.6M12.4 7H14M3.8 2.8l1.1 1.1M10.5 9.5l1.1 1.1M12.2 2.8l-1.1 1.1M5.1 9.5l-1.1 1.1" />
           </svg>
-          <span className="tool-label">Shadows</span>
+          <span className="tool-label">{t.shadows}</span>
         </button>
         {onTogglePlanes && (
           <button
             type="button"
             className={`tool ${showPlanes ? "active" : ""}`}
             onClick={onTogglePlanes}
-            title="Toggle Reference Planes (Mặt phẳng tham chiếu)"
+            title={t.refPlanes}
           >
             <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3">
               <path strokeDasharray="3 2" d="M8 1v14M1 8h14" />
             </svg>
-            <span className="tool-label">Ref Planes</span>
+            <span className="tool-label">{t.refPlanes}</span>
           </button>
         )}
         <button
@@ -2970,25 +3011,25 @@ export function Viewer({
               setPickingSection(false);
             }
           }}
-          title="Cắt khối để xem bên trong (Section)"
+          title={t.section}
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
             <path d="M3 7l9-4 9 4-9 4-9-4z" />
             <path d="M3 12l9 4 9-4M3 17l9 4 9-4" />
           </svg>
-          <span className="tool-label">Section</span>
+          <span className="tool-label">{t.section}</span>
         </button>
         <button
           type="button"
           className={`tool ${measuring ? "active" : ""}`}
           onClick={() => setMeasuring((current) => !current)}
-          title="Đo khoảng cách: bật rồi bấm 2 điểm trên mô hình"
+          title={t.measure}
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
             <path d="M3 15 15 3l6 6L9 21l-6-6z" />
             <path d="M7 11l2 2M10 8l2 2M13 5l2 2" />
           </svg>
-          <span className="tool-label">Measure</span>
+          <span className="tool-label">{t.measure}</span>
         </button>
         <button
           type="button"
@@ -3025,7 +3066,7 @@ export function Viewer({
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
           </svg>
-          <span className="tool-label">Turntable</span>
+          <span className="tool-label">Xoay 360°</span>
         </button>
         {hiddenPartIds.length > 0 && onUnhideAll && (
           <button
@@ -3038,7 +3079,7 @@ export function Viewer({
               <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
               <circle cx="12" cy="12" r="3" />
             </svg>
-            <span className="tool-label">Unhide all ({hiddenPartIds.length})</span>
+            <span className="tool-label">Hiện tất cả ({hiddenPartIds.length})</span>
           </button>
         )}
       </div>
@@ -3134,10 +3175,22 @@ export function Viewer({
 
       {!model && (
         <div className="viewer-empty">
-          <div>
-            <strong>Nothing to show yet</strong>
-            Describe a unit in the chat and the model appears here.
+          <div className="chat-empty-icon" aria-hidden="true">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.3">
+              <path d="M3 7l9-4 9 4-9 4-9-4z" />
+              <path d="M3 12l9 4 9-4M3 17l9 4 9-4" />
+            </svg>
           </div>
+          <strong>{t.viewerEmptyTitle}</strong>
+          <p>{t.viewerEmptyBody}</p>
+          <button
+            type="button"
+            className="viewer-empty-suggestion"
+            onClick={() => onLoadSample?.()}
+            disabled={!onLoadSample}
+          >
+            {t.viewerTryPrefix} thang cáp ngã ba 400×100
+          </button>
         </div>
       )}
 

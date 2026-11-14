@@ -14,6 +14,7 @@ import pumpExampleRaw from "../../spec/examples/pump-dn80.json";
 import ystrainerExampleRaw from "../../spec/examples/ystrainer-dn80.json";
 import ystrainerTubeExampleRaw from "../../spec/examples/ystrainer-tube.json";
 import { ChatPanel, type ChatEntry } from "./components/ChatPanel";
+import { LibraryPanel } from "./components/LibraryPanel";
 import { ParameterPanel } from "./components/ParameterPanel";
 import { TopBar } from "./components/TopBar";
 import { Viewer } from "./components/Viewer";
@@ -33,6 +34,11 @@ import {
   saveModel,
   renameModel,
   deleteSavedModel,
+  fetchLibraryGroups,
+  createLibraryGroup,
+  renameLibraryGroup,
+  deleteLibraryGroup,
+  moveModelToGroup,
   fetchLatestExternalSpec,
   subscribeExternalSpecStream,
   type ExternalSpecPayload,
@@ -41,10 +47,23 @@ import {
   type UploadedDocument,
   type SavedModelMeta,
   type SavedModelRevision,
+  type LibraryGroupSummary,
   type DesignJob,
   type DesignStats,
 } from "./lib/api";
+import { ALL_GROUPS, UNGROUPED, readLibraryState } from "./lib/library";
 import { formatDuration, type Units } from "./lib/format";
+import { isModelId } from "./lib/api-key";
+import { describeOutcome, errorAdvice, splitErrorMessage } from "./lib/outcome";
+import { t } from "./lib/strings";
+import {
+  applyTheme,
+  readTheme,
+  resolveTheme,
+  systemPrefersDark,
+  writeTheme,
+  type ThemeMode,
+} from "./lib/theme";
 
 function newId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
@@ -185,10 +204,35 @@ export function App() {
   const [currentModelId, setCurrentModelId] = useState<string | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [savedList, setSavedList] = useState<SavedModelMeta[]>([]);
-  const [renamingId, setRenamingId] = useState<string | null>(null);
-  const [renameDraft, setRenameDraft] = useState("");
-  const renameCancelled = useRef(false);
+  const [libraryGroups, setLibraryGroups] = useState<LibraryGroupSummary[]>([]);
+  const [libraryGroup, setLibraryGroup] = useState(() => readLibraryState().group);
+  const [libraryLoading, setLibraryLoading] = useState(false);
   const [historyModelId, setHistoryModelId] = useState<string | null>(null);
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => readTheme());
+  const [systemDark, setSystemDark] = useState(() => systemPrefersDark());
+  const [mobileTab, setMobileTab] = useState<"chat" | "viewer" | "params">("chat");
+  const [paramsOpen, setParamsOpen] = useState(false);
+  const viewerCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const resolvedTheme = resolveTheme(themeMode, systemDark);
+
+  useEffect(() => {
+    applyTheme(resolvedTheme);
+  }, [resolvedTheme]);
+
+  useEffect(() => {
+    writeTheme(themeMode);
+  }, [themeMode]);
+
+  useEffect(() => {
+    try {
+      const media = window.matchMedia("(prefers-color-scheme: dark)");
+      const onChange = (event: MediaQueryListEvent) => setSystemDark(event.matches);
+      media.addEventListener("change", onChange);
+      return () => media.removeEventListener("change", onChange);
+    } catch {
+      return undefined;
+    }
+  }, []);
   const [revisions, setRevisions] = useState<SavedModelRevision[]>([]);
   const [revisionsLoading, setRevisionsLoading] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -566,14 +610,16 @@ export function App() {
     setAttachments((current) => current.filter((_, idx) => idx !== index));
   };
 
-  const handleModel = (value: string) => {
+  // Stable identity: the API panel keeps it in an effect, so a new function on every
+  // App re-render (stage messages) would restart its verification loop.
+  const handleModel = useCallback((value: string) => {
     setModel(value);
     try {
       window.localStorage.setItem("fa.model", value);
     } catch {
       /* private mode, ignore */
     }
-  };
+  }, []);
 
   const handleLod = (value: Lod) => {
     setLod(value);
@@ -602,7 +648,10 @@ export function App() {
     setRunning(true);
     setRunStartedAt(Date.now());
     setNow(Date.now());
-    setStage({ stage: "thinking", message: docs.length > 0 ? "Reading attached documents" : "Reading the brief" });
+    setStage({
+      stage: "thinking",
+      message: docs.length > 0 ? "Đang đọc tài liệu đính kèm…" : "Đang đọc yêu cầu…",
+    });
 
     let failed = false;
     let stalled = false;
@@ -627,6 +676,8 @@ export function App() {
       specValue: FamilySpec,
       stats: DesignStats,
       prefix = "",
+      outcome: "ok" | "incomplete" | "has-errors" | "unchanged" | null = null,
+      errors: Array<{ message?: string } | string> = [],
     ) => {
       const dims = stats.bounds ? `${stats.bounds.x} × ${stats.bounds.y} × ${stats.bounds.z} mm` : "";
       const fast = stats.fastEdit;
@@ -650,8 +701,38 @@ export function App() {
             ` · prompt ${((stats.promptChars ?? 0) / 1000).toFixed(1)}k`
           : "";
       const savedLine = stats.savedCalls ? ` · tiết kiệm ${stats.savedCalls} lượt` : "";
-      const isIncomplete = stats.complete === false;
+      const inChars = (stats.calls ?? []).reduce(
+        (total, call) => total + (call.inChars ?? call.promptChars ?? 0),
+        0,
+      );
+      const outChars = (stats.calls ?? []).reduce((total, call) => total + (call.outChars ?? 0), 0);
+      const callLine =
+        (stats.calls?.length ?? 0) > 0
+          ? ` · ${stats.calls!.length} lượt` +
+            (inChars ? ` · vào ${(inChars / 1000).toFixed(1)}k` : "") +
+            (outChars ? ` / ra ${(outChars / 1000).toFixed(1)}k ký tự` : "")
+          : "";
+      const isIncomplete = stats.complete === false || outcome === "incomplete";
       setIncomplete(isIncomplete ? (stats.missing ?? ["Không rõ hạng mục thiếu"]) : null);
+
+      const copy = describeOutcome(
+        {
+          stats,
+          analysis: {
+            ok: outcome ? outcome !== "has-errors" : undefined,
+            spec: specValue,
+            errors,
+          },
+        },
+        { updated: hadSpec },
+      );
+      const bullets = copy.items
+        .slice(0, 12)
+        .map((item) => `• ${item}`)
+        .join("\n");
+      const summary =
+        `${stats.parts} chi tiết · ${stats.parameters} tham số${stats.lod ? ` · LOD ${stats.lod}` : ""}` +
+        `${dims ? ` · ${dims}` : ""}${fastLine}${stepLine}${callLine}`;
 
       setSessionUsage((current) => {
         const calls =
@@ -672,17 +753,18 @@ export function App() {
 
       pushEntry({
         role: "agent",
-        tone: isIncomplete ? "error" : "normal",
+        tone: copy.tone === "normal" ? "normal" : "error",
         text:
-          (isIncomplete
-            ? `⚠ Chưa đầy đủ — ${specValue.name}\n${(stats.missing ?? [])
-                .map((item) => `• ${item}`)
-                .join("\n")}\n\n`
-            : "") +
-          `${prefix}${hadSpec ? "Đã cập nhật" : "Đã tạo"} ${specValue.name}.\n` +
-          `${stats.parts} chi tiết · ${stats.parameters} tham số${stats.lod ? ` · LOD ${stats.lod}` : ""}` +
-          `${dims ? ` · ${dims}` : ""}${fastLine}${stepLine}`,
-        notes: [...(specValue.notes ?? []), ...((stats.warnings as string[] | undefined) ?? [])],
+          `${copy.title}${bullets ? `\n${bullets}` : ""}\n` +
+          `${prefix}${summary}`,
+        warnings: (stats.warnings as string[] | undefined) ?? undefined,
+        notes: specValue.notes ?? [],
+        // Errors are the clickable issue list (jump to the offending part).
+        issues: copy.outcome === "has-errors" ? (errors as never[]) : undefined,
+        action:
+          copy.outcome === "unchanged"
+            ? { label: "Gửi lại" }
+            : undefined,
         resolution: Array.isArray(stats.resolution)
           ? (stats.resolution as {
               name: string;
@@ -706,7 +788,17 @@ export function App() {
           spec: baseSpec,
           lod,
           model: model || undefined,
-          customApiConfig: model === 'custom:api' ? (() => { try { const raw = localStorage.getItem('custom_api_config'); return raw ? JSON.parse(raw) : undefined; } catch { return undefined; } })() : undefined,
+          customApiConfig: model === 'custom:api' ? (() => {
+            try {
+              const raw = localStorage.getItem('custom_api_config');
+              if (!raw) return undefined;
+              const config = JSON.parse(raw);
+              // A display name ("Gemini 3.8 Flash") is not a model id: never send it.
+              if (config?.model && !isModelId(config.model)) config.model = '';
+              return config;
+            } catch { return undefined; }
+          })() : undefined,
+          commandCodeApiKey: (() => { try { return localStorage.getItem('command_code_api_key') || undefined; } catch { return undefined; } })(),
           attachments: docs.length > 0 ? docs.map((d) => ({ path: d.path, name: d.name })) : undefined,
         },
         (event) => {
@@ -739,14 +831,19 @@ export function App() {
           if (event.type === "error") {
             failed = true;
             setStage(null);
+            const advice = errorAdvice(event.kind);
+            const { text, details } = splitErrorMessage(event.message);
             pushEntry({
               role: "agent",
-              text:
-                event.message +
-                (event.retryable === false ? "" : "\nGợi ý: đổi sang model nhanh hơn hoặc bấm Gửi lại."),
               tone: "error",
-              details: event.details,
-              action: { label: "Gửi lại" },
+              text: `⛔ ${text}\n${advice.hint}`,
+              details: [event.details, details].filter(Boolean).join("\n\n") || undefined,
+              action:
+                advice.action === "retry"
+                  ? { label: "Gửi lại" }
+                  : advice.action === "open-api"
+                    ? { label: "Mở cấu hình API", kind: "open-api" }
+                    : undefined,
             });
             return;
           }
@@ -765,7 +862,7 @@ export function App() {
           }
 
           receivedSpec = true;
-          pushSpecEntry(event.spec, stats);
+          pushSpecEntry(event.spec, stats, "", event.outcome ?? null, event.errors ?? []);
         },
         controller.signal,
         () => {
@@ -774,7 +871,7 @@ export function App() {
         },
       );
 
-      if (!receivedSpec && !stalled && jobId) {
+      if (!receivedSpec && !stalled && jobId && !failed) {
         // The socket died but the server kept working: fetch the stored result.
         setStage({ stage: "recovering", message: "Mất kết nối, đang lấy lại kết quả…" });
 
@@ -785,7 +882,7 @@ export function App() {
             role: "agent",
             tone: "error",
             text:
-              "Server đã restart và không còn job này, nên kết quả bị mất.\n" +
+              "⛔ Server đã restart và không còn job này, nên kết quả bị mất.\n" +
               "Gửi lại yêu cầu — nếu prompt rất dài, hãy tách phần connector và bảng màu ra, hoặc chọn model nhanh hơn.",
             action: { label: "Gửi lại" },
           });
@@ -795,7 +892,7 @@ export function App() {
             role: "agent",
             tone: "error",
             text:
-              "Đã chờ 10 phút nhưng job vẫn chưa xong, nên tạm dừng lấy kết quả.\n" +
+              "⛔ Đã chờ 10 phút nhưng job vẫn chưa xong, nên tạm dừng lấy kết quả.\n" +
               "Bấm Gửi lại (job cũ vẫn có thể xong sau), hoặc tách yêu cầu thành phần khung → connector → vật liệu.",
             action: { label: "Gửi lại" },
           });
@@ -819,18 +916,20 @@ export function App() {
           );
         } else {
           setStage(null);
+          const { text, details } = splitErrorMessage(recovered.error ?? "không rõ nguyên nhân");
           pushEntry({
             role: "agent",
             tone: "error",
-            text: `Job kết thúc với lỗi: ${recovered.error ?? "không rõ nguyên nhân"}.`,
+            text: `⛔ Job kết thúc với lỗi: ${text}\n${errorAdvice("unknown").hint}`,
+            details,
             action: { label: "Gửi lại" },
           });
         }
-      } else if (!receivedSpec && !stalled) {
+      } else if (!receivedSpec && !stalled && !failed) {
         failed = true;
         pushEntry({
           role: "agent",
-          text: "Server đóng kết nối mà chưa trả về spec — có thể API vừa restart. Bấm gửi lại yêu cầu.",
+          text: "⛔ Server đóng kết nối mà chưa trả về spec — có thể API vừa restart. Bấm gửi lại yêu cầu.",
           tone: "error",
           action: { label: "Gửi lại" },
         });
@@ -841,16 +940,23 @@ export function App() {
         pushEntry({
           role: "agent",
           text:
-            "Không nhận được phản hồi từ server quá 15 phút nên đã dừng.\n" +
+            "⛔ Không nhận được phản hồi từ server quá 15 phút nên đã dừng.\n" +
             "Thường là do API vừa restart (`npm run dev` reload khi có file thay đổi) — kiểm tra pill trạng thái rồi gửi lại.",
           tone: "error",
           action: { label: "Gửi lại" },
         });
       } else if (error instanceof Error && error.name === "AbortError") {
-        pushEntry({ role: "agent", text: "Stopped." });
+        pushEntry({ role: "agent", text: "Đã dừng." });
       } else {
         const message = error instanceof Error ? error.message : String(error);
-        pushEntry({ role: "agent", text: message, tone: "error" });
+        const { text, details } = splitErrorMessage(message);
+        pushEntry({
+          role: "agent",
+          tone: "error",
+          text: `⛔ ${text}\n${errorAdvice(null).hint}`,
+          details,
+          action: { label: "Gửi lại" },
+        });
         // Find out right away whether the API itself is down.
         void pingServer().then((ping) => setServerOnline(Boolean(ping?.ok)));
       }
@@ -1128,6 +1234,46 @@ export function App() {
     }
   };
 
+  /**
+   * The library card preview: a square JPEG of what the viewer is showing.
+   * The browser canvas is already WebGL, so drawing it into a 320px canvas is enough.
+   */
+  const captureThumbnail = (): string | undefined => {
+    const canvas = viewerCanvasRef.current;
+    if (!canvas || !canvas.width || !canvas.height) return undefined;
+    try {
+      const size = 320;
+      const off = document.createElement("canvas");
+      off.width = size;
+      off.height = size;
+      const context = off.getContext("2d");
+      if (!context) return undefined;
+
+      const background =
+        getComputedStyle(document.documentElement).getPropertyValue("--viewer-bg-solid").trim() ||
+        "#f4f3ef";
+      context.fillStyle = background;
+      context.fillRect(0, 0, size, size);
+
+      const side = Math.min(canvas.width, canvas.height);
+      context.drawImage(
+        canvas,
+        (canvas.width - side) / 2,
+        (canvas.height - side) / 2,
+        side,
+        side,
+        0,
+        0,
+        size,
+        size,
+      );
+      return off.toDataURL("image/jpeg", 0.82);
+    } catch {
+      // A tainted canvas or a lost context only means "no thumbnail".
+      return undefined;
+    }
+  };
+
   const handleSaveModel = async () => {
     if (!spec) return;
     try {
@@ -1136,6 +1282,10 @@ export function App() {
         name: spec.name,
         spec,
         entries,
+        // A new family saved while a group is selected starts in that group. The
+        // server ignores this for an overwrite, so an existing model never moves.
+        ...(currentModelId ? {} : { group: activeSaveGroup() }),
+        thumbnail: captureThumbnail(),
       });
       if (res.ok && res.id) {
         setCurrentModelId(res.id);
@@ -1144,6 +1294,7 @@ export function App() {
           sub: `ID: ${res.id}`,
           tone: "ok",
         });
+        if (libraryOpen) void refreshLibrary();
       }
     } catch (error) {
       setToast({
@@ -1162,7 +1313,13 @@ export function App() {
     try {
       // No id: the server stores this as a new saved model and leaves the open one alone.
       const copySpec: FamilySpec = { ...spec, name };
-      const res = await saveModel({ name, spec: copySpec, entries });
+      const res = await saveModel({
+        name,
+        spec: copySpec,
+        entries,
+        group: activeSaveGroup(),
+        thumbnail: captureThumbnail(),
+      });
       if (res.ok && res.id) {
         applySpec(copySpec);
         setCurrentModelId(res.id);
@@ -1171,6 +1328,7 @@ export function App() {
           sub: `Tên: ${name}`,
           tone: "ok",
         });
+        if (libraryOpen) void refreshLibrary();
       }
     } catch (error) {
       setToast({
@@ -1180,11 +1338,93 @@ export function App() {
     }
   };
 
+  /** Group to pre-assign a brand-new family to; "Tất cả" means no group. */
+  const activeSaveGroup = () =>
+    libraryGroup === ALL_GROUPS ? UNGROUPED : libraryGroup;
+
+  const refreshLibrary = async () => {
+    setLibraryLoading(true);
+    const [models, snapshot] = await Promise.all([fetchSavedModels(), fetchLibraryGroups()]);
+    setSavedList(models);
+    setLibraryGroups(snapshot.groups);
+    // A group removed elsewhere must not leave the panel on an empty selection.
+    setLibraryGroup((current) => {
+      if (current === ALL_GROUPS || current === UNGROUPED) return current;
+      return snapshot.groups.some((group) => group.name === current) ? current : ALL_GROUPS;
+    });
+    setLibraryLoading(false);
+  };
+
   const handleOpenLibrary = async () => {
     setLibraryOpen(true);
     setHistoryModelId(null);
-    const list = await fetchSavedModels();
-    setSavedList(list);
+    await refreshLibrary();
+  };
+
+  const handleCreateGroup = async (name: string) => {
+    try {
+      const result = await createLibraryGroup(name);
+      setLibraryGroups(result.groups ?? []);
+      setLibraryGroup(result.name);
+      setToast({ text: `Đã tạo nhóm "${result.name}"`, tone: "ok" });
+    } catch (error) {
+      setToast({
+        text: `Không tạo được nhóm: ${error instanceof Error ? error.message : String(error)}`,
+        tone: "error",
+      });
+    }
+  };
+
+  const handleRenameGroup = async (from: string, to: string) => {
+    try {
+      await renameLibraryGroup(from, to);
+      if (libraryGroup === from) setLibraryGroup(to);
+      await refreshLibrary();
+      setToast({ text: `Đã đổi tên nhóm thành "${to}"`, tone: "ok" });
+    } catch (error) {
+      setToast({
+        text: `Không đổi được tên nhóm: ${error instanceof Error ? error.message : String(error)}`,
+        tone: "error",
+      });
+    }
+  };
+
+  const handleDeleteGroup = async (name: string) => {
+    try {
+      await deleteLibraryGroup(name);
+      if (libraryGroup === name) setLibraryGroup(ALL_GROUPS);
+      await refreshLibrary();
+      setToast({
+        text: `Đã xoá nhóm "${name}"`,
+        sub: "Các family trong nhóm đã chuyển về Chưa nhóm.",
+        tone: "ok",
+      });
+    } catch (error) {
+      setToast({
+        text: `Không xoá được nhóm: ${error instanceof Error ? error.message : String(error)}`,
+        tone: "error",
+      });
+    }
+  };
+
+  const handleMoveModel = async (id: string, group: string) => {
+    try {
+      await moveModelToGroup(id, group);
+      setSavedList((current) =>
+        current.map((item) => (item.id === id ? { ...item, group } : item)),
+      );
+      const snapshot = await fetchLibraryGroups();
+      setLibraryGroups(snapshot.groups);
+      setToast({
+        text: group ? `Đã chuyển vào nhóm "${group}"` : "Đã chuyển về Chưa nhóm",
+        tone: "ok",
+      });
+    } catch (error) {
+      setToast({
+        text: `Không chuyển được nhóm: ${error instanceof Error ? error.message : String(error)}`,
+        tone: "error",
+      });
+    }
   };
 
   const handleOpenHistory = async (id: string) => {
@@ -1244,41 +1484,19 @@ export function App() {
     }
   };
 
-  const beginRenameModel = (item: SavedModelMeta) => {
-    renameCancelled.current = false;
-    setRenamingId(item.id);
-    setRenameDraft(item.name);
-  };
-
-  const cancelRenameModel = () => {
-    renameCancelled.current = true;
-    setRenamingId(null);
-  };
-
-  const commitRenameModel = async (item: SavedModelMeta) => {
-    if (renameCancelled.current) {
-      renameCancelled.current = false;
-      return;
-    }
-    if (renamingId !== item.id) return;
-
-    const name = renameDraft.trim().replace(/\s+/g, " ");
-    setRenamingId(null);
-
-    if (!name) {
-      setToast({ text: "Tên mô hình không được để trống", tone: "error" });
-      return;
-    }
+  const handleRenameModel = async (id: string, name: string) => {
+    const item = savedList.find((entry) => entry.id === id);
+    if (!item || !name.trim()) return;
 
     try {
-      const result = await renameModel(item.id, name);
-      const renamed = result.name ?? name;
+      const result = await renameModel(id, name.trim());
+      const renamed = result.name ?? name.trim();
 
       setSavedList((current) =>
-        current.map((entry) => (entry.id === item.id ? { ...entry, name: renamed } : entry)),
+        current.map((entry) => (entry.id === id ? { ...entry, name: renamed } : entry)),
       );
 
-      if (currentModelId === item.id) {
+      if (currentModelId === id) {
         // Only the name changes: unsaved edits in the open spec are kept.
         setSpec((current) => {
           if (!current) return current;
@@ -1299,12 +1517,17 @@ export function App() {
     }
   };
 
-  const handleDeleteModel = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handleDeleteModel = async (id: string) => {
     if (!window.confirm("Bạn có chắc chắn muốn xoá mô hình này khỏi thư viện?")) return;
     try {
       await deleteSavedModel(id);
       setSavedList((curr) => curr.filter((item) => item.id !== id));
+      setLibraryGroups((current) =>
+        current.map((group) => ({
+          ...group,
+          count: Math.max(0, group.count - (savedList.find((item) => item.id === id)?.group === group.name ? 1 : 0)),
+        })),
+      );
       if (currentModelId === id) {
         setCurrentModelId(null);
       }
@@ -1529,8 +1752,8 @@ export function App() {
   return (
     <div className="app">
       <TopBar
-        name={spec?.name ?? "New family"}
-        category={spec?.category ?? "Describe a unit to begin"}
+        name={spec?.name ?? t.noFamily}
+        category={spec?.category ?? t.noFamilyHint}
         hasSpec={Boolean(spec)}
         reviewed={Boolean(analysis?.ok)}
         native={native}
@@ -1557,10 +1780,34 @@ export function App() {
         onOpenLibrary={handleOpenLibrary}
         onNewModel={handleNewModel}
         onLoadDemo={handleLoadDemo}
+        theme={themeMode}
+        onTheme={setThemeMode}
       />
 
+      <nav className="mobile-tabs" role="tablist" aria-label="Khu vực làm việc">
+        {(
+          [
+            ["chat", t.chatTab],
+            ["viewer", t.viewerTab],
+            ["params", t.paramsTab],
+          ] as const
+        ).map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            aria-selected={mobileTab === key}
+            className={mobileTab === key ? "active" : ""}
+            onClick={() => setMobileTab(key)}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+
       <div
-        className="workspace"
+        className={`workspace ${paramsOpen ? "params-open" : ""}`}
+        data-tab={mobileTab}
         style={
           {
             "--left-width": `${leftWidth}px`,
@@ -1634,6 +1881,13 @@ export function App() {
 
         <Viewer
           model={previewModel ?? deferredModel}
+          onCanvasReady={(canvas) => {
+            viewerCanvasRef.current = canvas;
+          }}
+          onLoadSample={() => {
+            if (running) return;
+            void handleSend("Thang cáp ngã ba 400×100, 6 bậc, LOD 400");
+          }}
           parameters={deferredParameters}
           materials={spec?.materials ?? []}
           units={units}
@@ -1701,195 +1955,65 @@ export function App() {
           />
         ) : (
           <section className="pane right">
-            <div className="pane-header">Parameters</div>
-            <div style={{ padding: 16, color: "#8c8e91", lineHeight: 1.6 }}>
-              Parameters appear here once a family exists.
+            <div className="pane-header">{t.paramsTab}</div>
+            <div className="pane-empty">
+              <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
+                <path d="M4 7h16M4 12h10M4 17h6" />
+              </svg>
+              <p>{t.parametersEmpty}</p>
             </div>
           </section>
         )}
+
+        <button
+          type="button"
+          className="params-fab"
+          onClick={() => setParamsOpen((current) => !current)}
+          aria-expanded={paramsOpen}
+          aria-label={paramsOpen ? t.closeParams : t.openParams}
+          title={paramsOpen ? t.closeParams : t.openParams}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <path d="M4 7h16M4 12h10M4 17h6" />
+          </svg>
+          <span>{t.paramsTab}</span>
+        </button>
       </div>
 
       {toast && (
-        <div className={`toast ${toast.tone === "error" ? "error" : ""}`}>
+        <div className={`toast ${toast.tone === "error" ? "error" : ""}`} role="status">
           {toast.text}
           {toast.sub && <span className="sub">{toast.sub}</span>}
         </div>
       )}
 
       {libraryOpen && (
-        <div
-          className="modal-backdrop"
-          onClick={() => {
+        <LibraryPanel
+          models={savedList}
+          groups={libraryGroups}
+          loading={libraryLoading}
+          currentModelId={currentModelId}
+          activeGroup={libraryGroup}
+          historyModelId={historyModelId}
+          revisions={revisions}
+          revisionsLoading={revisionsLoading}
+          onClose={() => {
             setLibraryOpen(false);
             setHistoryModelId(null);
           }}
-        >
-          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <div className="title-row">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-                  <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-                </svg>
-                <h3>Thư viện mô hình đã lưu ({savedList.length})</h3>
-              </div>
-              <div className="header-actions">
-                <button type="button" className="btn-ghost" onClick={handleNewModel}>
-                  + Dựng mô hình mới
-                </button>
-                <button
-                  type="button"
-                  className="modal-close"
-                  onClick={() => {
-                    setLibraryOpen(false);
-                    setHistoryModelId(null);
-                  }}
-                >
-                  ×
-                </button>
-              </div>
-            </div>
-
-            <div className="modal-body">
-              {historyModelId && (
-                <div className="history-panel">
-                  <div className="history-head">
-                    <strong>
-                      Lịch sử: {savedList.find((item) => item.id === historyModelId)?.name ?? historyModelId}
-                    </strong>
-                    <button type="button" className="btn-ghost" onClick={() => setHistoryModelId(null)}>
-                      Đóng
-                    </button>
-                  </div>
-                  {revisionsLoading ? (
-                    <p className="sub">Đang tải lịch sử…</p>
-                  ) : revisions.length === 0 ? (
-                    <p className="sub">
-                      Chưa có bản cũ. Lịch sử bắt đầu ghi từ lần Save tiếp theo của mô hình này.
-                    </p>
-                  ) : (
-                    <div className="history-list">
-                      {revisions.map((revision) => (
-                        <div key={revision.stamp} className="history-row">
-                          <span>{new Date(revision.savedAt).toLocaleString()}</span>
-                          <span className="sub">
-                            {revision.parts} parts · {revision.parameters} params
-                          </span>
-                          <button
-                            type="button"
-                            className="btn-ghost"
-                            onClick={() => void handleRestoreRevision(revision.stamp)}
-                          >
-                            Khôi phục
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {savedList.length === 0 ? (
-                <div className="empty-library">
-                  <p>Chưa có mô hình nào được lưu trong thư viện.</p>
-                  <p className="sub">Khi đang xem hoặc chỉnh sửa 1 mô hình trên Web, bấm nút <strong>Save</strong> trên thanh trên cùng để lưu lại.</p>
-                </div>
-              ) : (
-                <div className="saved-model-grid">
-                  {savedList.map((item) => (
-                    <div
-                      key={item.id}
-                      className={`saved-model-card ${currentModelId === item.id ? "active" : ""}`}
-                      onClick={() => {
-                        if (renamingId === item.id) return;
-                        void handleLoadModel(item.id);
-                      }}
-                    >
-                      <div className="card-top">
-                        <span className="model-cat">{item.category}</span>
-                        <div className="card-actions">
-                          <button
-                            type="button"
-                            className="btn-rename-model"
-                            title="Đổi tên mô hình"
-                            data-testid={`rename-${item.id}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              beginRenameModel(item);
-                            }}
-                          >
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M12 20h9" />
-                              <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                            </svg>
-                          </button>
-                          <button
-                            type="button"
-                            className="btn-history-model"
-                            title="Xem lịch sử các bản lưu"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              void handleOpenHistory(item.id);
-                            }}
-                          >
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <circle cx="12" cy="12" r="9" />
-                              <path d="M12 7v5l3 2" />
-                            </svg>
-                          </button>
-                          <button
-                            type="button"
-                            className="btn-delete-model"
-                            title="Xoá mô hình này"
-                            onClick={(e) => handleDeleteModel(item.id, e)}
-                          >
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <polyline points="3 6 5 6 21 6" />
-                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-                            </svg>
-                          </button>
-                        </div>
-                      </div>
-                      {renamingId === item.id ? (
-                        <input
-                          className="model-name-input"
-                          value={renameDraft}
-                          autoFocus
-                          data-testid={`rename-input-${item.id}`}
-                          aria-label={`Tên mới cho ${item.name}`}
-                          onClick={(e) => e.stopPropagation()}
-                          onChange={(e) => setRenameDraft(e.target.value)}
-                          onFocus={(e) => e.currentTarget.select()}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              e.currentTarget.blur();
-                            } else if (e.key === "Escape") {
-                              e.preventDefault();
-                              cancelRenameModel();
-                            }
-                          }}
-                          onBlur={() => {
-                            void commitRenameModel(item);
-                          }}
-                        />
-                      ) : (
-                        <h4 className="model-name">{item.name}</h4>
-                      )}
-                      <div className="model-meta">
-                        <span>{item.partsCount} parts</span>
-                        <span>·</span>
-                        <span>{item.paramsCount} params</span>
-                        <span>·</span>
-                        <span>{new Date(item.updatedAt).toLocaleDateString()}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
+          onActiveGroup={setLibraryGroup}
+          onLoadModel={(id) => void handleLoadModel(id)}
+          onNewModel={handleNewModel}
+          onOpenHistory={(id) => void handleOpenHistory(id)}
+          onCloseHistory={() => setHistoryModelId(null)}
+          onRestoreRevision={(stamp) => void handleRestoreRevision(stamp)}
+          onRenameModel={(id, name) => void handleRenameModel(id, name)}
+          onDeleteModel={(id) => void handleDeleteModel(id)}
+          onCreateGroup={(name) => void handleCreateGroup(name)}
+          onRenameGroup={(from, to) => void handleRenameGroup(from, to)}
+          onDeleteGroup={(name) => void handleDeleteGroup(name)}
+          onMoveModel={(id, group) => void handleMoveModel(id, group)}
+        />
       )}
     </div>
   );

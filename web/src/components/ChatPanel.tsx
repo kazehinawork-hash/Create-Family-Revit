@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { Issue } from "@family/spec-core";
-import { isImageDocument, type AgentBackends, type CmdcModel, type CustomApiConfig, type UploadedDocument } from "../lib/api";
+import { isImageDocument, type AgentBackends, type CmdcModel, type UploadedDocument } from "../lib/api";
+import { ApiKeyPanel, type ApiKeyStatus } from "./ApiKeyPanel";
+import { isApiReady } from "../lib/api-key";
+import { t } from "../lib/strings";
 
 export interface ResolutionRow {
   name: string;
@@ -40,12 +43,14 @@ export interface ChatEntry {
   meta?: string;
   issues?: Issue[];
   notes?: string[];
+  /** Warnings from the run (separate from the assumptions in `notes`). */
+  warnings?: string[];
   /** Parameter values the agent used, with where each one came from. */
   resolution?: ResolutionRow[];
   attachments?: UploadedDocument[];
   action?: {
     label: string;
-    kind?: "retry" | "use-sample";
+    kind?: "retry" | "use-sample" | "open-api";
     sampleId?: string;
   };
   /** Raw provider error, kept for the collapsible details block. */
@@ -92,137 +97,6 @@ function formatSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-/**
- * Tự động nhận diện loại API và model mặc định từ API Key hoặc chuỗi nhập.
- */
-function analyzeKeyOrInput(keyInput: string): { provider: string; label: string; defaultBaseUrl: string; defaultModel: string } {
-  const trimmed = (keyInput || "").trim();
-
-  // 1. Google Gemini API: thường bắt đầu bằng AIzaSy...
-  if (trimmed.startsWith("AIzaSy") || trimmed.includes("AIza")) {
-    return {
-      provider: "gemini",
-      label: "Google Gemini API",
-      defaultBaseUrl: "https://generativelanguage.googleapis.com/v1beta",
-      defaultModel: "gemini-2.5-flash",
-    };
-  }
-
-  // 2. Anthropic API: thường bắt đầu bằng sk-ant-...
-  if (trimmed.startsWith("sk-ant-")) {
-    return {
-      provider: "anthropic",
-      label: "Anthropic Claude API",
-      defaultBaseUrl: "https://api.anthropic.com/v1",
-      defaultModel: "claude-3-7-sonnet-latest",
-    };
-  }
-
-  // 3. OpenRouter: thường bắt đầu bằng sk-or-...
-  if (trimmed.startsWith("sk-or-")) {
-    return {
-      provider: "openai",
-      label: "OpenRouter API",
-      defaultBaseUrl: "https://openrouter.ai/api/v1",
-      defaultModel: "anthropic/claude-3.7-sonnet",
-    };
-  }
-
-  // 4. Groq, xAI, Perplexity: OpenAI-compatible providers with distinct prefixes.
-  if (trimmed.startsWith("gsk_")) {
-    return {
-      provider: "openai",
-      label: "Groq API",
-      defaultBaseUrl: "https://api.groq.com/openai/v1",
-      defaultModel: "llama-3.3-70b-versatile",
-    };
-  }
-
-  if (trimmed.startsWith("xai-")) {
-    return {
-      provider: "openai",
-      label: "xAI API",
-      defaultBaseUrl: "https://api.x.ai/v1",
-      defaultModel: "grok-4",
-    };
-  }
-
-  if (trimmed.startsWith("pplx-")) {
-    return {
-      provider: "openai",
-      label: "Perplexity API",
-      defaultBaseUrl: "https://api.perplexity.ai",
-      defaultModel: "sonar",
-    };
-  }
-
-  // 5. DeepSeek: thường bắt đầu bằng sk-... nhưng có thể là deepseek hoặc openai
-  if (trimmed.startsWith("sk-") && trimmed.length === 34) {
-    return {
-      provider: "openai",
-      label: "DeepSeek API",
-      defaultBaseUrl: "https://api.deepseek.com/v1",
-      defaultModel: "deepseek-chat",
-    };
-  }
-
-  // 5. OpenAI hoặc chuẩn tương thích
-  if (trimmed.startsWith("sk-proj-") || trimmed.startsWith("sk-")) {
-    return {
-      provider: "openai",
-      label: "OpenAI API",
-      defaultBaseUrl: "https://api.openai.com/v1",
-      defaultModel: "gpt-4o",
-    };
-  }
-
-  // Nếu người dùng dán URL vào
-  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
-    const lower = trimmed.toLowerCase();
-    if (lower.includes("googleapis.com")) {
-      return {
-        provider: "gemini",
-        label: "Google Gemini API",
-        defaultBaseUrl: trimmed,
-        defaultModel: "gemini-2.5-flash",
-      };
-    }
-    if (lower.includes("anthropic.com")) {
-      return {
-        provider: "anthropic",
-        label: "Anthropic Claude API",
-        defaultBaseUrl: trimmed,
-        defaultModel: "claude-3-7-sonnet-latest",
-      };
-    }
-    return {
-      provider: "openai",
-      label: "OpenAI-compatible Endpoint",
-      defaultBaseUrl: trimmed,
-      defaultModel: "gpt-4o",
-    };
-  }
-
-  // Mặc định là Google Gemini nếu chưa nhập
-  return {
-    provider: "gemini",
-    label: "Tự động nhận diện",
-    defaultBaseUrl: "https://generativelanguage.googleapis.com/v1beta",
-    defaultModel: "gemini-2.5-flash",
-  };
-}
-
-const DEFAULT_BASE_URLS = new Set([
-  "https://generativelanguage.googleapis.com/v1beta",
-  "https://api.openai.com/v1",
-  "https://api.anthropic.com/v1",
-  "https://openrouter.ai/api/v1",
-  "https://api.deepseek.com/v1",
-  "https://api.groq.com/openai/v1",
-  "https://api.x.ai/v1",
-  "https://api.perplexity.ai",
-]);
-
 const SUGGESTIONS = [
   "Bơm ly tâm trục ngang DN80 xả DN65, động cơ 15 kW, bệ đỡ thép hình U",
   "FCU giấu trần nối ống gió 800 CFM, 3 hàng coil, hộp hồi kèm lưới lọc G4",
@@ -259,222 +133,10 @@ export function ChatPanel({
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const [showAdvancedUrl, setShowAdvancedUrl] = useState(false);
 
-  // Custom API configuration state
-  const [apiConfig, setApiConfig] = useState<CustomApiConfig>(() => {
-    try {
-      const saved = localStorage.getItem("custom_api_config");
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return {
-      baseUrl: "https://generativelanguage.googleapis.com/v1beta",
-      apiKey: "",
-      model: "gemini-2.5-flash",
-    };
-  });
-
-  // Verification state for custom API
-  const [apiVerification, setApiVerification] = useState<{
-    checked: boolean;
-    valid: boolean;
-    checking: boolean;
-    error?: string;
-    models?: string[];
-  }>({ checked: false, valid: false, checking: false });
-
-  const detected = analyzeKeyOrInput(apiConfig.apiKey || apiConfig.baseUrl);
-  const selectedModelRef = useRef(apiConfig.model);
-  selectedModelRef.current = apiConfig.model;
-
-  // Debounce check API Key validity when user changes apiKey or baseUrl
-  useEffect(() => {
-    if (model !== "custom:api") return;
-
-    const trimmedKey = apiConfig.apiKey?.trim();
-    if (!trimmedKey) {
-      setApiVerification({ checked: true, valid: false, checking: false, error: "Chưa nhập API Key", models: [] });
-      return;
-    }
-
-    setApiVerification((prev) => ({ ...prev, checking: true }));
-
-    const timer = setTimeout(async () => {
-      try {
-        const res = await fetch("/api/verify-api", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            baseUrl: apiConfig.baseUrl,
-            apiKey: trimmedKey,
-            model: selectedModelRef.current,
-          }),
-        });
-
-        let data: any = {};
-        try {
-          data = await res.json();
-        } catch {
-          data = {};
-        }
-
-        const providerStatus = Number(data?.status ?? res.status);
-        const rejected =
-          res.status === 401 ||
-          res.status === 403 ||
-          providerStatus === 401 ||
-          providerStatus === 403;
-
-        // A timeout / 5xx / busy provider is not a wrong key: keep the previously
-        // valid state and only show a warning, so a flaky network does not lock the UI.
-        const transient =
-          !rejected &&
-          (res.status >= 500 ||
-            [408, 429, 500, 502, 503, 504].includes(providerStatus) ||
-            /timeout|timed out|ECONN|fetch failed|network/i.test(String(data?.error ?? "")));
-
-        if (transient) {
-          setApiVerification((prev) =>
-            prev.valid
-              ? {
-                  ...prev,
-                  checking: false,
-                  error: data?.error || "Không kiểm tra được API (mạng/timeout) — giữ trạng thái hợp lệ trước đó",
-                }
-              : {
-                  checked: true,
-                  valid: false,
-                  checking: false,
-                  error: data?.error || "Không kết nối được tới API — thử lại sau",
-                  models: [],
-                },
-          );
-          return;
-        }
-
-        const models = Array.isArray(data.models)
-          ? data.models.filter((item: unknown): item is string => typeof item === "string" && item.trim().length > 0)
-          : [];
-
-        setApiVerification({
-          checked: true,
-          valid: Boolean(data.ok),
-          checking: false,
-          error: data.ok ? undefined : data.error || "API Key không hợp lệ",
-          models,
-        });
-        if (data.ok && models.length > 0) {
-          setApiConfig((prev) => {
-            // Keep a model the user typed explicitly; only replace an empty or
-            // still-default model that this provider no longer serves.
-            const shouldPick =
-              !prev.model || (prev.model === detected.defaultModel && !models.includes(prev.model));
-            if (!shouldPick) return prev;
-            const next = { ...prev, model: models[0] };
-            try {
-              localStorage.setItem("custom_api_config", JSON.stringify(next));
-            } catch {}
-            return next;
-          });
-        }
-      } catch (err: any) {
-        setApiVerification((prev) =>
-          prev.valid
-            ? {
-                ...prev,
-                checking: false,
-                error:
-                  err?.message ||
-                  "Không kiểm tra được API (mạng/timeout) — giữ trạng thái hợp lệ trước đó",
-              }
-            : {
-                checked: true,
-                valid: false,
-                checking: false,
-                error: err?.message || "Không thể kết nối tới server xác minh",
-                models: [],
-              },
-        );
-      }
-    }, 600);
-
-    return () => clearTimeout(timer);
-  }, [apiConfig.apiKey, apiConfig.baseUrl, detected.defaultModel, model]);
-
-  // A model present in /models can still be retired or temporarily unavailable.
-  // Probe only the selected model, drop it when the provider rejects it, and
-  // move to the next scanned model instead of wasting a full design request.
-  useEffect(() => {
-    if (model !== "custom:api" || !apiVerification.valid) return;
-    const key = apiConfig.apiKey?.trim();
-    const current = apiConfig.model;
-    if (!key || !current || !apiVerification.models?.includes(current)) return;
-
-    let cancelled = false;
-    const timer = setTimeout(async () => {
-      try {
-        const res = await fetch("/api/check-model", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            baseUrl: apiConfig.baseUrl,
-            apiKey: key,
-            model: current,
-          }),
-        });
-        const data = await res.json();
-        if (cancelled || data.ok || !data.unavailable) return;
-
-        const remaining = apiVerification.models!.filter((id) => id !== current);
-        setApiVerification((prev) => ({
-          ...prev,
-          models: (prev.models ?? []).filter((id) => id !== current),
-        }));
-        if (remaining.length > 0) {
-          const next = { ...apiConfig, model: remaining[0] };
-          setApiConfig(next);
-          try {
-            localStorage.setItem("custom_api_config", JSON.stringify(next));
-          } catch {}
-        }
-      } catch {
-        // Network errors are transient; keep the model selectable.
-      }
-    }, 400);
-
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [apiConfig, apiVerification.models, apiVerification.valid, model]);
-
-  const handleApiKeyChange = (rawKey: string) => {
-    const trimmed = rawKey.trim();
-    const info = analyzeKeyOrInput(trimmed);
-    const currentBase = (apiConfig.baseUrl || "").trim().replace(/\/+$/, "");
-    // Do not discard an endpoint the user configured deliberately when they
-    // paste or edit the key afterwards. Only replace known provider defaults.
-    const keepCustomBase = Boolean(currentBase) && !DEFAULT_BASE_URLS.has(currentBase);
-    const newConfig = {
-      ...apiConfig,
-      apiKey: trimmed,
-      baseUrl: keepCustomBase ? apiConfig.baseUrl : info.defaultBaseUrl || apiConfig.baseUrl,
-      model: (!apiConfig.model || apiConfig.model === "gemini-2.5-flash" || apiConfig.model === "gpt-4o" || apiConfig.model === "claude-3-7-sonnet-latest")
-        ? info.defaultModel
-        : apiConfig.model,
-    };
-    setApiConfig(newConfig);
-    try {
-      localStorage.setItem("custom_api_config", JSON.stringify(newConfig));
-    } catch {}
-  };
-
-  const saveApiConfig = (newConfig: CustomApiConfig) => {
-    setApiConfig(newConfig);
-    try {
-      localStorage.setItem("custom_api_config", JSON.stringify(newConfig));
-    } catch {}
-  };
+  // Direct API panel: it owns the key, verification and model selection.
+  const [apiPanelOpen, setApiPanelOpen] = useState(false);
+  const [apiStatus, setApiStatus] = useState<ApiKeyStatus | null>(null);
 
   // User-aware auto scroll: only auto-scroll down if user is already near the bottom
   const isNearBottomRef = useRef(true);
@@ -535,6 +197,11 @@ export function ChatPanel({
 
   const isCustomApi = modelValue === "custom:api";
 
+  // Choosing Direct API in the header opens the panel; it can also be opened alone.
+  useEffect(() => {
+    if (isCustomApi) setApiPanelOpen(true);
+  }, [isCustomApi]);
+
   // Readiness belongs to the backend behind the selected model, not to the default CLI.
   const backendKey = modelValue.startsWith("agy:")
     ? "agy"
@@ -559,27 +226,34 @@ export function ChatPanel({
     statusHint = "API 127.0.0.1:8787 không phản hồi — đang thử lại…";
   } else if (isCustomApi) {
     // A machine without any CLI can still work through Direct API, so this status
-    // must not inherit the "no CLI installed" readiness of the default backend.
-    if (!apiConfig.apiKey?.trim()) {
+    // comes from the panel instead of the CLI readiness probe.
+    if (isApiReady(apiStatus)) {
+      isCurrentModelReady = true;
+      statusText = "Sẵn sàng";
+      statusTone = "ok";
+      statusHint =
+        `${apiStatus?.provider ?? "Direct API"} · ${apiStatus?.count ?? 0} model` +
+        (apiStatus?.revalidating ? " · đang làm mới" : "");
+    } else if (!apiStatus || apiStatus.state === "idle") {
       isCurrentModelReady = false;
-      statusText = "Không kết nối";
-      statusTone = "error";
-      statusHint = "Chưa nhập API Key";
-    } else if (apiVerification.checking) {
+      statusText = "Chưa có key";
+      statusTone = "warn";
+      statusHint = "Dán API key trong khung Cấu hình API";
+    } else if (apiStatus.state === "checking") {
       isCurrentModelReady = false;
       statusText = "Đang kiểm tra...";
       statusTone = "warn";
-      statusHint = "Đang kiểm tra tính hợp lệ của API Key...";
-    } else if (apiVerification.checked && !apiVerification.valid) {
+      statusHint = "Đang kiểm tra API key và quét model";
+    } else if (apiStatus.state === "error") {
       isCurrentModelReady = false;
       statusText = "Không kết nối";
       statusTone = "error";
-      statusHint = apiVerification.error || "API Key không hợp lệ hoặc sai endpoint";
+      statusHint = apiStatus.error || "API Key không hợp lệ";
     } else {
       isCurrentModelReady = true;
       statusText = "Sẵn sàng";
       statusTone = "ok";
-      statusHint = `${detected.label} · Model: ${apiConfig.model || detected.defaultModel}`;
+      statusHint = `${apiStatus.provider} · ${apiStatus.count} model`;
     }
   } else if (modelBackendReady === false) {
     isCurrentModelReady = false;
@@ -615,6 +289,17 @@ export function ChatPanel({
             ))}
           </select>
 
+          {!apiPanelOpen && (
+            <button
+              type="button"
+              className="model-api-button"
+              onClick={() => setApiPanelOpen(true)}
+              aria-label="Dùng API key trực tiếp"
+            >
+              Dùng API key
+            </button>
+          )}
+
           {incomplete && incomplete.length > 0 && (
             <span
               className="agent-pill incomplete"
@@ -649,107 +334,27 @@ export function ChatPanel({
         </div>
       )}
 
-      {isCustomApi && (
-        <div className="api-config">
-          <div className="api-config-head">
-            <span className="api-config-title">Cấu hình API</span>
-            {apiVerification.checking ? (
-              <span className="api-config-status">
-                <span className="api-config-dot" />
-                Đang xác thực &amp; quét model
-              </span>
-            ) : apiVerification.checked && apiVerification.valid ? (
-              <span className="api-config-status ok">
-                <span className="api-config-dot" />
-                Đã xác thực
-                {apiVerification.models?.length ? ` · ${apiVerification.models.length} model` : ""}
-              </span>
-            ) : apiVerification.checked && apiConfig.apiKey?.trim() ? (
-              <span className="api-config-status error">
-                <span className="api-config-dot" />
-                Key không hợp lệ
-              </span>
-            ) : null}
-          </div>
-
-          <div className="api-config-grid">
-            <label className="api-field">
-              <span>API key (tự nhận diện Google / Claude / OpenAI)</span>
-              <input
-                type="password"
-                className={
-                  apiVerification.checked && !apiVerification.valid && apiConfig.apiKey?.trim() ? "invalid" : undefined
-                }
-                placeholder="AIzaSy… hoặc sk-…"
-                value={apiConfig.apiKey}
-                onChange={(e) => handleApiKeyChange(e.target.value)}
-              />
-            </label>
-            <label className="api-field">
-              <span>
-                Model
-                {apiVerification.models?.length
-                  ? ` · ${apiVerification.models.length} model khả dụng`
-                  : " (tự quét sau khi nhập key)"}
-              </span>
-              {apiVerification.models && apiVerification.models.length > 0 ? (
-                <select
-                  className="api-model-select"
-                  value={apiConfig.model}
-                  onChange={(e) => saveApiConfig({ ...apiConfig, model: e.target.value })}
-                  aria-label="Chọn model đã quét"
-                >
-                  {!apiConfig.model && <option value="">Chọn model…</option>}
-                  {apiConfig.model && !apiVerification.models.includes(apiConfig.model) && (
-                    <option value={apiConfig.model}>{apiConfig.model} (hiện tại)</option>
-                  )}
-                  {apiVerification.models.map((id) => (
-                    <option key={id} value={id}>
-                      {id}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  type="text"
-                  placeholder={`Mặc định: ${detected.defaultModel}`}
-                  value={apiConfig.model}
-                  onChange={(e) => saveApiConfig({ ...apiConfig, model: e.target.value })}
-                  autoComplete="off"
-                />
-              )}
-            </label>
-          </div>
-
-          <button
-            type="button"
-            className="api-advanced-toggle"
-            onClick={() => setShowAdvancedUrl(!showAdvancedUrl)}
-          >
-            {showAdvancedUrl ? "Ẩn endpoint URL" : "Tùy chỉnh endpoint URL (proxy / Ollama)"}
-          </button>
-
-          {showAdvancedUrl && (
-            <label className="api-field">
-              <span>Endpoint URL</span>
-              <input
-                type="text"
-                placeholder={detected.defaultBaseUrl}
-                value={apiConfig.baseUrl}
-                onChange={(e) => saveApiConfig({ ...apiConfig, baseUrl: e.target.value })}
-              />
-            </label>
-          )}
-        </div>
-      )}
+      <ApiKeyPanel
+        model={modelValue}
+        onModel={onModel}
+        open={apiPanelOpen}
+        onClose={() => setApiPanelOpen(false)}
+        onStatus={setApiStatus}
+      />
 
       <div className="chat-scroll" ref={scrollRef} onScroll={handleScroll}>
         {entries.length === 0 && (
           <div className="chat-empty">
-            <h2>Describe the family you need</h2>
-            Sizes, arrangement, connections, materials. The outline appears in seconds, the full
-            detail follows.
+            <div className="chat-empty-icon" aria-hidden="true">
+              <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.3">
+                <path d="M3 7l9-4 9 4-9 4-9-4z" />
+                <path d="M3 12l9 4 9-4M3 17l9 4 9-4" />
+              </svg>
+            </div>
+            <h2>{t.chatEmptyTitle}</h2>
+            <p>{t.chatEmptyBody}</p>
             <div className="suggestions">
+              <span className="suggestions-label">Thử:</span>
               {SUGGESTIONS.map((suggestion) => (
                 <button
                   key={suggestion}
@@ -797,8 +402,13 @@ export function ChatPanel({
           ) : (
             <div
               key={entry.id}
-              className="msg-agent"
-              style={entry.tone === "error" ? { color: "#8a352c" } : undefined}
+              className={`msg-agent${
+                entry.tone === "error"
+                  ? entry.text.startsWith("⛔")
+                    ? " msg-error"
+                    : " msg-warn"
+                  : ""
+              }`}
             >
               <div className="role">
                 <span className="dot" style={{ width: 5, height: 5, borderRadius: 3, background: "#3c7a63" }} />
@@ -815,7 +425,13 @@ export function ChatPanel({
                 <button
                   type="button"
                   className="msg-action"
-                  onClick={() => (onAction ? onAction(entry.action!) : onRetry?.())}
+                  onClick={() => {
+                    if (entry.action?.kind === "open-api") {
+                      setApiPanelOpen(true);
+                      return;
+                    }
+                    return onAction ? onAction(entry.action!) : onRetry?.();
+                  }}
                   data-testid="chat-retry"
                 >
                   {entry.action.label}
@@ -853,6 +469,16 @@ export function ChatPanel({
                   </table>
                 </div>
               )}
+              {entry.warnings && entry.warnings.length > 0 && (
+                <div className="agent-warnings">
+                  <div className="warnings-title">Cảnh báo</div>
+                  <ul className="warnings-list">
+                    {entry.warnings.map((warning, idx) => (
+                      <li key={idx}>{warning}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {entry.notes && entry.notes.length > 0 && (
                 <div className="agent-assumptions">
                   <div className="assumptions-title">Giả định Agent đã dùng</div>
@@ -866,9 +492,7 @@ export function ChatPanel({
               {entry.meta && <div className="meta">{entry.meta}</div>}
               {entry.issues && entry.issues.length > 0 && (
                 <details className="issues">
-                  <summary>
-                    Details · {entry.issues.length} item{entry.issues.length === 1 ? "" : "s"}
-                  </summary>
+                  <summary>Chi tiết · {entry.issues.length} mục</summary>
                   {entry.issues.map((issue, index) => {
                     const partId = issue.path.startsWith("logic.")
                       ? issue.path.split(".").pop() ?? null
@@ -908,9 +532,9 @@ export function ChatPanel({
           </div>
         )}
 
-        {!isCurrentModelReady && (
+        {!isCurrentModelReady && !running && (
           <div className="banner warn">
-            The design agent is not ready. {statusHint}
+            Agent chưa sẵn sàng. {statusHint}
           </div>
         )}
       </div>
@@ -963,10 +587,10 @@ export function ChatPanel({
           rows={1}
           placeholder={
             uploading
-              ? "Uploading document(s)…"
+              ? t.chatPlaceholderUploading
               : disabled
-                ? "Waiting for the agent…"
-                : "Ask for a change or paste multiple images (Ctrl+V)"
+                ? t.chatPlaceholderWaiting
+                : t.chatPlaceholder
           }
           onPaste={(event) => {
             const items = event.clipboardData?.items;
@@ -991,8 +615,15 @@ export function ChatPanel({
           onChange={(event) => {
             setDraft(event.target.value);
             const node = event.currentTarget;
+            // Grow from one to six lines, then scroll inside the box.
             node.style.height = "auto";
-            node.style.height = `${Math.min(node.scrollHeight, 120)}px`;
+            const styles = getComputedStyle(node);
+            const line = parseFloat(styles.lineHeight) || 18;
+            const padding =
+              (parseFloat(styles.paddingTop) || 0) + (parseFloat(styles.paddingBottom) || 0);
+            const max = line * 6 + padding;
+            node.style.height = `${Math.min(node.scrollHeight, max)}px`;
+            node.style.overflowY = node.scrollHeight > max ? "auto" : "hidden";
           }}
           onKeyDown={(event) => {
             if (event.key === "Enter" && !event.shiftKey) {

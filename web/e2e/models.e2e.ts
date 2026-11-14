@@ -26,7 +26,7 @@ test("a saved model can be renamed from the library and survives a reload", asyn
 
   try {
     await page.goto("/");
-    await page.locator("button", { hasText: "Library" }).first().click();
+    await page.locator("button", { hasText: "Thư viện" }).first().click();
 
     const card = page.locator(".saved-model-card", { hasText: original }).first();
     await expect(card).toBeVisible();
@@ -50,7 +50,7 @@ test("a saved model can be renamed from the library and survives a reload", asyn
 
     // Reopening the library must show the stored name, not a cached one.
     await page.reload();
-    await page.locator("button", { hasText: "Library" }).first().click();
+    await page.locator("button", { hasText: "Thư viện" }).first().click();
     await expect(
       page.locator(".saved-model-card", { hasText: renamed }).first(),
     ).toBeVisible();
