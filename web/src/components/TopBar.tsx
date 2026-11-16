@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import type { Lod } from "../lib/api";
 import type { Units } from "../lib/format";
-import { t } from "../lib/strings";
+import { LANGUAGE_OPTIONS, useI18n } from "../lib/i18n";
 import type { ThemeMode } from "../lib/theme";
 
 export interface AgentPill {
@@ -10,6 +10,8 @@ export interface AgentPill {
   text: string;
   hint?: string;
 }
+
+type DemoKey = "fcu" | "pump" | "elbow" | "ystrainer" | "ystrainer-tube";
 
 interface Props {
   name: string;
@@ -39,31 +41,35 @@ interface Props {
   canRedo?: boolean;
   onOpenLibrary?: () => void;
   onNewModel?: () => void;
-  onLoadDemo?: (key: "fcu" | "pump" | "elbow" | "ystrainer" | "ystrainer-tube") => void;
+  onLoadDemo?: (key: DemoKey) => void;
   theme: ThemeMode;
   onTheme: (mode: ThemeMode) => void;
 }
 
-const LOD_OPTIONS: { value: Lod; label: string; hint: string }[] = [
-  { value: 200, label: "200", hint: "LOD 200 · khối bao, 3–10 parts" },
-  { value: 300, label: "300", hint: "LOD 300 · thiết kế thực tế, 5–20 parts" },
-  { value: 350, label: "350", hint: "LOD 350 · phối hợp MEP, 10–40 parts" },
-  { value: 400, label: "400", hint: "LOD 400 · chế tạo, 20–80 parts (phức tạp đến 150)" },
-];
+const LOD_VALUES: Lod[] = [200, 300, 350, 400];
 
-const DEMOS: { key: "fcu" | "pump" | "elbow" | "ystrainer" | "ystrainer-tube"; label: string }[] = [
-  { key: "fcu", label: "FCU giấu trần 080 (Trane)" },
-  { key: "pump", label: "Bơm ly tâm DN80" },
-  { key: "ystrainer", label: "Y lọc bích DN80 PN16, nhánh 45°" },
-  { key: "ystrainer-tube", label: "Y lọc nhánh tube 45°" },
-  { key: "elbow", label: "Cút ren 90° Duct Elbow DN50" },
-];
+/** The full "Thêm" menu is the only place the language control fits on a phone. */
+const NARROW_BAR_QUERY = "(max-width: 1199px)";
 
-const THEME_OPTIONS: { value: ThemeMode; label: string }[] = [
-  { value: "system", label: t.themeSystem },
-  { value: "light", label: t.themeLight },
-  { value: "dark", label: t.themeDark },
-];
+function useNarrowBar(): boolean {
+  const [narrow, setNarrow] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia(NARROW_BAR_QUERY).matches,
+  );
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const media = window.matchMedia(NARROW_BAR_QUERY);
+    const update = () => setNarrow(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+
+  return narrow;
+}
 
 function getAgentStepIndex(stage: string | null | undefined): number {
   if (!stage) return 0;
@@ -174,10 +180,31 @@ export function TopBar({
   theme,
   onTheme,
 }: Props) {
+  const { t, language, setLanguage } = useI18n();
   const currentStep = getAgentStepIndex(agentStage);
   const [menuOpen, setMenuOpen] = useState(false);
   const [demoOpen, setDemoOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const narrowBar = useNarrowBar();
+
+  const lodHints: Record<Lod, string> = {
+    200: t.topbarLod200Hint,
+    300: t.topbarLod300Hint,
+    350: t.topbarLod350Hint,
+    400: t.topbarLod400Hint,
+  };
+  const demos: { key: DemoKey; label: string }[] = [
+    { key: "fcu", label: t.topbarDemoFcu },
+    { key: "pump", label: t.topbarDemoPump },
+    { key: "ystrainer", label: t.topbarDemoYStrainer },
+    { key: "ystrainer-tube", label: t.topbarDemoYStrainerTube },
+    { key: "elbow", label: t.topbarDemoElbow },
+  ];
+  const themeOptions: { value: ThemeMode; label: string }[] = [
+    { value: "system", label: t.themeSystem },
+    { value: "light", label: t.themeLight },
+    { value: "dark", label: t.themeDark },
+  ];
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -243,12 +270,12 @@ export function TopBar({
           className="select lod-select"
           value={lod}
           onChange={(event) => onLod(Number(event.target.value) as Lod)}
-          aria-label="Level of detail (LOD)"
-          title={LOD_OPTIONS.find((option) => option.value === lod)?.hint ?? "Level of detail"}
+          aria-label={t.topbarLodLabel}
+          title={lodHints[lod] ?? t.topbarLodFallback}
         >
-          {LOD_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value} title={option.hint}>
-              LOD {option.label}
+          {LOD_VALUES.map((value) => (
+            <option key={value} value={value} title={lodHints[value]}>
+              LOD {value}
             </option>
           ))}
         </select>
@@ -292,6 +319,23 @@ export function TopBar({
               </>
             )}
           </button>
+        )}
+
+        {/* Desktop: the language switch sits in the bar, next to the theme control. */}
+        {!narrowBar && (
+          <div className="segmented lang-switch" role="group" aria-label={t.language} title={t.languageHint}>
+            {LANGUAGE_OPTIONS.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                className={language === option.id ? "active" : ""}
+                onClick={() => setLanguage(option.id)}
+                aria-pressed={language === option.id}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
         )}
 
         <div className="more-wrap" ref={menuRef}>
@@ -403,7 +447,7 @@ export function TopBar({
 
               <div className="more-label">{t.theme}</div>
               <div className="more-segmented theme-switch" role="group" aria-label={t.theme}>
-                {THEME_OPTIONS.map((option) => (
+                {themeOptions.map((option) => (
                   <button
                     key={option.value}
                     type="button"
@@ -414,6 +458,26 @@ export function TopBar({
                   </button>
                 ))}
               </div>
+
+              {/* Mobile: the same three choices live inside "Thêm". */}
+              {narrowBar && (
+                <>
+                  <div className="more-label">{t.language}</div>
+                  <div className="more-segmented" role="group" aria-label={t.language}>
+                    {LANGUAGE_OPTIONS.map((option) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        className={language === option.id ? "active" : ""}
+                        onClick={() => setLanguage(option.id)}
+                        aria-pressed={language === option.id}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
 
               {onBuild && (
                 <button
@@ -447,7 +511,7 @@ export function TopBar({
                   {demoOpen && (
                     <div className="more-submenu">
                       <div className="more-label">{t.demoHeader}</div>
-                      {DEMOS.map((demo) => (
+                      {demos.map((demo) => (
                         <button
                           key={demo.key}
                           type="button"

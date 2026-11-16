@@ -21,7 +21,7 @@ import {
 } from "./jobs.js";
 import { checkModel } from "./model-check.js";
 import { writeJsonAtomic } from "./files.js";
-import { CLEANUP_INTERVAL_MS, runCleanup } from "./cleanup.js";
+import { CLEANUP_INTERVAL_MS, pruneHistoryDir, runCleanup } from "./cleanup.js";
 import {
   isSafeModelId,
   listTrash,
@@ -43,6 +43,7 @@ import {
   slugifyModelName,
 } from "./library.js";
 import { retryWholeRequest, classifyDesignError } from "./retry.js";
+import { enrichEvent } from "./message-codes.js";
 import {
   checkOutboundUrl,
   createRateLimiter,
@@ -640,18 +641,19 @@ app.post("/api/design", async (req, res) => {
   emitRaw({ type: "job", jobId: job.job_id });
 
   const emit = (event) => {
-    if (event?.type === "spec" && event.spec) {
-      const partial = Boolean(event.stats?.step?.partial);
+    const enriched = enrichEvent(event);
+    if (enriched?.type === "spec" && enriched.spec) {
+      const partial = Boolean(enriched.stats?.step?.partial);
       updateJob(job.job_id, {
         status: partial ? "running" : "done",
-        spec: event.spec,
-        issues: event.issues ?? [],
-        errors: event.errors ?? [],
-        stats: event.stats ?? null,
+        spec: enriched.spec,
+        issues: enriched.issues ?? [],
+        errors: enriched.errors ?? [],
+        stats: enriched.stats ?? null,
       });
     }
 
-    emitRaw(event);
+    emitRaw(enriched);
   };
 
   const keepAlive = setInterval(() => {
@@ -670,6 +672,7 @@ app.post("/api/design", async (req, res) => {
           model: body.model,
           lockModel: body.lockModel,
           fresh: body.fresh,
+          language: body.language,
           customApiConfig: body.customApiConfig,
           commandCodeApiKey: body.commandCodeApiKey,
           attachments: normalizeAttachments(body.attachments),
@@ -731,7 +734,7 @@ app.post("/api/design", async (req, res) => {
     const message = error?.message || String(error);
     const kind = classifyDesignError(error);
     const retryable = !(kind === "auth" || kind === "invalid-request");
-    finishDesignJob(job.job_id, { status: "error", error: message });
+    finishDesignJob(job.job_id, { status: "error", error: message, code: `error.${kind}` });
     emit({
       type: "error",
       message,
@@ -959,6 +962,8 @@ function archiveModel(modelId, filePath) {
   fs.mkdirSync(dir, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   fs.copyFileSync(filePath, path.join(dir, `${stamp}.json`));
+  // Old families accumulated revisions forever; keep only the newest allowed.
+  pruneHistoryDir(dir, config.agent.historyKeep);
 }
 
 const usabilityCache = new Map();
@@ -1232,7 +1237,7 @@ app.get("/api/models/:id/history", (req, res) => {
       .filter(Boolean)
       .sort((a, b) => b.savedAt - a.savedAt);
 
-    res.json({ revisions });
+    res.json({ revisions, keep: config.agent.historyKeep });
   } catch (error) {
     res.status(500).json({ error: error?.message || String(error) });
   }

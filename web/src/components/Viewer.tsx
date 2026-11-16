@@ -12,7 +12,7 @@ import {
   type PreviewQuality,
 } from "../lib/three-build";
 import { buildPartGeometryAsync, type BuiltPartGeometry } from "../lib/geometry-pool";
-import { t } from "../lib/strings";
+import { useI18n } from "../lib/i18n";
 
 /** Camera presets the ViewCube can request. */
 type ViewDirection =
@@ -230,8 +230,16 @@ export function Viewer({
   fileName,
   skippedCutPartIds = [],
 }: Props) {
+  const { t, formatNumber } = useI18n();
   const hostRef = useRef<HTMLDivElement>(null);
   const cubeHostRef = useRef<HTMLDivElement>(null);
+  // Canvas labels (measure, section, dimensions) are painted inside effects with
+  // fixed dependency lists; refs keep them on the active language without
+  // rebuilding the renderer or the scene.
+  const tRef = useRef(t);
+  tRef.current = t;
+  const formatNumberRef = useRef(formatNumber);
+  formatNumberRef.current = formatNumber;
   const onCaptureReadyRef = useRef<Props["onCaptureReady"]>(onCaptureReady);
   onCaptureReadyRef.current = onCaptureReady;
   const stateRef = useRef<SceneState | null>(null);
@@ -655,6 +663,17 @@ export function Viewer({
     const dragPointer = new THREE.Vector2();
 
     /**
+     * Localized name of the snap target under the cursor ("face" / "edge" / "corner").
+     * The picker keeps ASCII tokens so the labels can follow the active language.
+     */
+    const snapLabel = (kind: string) => {
+      const strings = tRef.current;
+      if (kind === "corner") return strings.viewerSnapCorner;
+      if (kind === "edge") return strings.viewerSnapEdge;
+      return strings.viewerSnapFace;
+    };
+
+    /**
      * Snap a measurement point to a vertex, an edge or the face under the cursor.
      * Shared by the live hover preview and the click handler.
      */
@@ -671,7 +690,7 @@ export function Viewer({
       const modelExtent = bounds ? Math.max(bounds.size.x, bounds.size.y, bounds.size.z) : 0;
 
       let point = hit.point.clone();
-      let kind = "mặt";
+      let kind = "face";
 
       const mesh = hit.object as THREE.Mesh;
       if (hit.face && mesh.isMesh) {
@@ -708,12 +727,12 @@ export function Viewer({
 
           if (best) {
             point = best;
-            kind = "điểm góc";
+            kind = "corner";
           }
         }
 
         // 2. Otherwise snap to the closest edge of the hit triangle.
-        if (kind === "mặt" && position && hit.face) {
+        if (kind === "face" && position && hit.face) {
           const distanceToSegment = (
             p: { x: number; y: number },
             a: { x: number; y: number },
@@ -753,7 +772,7 @@ export function Viewer({
             const pointOnSegment = new THREE.Vector3();
             raycaster.ray.distanceSqToSegment(corners[i], corners[j], undefined, pointOnSegment);
             point = pointOnSegment;
-            kind = "cạnh";
+            kind = "edge";
           }
         }
       }
@@ -960,7 +979,7 @@ export function Viewer({
         ctx.font = "bold 30px 'Segoe UI', Arial, sans-serif";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.fillText(`${Math.round(length)} mm`, 128, 37);
+        ctx.fillText(`${formatNumberRef.current(Math.round(length))} mm`, 128, 37);
       }
       const texture = new THREE.CanvasTexture(canvas);
       texture.anisotropy = 4;
@@ -1084,8 +1103,7 @@ export function Viewer({
       previewDot.position.copy(picked.point);
 
       const points = measurePointsRef.current;
-      const kindLabel =
-        picked.kind === "điểm góc" ? "Góc" : picked.kind === "cạnh" ? "Cạnh" : "Mặt";
+      const kindLabel = snapLabel(picked.kind);
       if (points.length === 0) {
         // Snap target chip: tells you what will be picked before clicking.
         previewLine.visible = false;
@@ -1122,7 +1140,10 @@ export function Viewer({
         .copy(previewLine.position)
         .add(new THREE.Vector3(0, 0, labelHeight * 0.8));
       drawPreviewLabel(
-        `${constrained.axis ? `Trục ${constrained.axis} · ` : ""}${Math.round(length)} mm`,
+        tRef.current.viewerMeasurePreview(
+          formatNumberRef.current(Math.round(length)),
+          constrained.axis ?? "",
+        ),
       );
 
       renderDirtyRef.current = true;
@@ -1194,7 +1215,7 @@ export function Viewer({
 
           if (points.length === 0) {
             points.push(point);
-            setMeasureLabel(`Điểm 1 (bắt ${snapKind}) · bấm điểm thứ hai (Esc để huỷ)`);
+            setMeasureLabel(tRef.current.viewerMeasureFirstPoint(snapLabel(snapKind)));
           } else {
             const a = points[0];
             const distance = a.distanceTo(point);
@@ -1202,9 +1223,11 @@ export function Viewer({
             addMeasurement(a, point, modelExtent);
             hideMeasurePreview();
             setMeasureLabel(
-              `${Math.round(distance)} mm · bắt ${snapKind}${
-                constrained?.axis ? ` · trục ${constrained.axis}` : ""
-              }`,
+              tRef.current.viewerMeasureResult(
+                formatNumberRef.current(Math.round(distance)),
+                snapLabel(snapKind),
+                constrained?.axis ?? "",
+              ),
             );
           }
           renderDirtyRef.current = true;
@@ -2730,7 +2753,7 @@ export function Viewer({
     addLine([min.x, nearY, xLineZ], [min.x, xLineY, xLineZ]);
     addLine([max.x, nearY, xLineZ], [max.x, xLineY, xLineZ]);
     addLabel(
-      `${Math.round(size.x)} ${units}`,
+      `${formatNumber(Math.round(size.x))} ${units}`,
       (min.x + max.x) / 2,
       xLineY,
       xLineZ + sz * offset * 0.35,
@@ -2743,7 +2766,7 @@ export function Viewer({
     addLine([nearX, min.y, yLineZ], [yLineX, min.y, yLineZ]);
     addLine([nearX, max.y, yLineZ], [yLineX, max.y, yLineZ]);
     addLabel(
-      `${Math.round(size.y)} ${units}`,
+      `${formatNumber(Math.round(size.y))} ${units}`,
       yLineX + sx * offset * 0.35,
       (min.y + max.y) / 2,
       yLineZ,
@@ -2756,7 +2779,7 @@ export function Viewer({
     addLine([nearX, zLineY, min.z], [zLineX, zLineY, min.z]);
     addLine([nearX, zLineY, max.z], [zLineX, zLineY, max.z]);
     addLabel(
-      `${Math.round(size.z)} ${units}`,
+      `${formatNumber(Math.round(size.z))} ${units}`,
       zLineX + sx * offset * 0.35,
       zLineY,
       (min.z + max.z) / 2,
@@ -2765,7 +2788,7 @@ export function Viewer({
     state.scene.add(group);
     dimensionsRef.current = group;
     renderDirtyRef.current = true;
-  }, [showDimensions, model, units, dimView]);
+  }, [showDimensions, model, units, dimView, formatNumber]);
 
   // Cuts the add-in will skip (thin prism) are shown as dashed ghosts so the preview
   // matches what Revit will build.
@@ -3107,10 +3130,11 @@ export function Viewer({
       sectionAxis === "custom"
         ? Math.round((sectionT - 0.5) * customRange)
         : Math.round(min[sectionAxis] + (max[sectionAxis] - min[sectionAxis]) * sectionT);
+    const sectionValueText = formatNumber(sectionValueMm);
     const labelText =
       sectionAxis === "custom"
-        ? `Mặt · ${sectionValueMm} mm`
-        : `${sectionAxis.toUpperCase()} · ${sectionValueMm} mm`;
+        ? t.viewerSectionFace(sectionValueText)
+        : `${sectionAxis.toUpperCase()} · ${sectionValueText} mm`;
 
     const labelMaterial = handleLabel.material as THREE.SpriteMaterial;
     const labelCanvas = labelMaterial.map?.image as HTMLCanvasElement | undefined;
@@ -3180,7 +3204,7 @@ export function Viewer({
 
     state.renderer.shadowMap.needsUpdate = true;
     renderDirtyRef.current = true;
-  }, [sectionAxis, sectionT, model, sectionCustom, sectionFill]);
+  }, [sectionAxis, sectionT, model, sectionCustom, sectionFill, t, formatNumber]);
 
   useEffect(() => {
     if (measuring) return;
@@ -3931,11 +3955,7 @@ export function Viewer({
           type="button"
           className={`tool tool-primary ${detailLevel === "coarse" ? "active" : ""}`}
           onClick={() => setDetailLevel((cur) => (cur === "coarse" ? "fine" : "coarse"))}
-          title={
-            detailLevel === "coarse"
-              ? "Chuyển sang chế độ Chi tiết (hiện mọi chi tiết nhỏ)"
-              : "Chuyển sang chế độ Đơn giản (ẩn chi tiết nhỏ và vùng clearance)"
-          }
+          title={detailLevel === "coarse" ? t.viewerToFine : t.viewerToCoarse}
         >
           <svg
             width="12"
@@ -3968,14 +3988,14 @@ export function Viewer({
               <circle cx="8" cy="8" r="6" />
               <path d="M8 4v8M5 7l3-3 3 3" />
             </svg>
-            <span className="tool-label">Cổng</span>
+            <span className="tool-label">{t.connectors}</span>
           </button>
         )}
         <button
           type="button"
           className={`tool ${turntableActive ? "active" : ""}`}
           onClick={() => setTurntableActive((curr) => !curr)}
-          title="Bật/Tắt hiệu ứng xoay tròn 360° tự động như bàn xoay trưng bày (Turntable)"
+          title={t.viewerTurntableHint}
         >
           <svg
             width="12"
@@ -4039,7 +4059,7 @@ export function Viewer({
             type="button"
             className="tool unhide-all-btn"
             onClick={onUnhideAll}
-            title="Unhide all hidden parts (Hiện lại tất cả các cấu kiện đang ẩn)"
+            title={t.viewerUnhideAllHint}
           >
             <svg
               width="12"
@@ -4052,7 +4072,9 @@ export function Viewer({
               <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
               <circle cx="12" cy="12" r="3" />
             </svg>
-            <span className="tool-label">Hiện tất cả ({hiddenPartIds.length})</span>
+            <span className="tool-label">
+              {t.viewerUnhideCount(formatNumber(hiddenPartIds.length))}
+            </span>
           </button>
         )}
       </div>
@@ -4060,7 +4082,7 @@ export function Viewer({
       {explodeOpen && (
         <div className="viewer-explode-panel floating">
           <span>
-            {t.explode} · {explode}%
+            {t.explode} · {formatNumber(explode)}%
           </span>
           <input
             type="range"
@@ -4119,12 +4141,12 @@ export function Viewer({
       {sectionAxis !== "off" && (
         <div className="section-card">
           <div className="section-card-head">
-            <span>Mặt cắt</span>
+            <span>{t.section}</span>
             <button
               type="button"
               className="modal-close"
               onClick={() => setSectionAxis("off")}
-              aria-label="Đóng section"
+              aria-label={t.viewerCloseSection}
             >
               ×
             </button>
@@ -4148,7 +4170,7 @@ export function Viewer({
               type="button"
               className={sectionAxis === "custom" ? "active" : ""}
               onClick={() => setPickingSection(true)}
-              title="Chọn mặt phẳng cắt bằng cách bấm vào một mặt của mô hình"
+              title={t.viewerPickSection}
             >
               ⌖
             </button>
@@ -4157,9 +4179,7 @@ export function Viewer({
           <label
             className="section-fill-toggle"
             title={
-              model && model.parts.length >= 200
-                ? "Tô mặt cắt tắt cho family từ 200 chi tiết để giữ tốc độ"
-                : t.sectionFill
+              model && model.parts.length >= 200 ? t.viewerSectionFillDisabled : t.sectionFill
             }
           >
             <input
@@ -4171,9 +4191,7 @@ export function Viewer({
             <span>{t.sectionFill}</span>
           </label>
 
-          {pickingSection && (
-            <div className="section-hint">Bấm vào một mặt của mô hình để đặt mặt cắt…</div>
-          )}
+          {pickingSection && <div className="section-hint">{t.viewerPickSectionHint}</div>}
 
           {sectionAxis === "custom" && sectionCustom && (
             <button
@@ -4185,7 +4203,7 @@ export function Viewer({
                 )
               }
             >
-              Đảo chiều mặt cắt
+              {t.viewerFlipSection}
             </button>
           )}
 
@@ -4196,11 +4214,11 @@ export function Viewer({
               value={sectionMm?.value ?? 0}
               onChange={(event) => applySectionMm(Number(event.target.value))}
               disabled={!sectionMm}
-              aria-label="Section position in millimetres"
+              aria-label={t.viewerSectionPosition}
             />
             <span>mm</span>
           </div>
-          <div className="section-tip">Kéo tay nắm trên mô hình hoặc nhập số để dịch mặt cắt</div>
+          <div className="section-tip">{t.viewerSectionTip}</div>
         </div>
       )}
 
@@ -4213,14 +4231,14 @@ export function Viewer({
       )}
 
       {measuring && !measureLabel && (
-        <div className="measure-badge">Bấm điểm thứ nhất trên mô hình · Esc để huỷ</div>
+        <div className="measure-badge">{t.viewerMeasureHint}</div>
       )}
       {measureLabel && (
         <div className="measure-badge">
           <span>{measureLabel}</span>
           {measureCount > 0 && (
             <button type="button" onClick={clearMeasurements}>
-              Xoá {measureCount} phép đo
+              {t.viewerClearMeasurements(formatNumber(measureCount))}
             </button>
           )}
         </div>
@@ -4251,7 +4269,7 @@ export function Viewer({
             onClick={() => onLoadSample?.()}
             disabled={!onLoadSample}
           >
-            {t.viewerTryPrefix} thang cáp ngã ba 400×100
+            {t.viewerTryPrefix} {t.viewerTrySample}
           </button>
         </div>
       )}
@@ -4266,7 +4284,7 @@ export function Viewer({
         >
           <span className="name">{activeHandle.label}</span>
           <span className="val">
-            {activeHandle.value} {units}
+            {formatNumber(activeHandle.value)} {units}
           </span>
         </div>
       )}
@@ -4318,8 +4336,8 @@ export function Viewer({
             </svg>
             <span>
               {hiddenPartIds.includes(contextMenu.partId)
-                ? "Hiện cấu kiện (Unhide)"
-                : "Ẩn cấu kiện (Hide)"}
+                ? t.viewerUnhidePart
+                : t.viewerHidePart}
             </span>
           </button>
 
@@ -4344,8 +4362,8 @@ export function Viewer({
             </svg>
             <span>
               {transparentPartIds.includes(contextMenu.partId)
-                ? "Làm đặc lại (Solid / Opaque)"
-                : "Làm mờ (Ghost / Translucent)"}
+                ? t.viewerMakeSolid
+                : t.viewerMakeGhost}
             </span>
           </button>
 
@@ -4381,13 +4399,13 @@ export function Viewer({
               <rect x="3" y="3" width="18" height="18" rx="2" strokeDasharray="3 3" />
               <rect x="7" y="7" width="10" height="10" fill="currentColor" fillOpacity="0.3" />
             </svg>
-            <span>Cô lập cấu kiện (Isolate)</span>
+            <span>{t.viewerIsolate}</span>
           </button>
 
           <button
             type="button"
             className="menu-item"
-            title="Cắt mặt cắt ngay qua cấu kiện này"
+            title={t.viewerSectionThroughPart}
             onClick={() => {
               if (contextMenu.normal && contextMenu.center) {
                 setSectionCustom({
@@ -4413,7 +4431,7 @@ export function Viewer({
               <path d="M3 12h18" />
               <path d="M12 3v18" opacity="0.4" />
             </svg>
-            <span>Section từ cấu kiện này</span>
+            <span>{t.viewerSectionFromPart}</span>
           </button>
 
           {(hiddenPartIds.length > 0 || transparentPartIds.length > 0) && (
@@ -4439,7 +4457,7 @@ export function Viewer({
                     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                     <circle cx="12" cy="12" r="3" />
                   </svg>
-                  <span>Hiện lại tất cả ({hiddenPartIds.length})</span>
+                  <span>{t.viewerUnhideCount(formatNumber(hiddenPartIds.length))}</span>
                 </button>
               )}
               {transparentPartIds.length > 0 && (
@@ -4461,7 +4479,7 @@ export function Viewer({
                   >
                     <circle cx="12" cy="12" r="10" />
                   </svg>
-                  <span>Khôi phục độ mờ tất cả</span>
+                  <span>{t.viewerResetTransparency}</span>
                 </button>
               )}
             </>
@@ -4473,8 +4491,8 @@ export function Viewer({
         <div className="viewer-assembly-badge">
           <span className="assembly-pulse" />
           <span>
-            Đang lắp: <strong>{animatingPartName}</strong> ({visiblePartCount}/{model?.parts.length}
-            )
+            {t.assembling}: <strong>{animatingPartName}</strong> (
+            {formatNumber(visiblePartCount)}/{formatNumber(model?.parts.length ?? 0)})
           </span>
         </div>
       )}
@@ -4492,7 +4510,7 @@ export function Viewer({
             <button
               type="button"
               className="chip-action-btn"
-              title="Hide this part (Ẩn cấu kiện này)"
+              title={t.viewerHidePartHint}
               onClick={() => {
                 onToggleHidePart(selectedPartId);
                 onSelectPart?.(null);
@@ -4509,13 +4527,13 @@ export function Viewer({
                 <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
                 <line x1="1" y1="1" x2="23" y2="23" />
               </svg>
-              <span>· Ẩn</span>
+              <span>· {t.viewerHideShort}</span>
             </button>
           )}
           <button
             type="button"
             className="chip-close"
-            title="Deselect"
+            title={t.viewerDeselect}
             onClick={() => onSelectPart?.(null)}
           >
             ×
@@ -4525,7 +4543,10 @@ export function Viewer({
 
       {model && (
         <div className="viewer-caption">
-          {model.parts.length} chi tiết · {model.instances} khối
+          {t.viewerModelCaption(
+            formatNumber(model.parts.length),
+            formatNumber(model.instances),
+          )}
         </div>
       )}
     </div>

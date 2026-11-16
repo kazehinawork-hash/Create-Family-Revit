@@ -1,18 +1,15 @@
 import type { SavedModelMeta } from "./api";
+import { t as defaultStrings, type Strings } from "./strings";
 
-/** Sentinel for the "Tất cả" filter; `""` always means "Chưa nhóm". */
+/**
+ * Sentinel for the "all groups" filter (`t.allGroups`); `""` always means the
+ * ungrouped bucket (`t.ungrouped`).
+ */
 export const ALL_GROUPS = "*";
 export const UNGROUPED = "";
 export const LIBRARY_STORAGE_KEY = "family.library.v1";
 
 export type LibrarySort = "recent" | "name" | "category" | "adjustable";
-
-export const SORT_LABELS: Record<LibrarySort, string> = {
-  recent: "Mới nhất",
-  name: "Tên A–Z",
-  category: "Category",
-  adjustable: "Dễ điều chỉnh nhất",
-};
 
 export interface LibraryGroupInfo {
   name: string;
@@ -82,7 +79,7 @@ export function sortModels(models: SavedModelMeta[], sort: LibrarySort): SavedMo
   return out;
 }
 
-/** Count per group key (`""` for Chưa nhóm). */
+/** Count per group key (`""` for the ungrouped bucket). */
 export function groupCounts(models: SavedModelMeta[]): Record<string, number> {
   const counts: Record<string, number> = { [UNGROUPED]: 0 };
   for (const model of models) {
@@ -125,11 +122,16 @@ export function sidebarGroups(
   return out;
 }
 
-/** The "Tất cả" view: one collapsible section per group, Chưa nhóm last. */
+/**
+ * The "all groups" view: one collapsible section per group, ungrouped last.
+ * Named groups keep their stored name; only the ungrouped bucket is labelled,
+ * so the caller passes the active dictionary (`t`) to localize it.
+ */
 export function buildSections(
   models: SavedModelMeta[],
   groups: LibraryGroupInfo[],
   sort: LibrarySort,
+  strings: Pick<Strings, "ungrouped"> = defaultStrings,
 ): LibrarySection[] {
   const byGroup = new Map<string, SavedModelMeta[]>();
   for (const model of models) {
@@ -150,7 +152,7 @@ export function buildSections(
   if (ungrouped.length > 0) {
     sections.push({
       key: UNGROUPED,
-      label: "Chưa nhóm",
+      label: strings.ungrouped,
       models: sortModels(ungrouped, sort),
     });
   }
@@ -178,10 +180,16 @@ export function isAllGroups(group: string): boolean {
   return group === ALL_GROUPS;
 }
 
-/** Sidebar label for the current selection ("Tất cả", "Chưa nhóm" or the group). */
-export function selectionLabel(group: string): string {
-  if (isAllGroups(group)) return "Tất cả";
-  if (group === UNGROUPED) return "Chưa nhóm";
+/**
+ * Sidebar label for the current selection (`t.allGroups`, `t.ungrouped` or the
+ * stored group name). The default dictionary keeps non-React callers working.
+ */
+export function selectionLabel(
+  group: string,
+  strings: Pick<Strings, "allGroups" | "ungrouped"> = defaultStrings,
+): string {
+  if (isAllGroups(group)) return strings.allGroups;
+  if (group === UNGROUPED) return strings.ungrouped;
   return group;
 }
 

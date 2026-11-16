@@ -264,6 +264,7 @@ export function finishDesignJob(
     warnings = [],
     stats = null,
     error = null,
+    code = null,
   } = {},
 ) {
   return updateJob(jobId, {
@@ -274,6 +275,7 @@ export function finishDesignJob(
     warnings,
     stats,
     error,
+    code,
   });
 }
 

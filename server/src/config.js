@@ -56,6 +56,11 @@ export const config = {
     jobTtlDays: Number(process.env.AGENT_JOB_TTL_DAYS || 7),
     /** Deleted models stay recoverable in saved-models/.trash for this long. */
     trashTtlDays: Number(process.env.TRASH_TTL_DAYS || 30),
+    /** Saved revisions kept per model; 0 = unlimited. */
+    get historyKeep() {
+      const value = Number(process.env.HISTORY_KEEP ?? 20);
+      return Number.isFinite(value) && value >= 0 ? Math.floor(value) : 20;
+    },
     /** Per model call. Kept for older callers; the step values below are the real budget. */
     timeoutMs: Number(process.env.AGENT_TIMEOUT || 240000),
     /** Skeleton pass of a new family (geometry + parameters). */

@@ -24,6 +24,8 @@ export const designRequest = z.object({
   lockModel: z.boolean().optional(),
   /** Skip a cached answer; the new result replaces the cache entry. */
   fresh: z.boolean().optional(),
+  /** Language for the agent's replies and stage codes: vi | en | zh. */
+  language: z.enum(["vi", "en", "zh"]).optional(),
   customApiConfig: customApiConfig.optional(),
   /** Command Code API key; exported to the CLI as COMMAND_CODE_API_KEY for this run. */
   commandCodeApiKey: z.string().trim().max(400).optional(),

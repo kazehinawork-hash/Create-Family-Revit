@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 
 import type { SavedModelMeta, SavedModelRevision, TrashItem } from "../lib/api";
-import { t } from "../lib/strings";
+import { useI18n } from "../lib/i18n";
 import {
   ALL_GROUPS,
   UNGROUPED,
@@ -13,7 +13,6 @@ import {
   writeLibraryState,
   type LibraryGroupInfo,
   type LibrarySort,
-  SORT_LABELS,
 } from "../lib/library";
 
 export interface LibraryPanelProps {
@@ -21,11 +20,13 @@ export interface LibraryPanelProps {
   groups: LibraryGroupInfo[];
   loading?: boolean;
   currentModelId: string | null;
-  /** "" = Chưa nhóm, "*" = Tất cả. */
+  /** "" = ungrouped, "*" = every group. */
   activeGroup: string;
   historyModelId: string | null;
   revisions: SavedModelRevision[];
   revisionsLoading: boolean;
+  /** Revisions kept per model; 0 = unlimited. */
+  historyKeep: number;
   onClose: () => void;
   onActiveGroup: (group: string) => void;
   onLoadModel: (id: string) => void;
@@ -46,14 +47,6 @@ export interface LibraryPanelProps {
 }
 
 const SORTS: LibrarySort[] = ["recent", "name", "category", "adjustable"];
-
-function formatDate(value: number): string {
-  try {
-    return new Date(value).toLocaleDateString("vi-VN");
-  } catch {
-    return "";
-  }
-}
 
 function IconFolder() {
   return (
@@ -86,6 +79,7 @@ export function LibraryPanel({
   historyModelId,
   revisions,
   revisionsLoading,
+  historyKeep,
   onClose,
   onActiveGroup,
   onLoadModel,
@@ -104,6 +98,7 @@ export function LibraryPanel({
   onPurgeTrash,
   onEmptyTrash,
 }: LibraryPanelProps) {
+  const { t, formatDate, formatDateTime } = useI18n();
   const [showTrash, setShowTrash] = useState(false);
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<LibrarySort>(() => readLibraryState().sort);
@@ -124,8 +119,8 @@ export function LibraryPanel({
     [models, activeGroup, query, sort],
   );
   const sections = useMemo(
-    () => buildSections(visible, groups, sort),
-    [visible, groups, sort],
+    () => buildSections(visible, groups, sort, t),
+    [visible, groups, sort, t],
   );
   const currentName =
     models.find((model) => model.id === historyModelId)?.name ?? historyModelId ?? "";
@@ -197,7 +192,7 @@ export function LibraryPanel({
   };
 
   const startNewGroup = () => {
-    const entered = window.prompt("Tên nhóm mới:");
+    const entered = window.prompt(t.libNewGroupPrompt);
     const name = entered?.trim();
     if (!name) return;
     void onCreateGroup(name);
@@ -212,11 +207,7 @@ export function LibraryPanel({
 
   const confirmDeleteGroup = (name: string) => {
     setOpenMenu(null);
-    if (
-      !window.confirm(
-        `Xoá nhóm "${name}"? Các family trong nhóm sẽ chuyển về "Chưa nhóm" và không bị xoá.`,
-      )
-    ) {
+    if (!window.confirm(t.libConfirmDeleteGroup(name, t.ungrouped))) {
       return;
     }
     onDeleteGroup(name);
@@ -224,10 +215,17 @@ export function LibraryPanel({
 
   const moveToNewGroup = (model: SavedModelMeta) => {
     setOpenMenu(null);
-    const entered = window.prompt("Chuyển family vào nhóm mới:", "");
+    const entered = window.prompt(t.libMoveNewGroupPrompt, "");
     const name = entered?.trim();
     if (!name) return;
     void Promise.resolve(onCreateGroup(name)).then(() => onMoveModel(model.id, name));
+  };
+
+  const sortLabels: Record<LibrarySort, string> = {
+    recent: t.sortRecent,
+    name: t.sortName,
+    category: t.sortCategory,
+    adjustable: t.sortAdjustable,
   };
 
   const renderCard = (item: SavedModelMeta) => (
@@ -260,8 +258,8 @@ export function LibraryPanel({
             <button
               type="button"
               className="btn-card-action"
-              title="Chuyển nhóm"
-              aria-label={`Chuyển ${item.name} sang nhóm khác`}
+              title={t.moveGroup}
+              aria-label={t.libMoveModelTo(item.name)}
               onClick={(event) => {
                 event.stopPropagation();
                 toggleMenu(event, item.id);
@@ -275,8 +273,8 @@ export function LibraryPanel({
                 style={{ top: openMenu.top, left: openMenu.left }}
                 onClick={(event) => event.stopPropagation()}
               >
-                <span className="card-menu-label">Chuyển vào nhóm</span>
-                {[{ name: "Chưa nhóm", value: UNGROUPED as string }]
+                <span className="card-menu-label">{t.moveToGroup}</span>
+                {[{ name: t.ungrouped, value: UNGROUPED as string }]
                   .concat(sidebar.map((group) => ({ name: group.name, value: group.name as string })))
                   .filter((option) => option.value !== (item.group ?? ""))
                   .map((option) => (
@@ -292,7 +290,7 @@ export function LibraryPanel({
                     </button>
                   ))}
                 <button type="button" className="card-menu-new" onClick={() => moveToNewGroup(item)}>
-                  + Nhóm mới…
+                  {t.newGroupOption}
                 </button>
               </div>
             )}
@@ -300,7 +298,7 @@ export function LibraryPanel({
           <button
             type="button"
             className="btn-rename-model"
-            title="Đổi tên mô hình"
+            title={t.renameModel}
             data-testid={`rename-${item.id}`}
             onClick={(event) => {
               event.stopPropagation();
@@ -315,7 +313,7 @@ export function LibraryPanel({
           <button
             type="button"
             className="btn-history-model"
-            title="Xem lịch sử các bản lưu"
+            title={t.libHistoryTooltip}
             onClick={(event) => {
               event.stopPropagation();
               onOpenHistory(item.id);
@@ -329,7 +327,7 @@ export function LibraryPanel({
           <button
             type="button"
             className="btn-delete-model"
-            title="Xoá mô hình này"
+            title={t.deleteModel}
             onClick={(event) => {
               event.stopPropagation();
               onDeleteModel(item.id);
@@ -349,7 +347,7 @@ export function LibraryPanel({
           value={renameDraft}
           autoFocus
           data-testid={`rename-input-${item.id}`}
-          aria-label={`Tên mới cho ${item.name}`}
+          aria-label={t.libRenameModelAria(item.name)}
           onClick={(event) => event.stopPropagation()}
           onChange={(event) => setRenameDraft(event.target.value)}
           onFocus={(event) => event.currentTarget.select()}
@@ -380,17 +378,16 @@ export function LibraryPanel({
       </div>
 
       <div className="model-meta">
-        <span>{item.partsCount} parts</span>
+        <span>{t.libPartsCount(item.partsCount)}</span>
         <span>·</span>
-        <span>{item.paramsCount} params</span>
+        <span>{t.libParamsCount(item.paramsCount)}</span>
         <span>·</span>
         <span>{formatDate(item.updatedAt)}</span>
       </div>
 
       {item.usability && (
         <div className="model-usability">
-          {item.usability.parameters} tham số · {item.usability.driving} điều khiển hình
-          {item.usability.dead > 0 ? ` · ${item.usability.dead} kích thước chết` : ""}
+          {t.libUsability(item.usability.parameters, item.usability.driving, item.usability.dead)}
         </div>
       )}
     </div>
@@ -405,13 +402,15 @@ export function LibraryPanel({
               <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
               <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
             </svg>
-            <h3>Thư viện mô hình đã lưu ({models.length})</h3>
+            <h3>
+              {t.libraryTitle} ({models.length})
+            </h3>
           </div>
           <div className="header-actions">
             <button type="button" className="btn-ghost" onClick={onNewModel}>
-              + Dựng mô hình mới
+              + {t.newFamily}
             </button>
-            <button type="button" className="modal-close" onClick={onClose} aria-label="Đóng thư viện">
+            <button type="button" className="modal-close" onClick={onClose} aria-label={t.close}>
               ×
             </button>
           </div>
@@ -421,31 +420,30 @@ export function LibraryPanel({
           {historyModelId && (
             <div className="history-panel">
               <div className="history-head">
-                <strong>Lịch sử: {currentName}</strong>
+                <strong>{t.libHistoryFor(currentName)}</strong>
                 <button type="button" className="btn-ghost" onClick={onCloseHistory}>
-                  Đóng
+                  {t.close}
                 </button>
               </div>
+              <p className="sub history-keep">{t.historyKeep(historyKeep)}</p>
               {revisionsLoading ? (
-                <p className="sub">Đang tải lịch sử…</p>
+                <p className="sub">{t.libHistoryLoading}</p>
               ) : revisions.length === 0 ? (
-                <p className="sub">
-                  Chưa có bản cũ. Lịch sử bắt đầu ghi từ lần Save tiếp theo của mô hình này.
-                </p>
+                <p className="sub">{t.libHistoryEmpty}</p>
               ) : (
                 <div className="history-list">
                   {revisions.map((revision) => (
                     <div key={revision.stamp} className="history-row">
-                      <span>{new Date(revision.savedAt).toLocaleString("vi-VN")}</span>
+                      <span>{formatDateTime(revision.savedAt)}</span>
                       <span className="sub">
-                        {revision.parts} parts · {revision.parameters} params
+                        {t.libPartsCount(revision.parts)} · {t.libParamsCount(revision.parameters)}
                       </span>
                       <button
                         type="button"
                         className="btn-ghost"
                         onClick={() => onRestoreRevision(revision.stamp)}
                       >
-                        Khôi phục
+                        {t.restore}
                       </button>
                     </div>
                   ))}
@@ -455,13 +453,13 @@ export function LibraryPanel({
           )}
 
           <div className="library-columns">
-            <aside className="library-side" aria-label="Nhóm mô hình">
+            <aside className="library-side" aria-label={t.libGroupsAria}>
               <button
                 type="button"
                 className={`library-filter ${isAllGroups(activeGroup) ? "active" : ""}`}
                 onClick={() => selectGroup(ALL_GROUPS)}
               >
-                <span>Tất cả</span>
+                <span>{t.allGroups}</span>
                 <span className="count">{models.length}</span>
               </button>
               <button
@@ -481,7 +479,7 @@ export function LibraryPanel({
                 }}
                 data-drop-group=""
               >
-                <span>Chưa nhóm</span>
+                <span>{t.ungrouped}</span>
                 <span className="count">{models.filter((model) => !(model.group ?? "").trim()).length}</span>
               </button>
 
@@ -509,7 +507,7 @@ export function LibraryPanel({
                         className="group-name-input"
                         value={groupDraft}
                         autoFocus
-                        aria-label={`Tên mới cho nhóm ${group.name}`}
+                        aria-label={t.libRenameGroupAria(group.name)}
                         onChange={(event) => setGroupDraft(event.target.value)}
                         onFocus={(event) => event.currentTarget.select()}
                         onKeyDown={(event) => {
@@ -538,7 +536,7 @@ export function LibraryPanel({
                       <button
                         type="button"
                         className="group-menu-btn"
-                        aria-label={`Tùy chọn cho nhóm ${group.name}`}
+                        aria-label={t.libGroupOptionsAria(group.name)}
                         onClick={(event) => toggleMenu(event, `g:${group.name}`)}
                       >
                         <IconMore />
@@ -556,14 +554,14 @@ export function LibraryPanel({
                               setEditingGroup(group.name);
                             }}
                           >
-                            Đổi tên nhóm
+                            {t.renameGroup}
                           </button>
                           <button
                             type="button"
                             className="danger"
                             onClick={() => confirmDeleteGroup(group.name)}
                           >
-                            Xoá nhóm
+                            {t.deleteGroup}
                           </button>
                         </div>
                       )}
@@ -585,7 +583,7 @@ export function LibraryPanel({
               </button>
 
               <button type="button" className="library-new-group" onClick={startNewGroup}>
-                + Nhóm mới
+                {t.newGroup}
               </button>
             </aside>
 
@@ -596,20 +594,20 @@ export function LibraryPanel({
                   type="search"
                   className="library-search"
                   value={query}
-                  placeholder="Tìm theo tên hoặc category…"
-                  aria-label="Tìm mô hình"
+                  placeholder={t.searchModels}
+                  aria-label={t.libSearchAria}
                   onChange={(event) => setQuery(event.target.value)}
                 />
                 <label className="library-sort">
-                  <span>Sắp xếp</span>
+                  <span>{t.sort}</span>
                   <select
                     value={sort}
-                    aria-label="Sắp xếp danh sách mô hình"
+                    aria-label={t.libSortAria}
                     onChange={(event) => setSort(event.target.value as LibrarySort)}
                   >
                     {SORTS.map((option) => (
                       <option key={option} value={option}>
-                        {SORT_LABELS[option]}
+                        {sortLabels[option]}
                       </option>
                     ))}
                   </select>
@@ -684,17 +682,14 @@ export function LibraryPanel({
                   )}
                 </div>
               ) : loading ? (
-                <p className="sub">Đang tải thư viện…</p>
+                <p className="sub">{t.libLibraryLoading}</p>
               ) : models.length === 0 ? (
                 <div className="empty-library">
-                  <p>Chưa có mô hình nào được lưu trong thư viện.</p>
-                  <p className="sub">
-                    Khi đang xem hoặc chỉnh sửa 1 mô hình trên Web, bấm nút <strong>Save</strong> trên thanh
-                    trên cùng để lưu lại.
-                  </p>
+                  <p>{t.libraryEmpty}</p>
+                  <p className="sub">{t.libraryEmptyHint}</p>
                 </div>
               ) : visible.length === 0 ? (
-                <p className="sub library-empty">Không có mô hình nào khớp tìm kiếm trong mục này.</p>
+                <p className="sub library-empty">{t.noMatches}</p>
               ) : isAllGroups(activeGroup) ? (
                 <div className="library-sections">
                   {sections.map((section) => {

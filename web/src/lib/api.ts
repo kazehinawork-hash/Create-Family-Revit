@@ -65,6 +65,9 @@ export interface StageEvent {
   type: "stage";
   stage: string;
   message: string;
+  /** Server-generated message code; `message` stays as the fallback. */
+  code?: string;
+  params?: Record<string, unknown>;
   issues?: Issue[];
   details?: string;
 }
@@ -82,6 +85,8 @@ export interface SpecEvent {
 export interface ErrorEvent {
   type: "error";
   message: string;
+  code?: string;
+  params?: Record<string, unknown>;
   /** Raw provider text, shown inside the collapsible "details" block. */
   details?: string;
   retryable?: boolean;
@@ -112,6 +117,8 @@ export interface DesignJob {
   warnings: string[];
   stats: DesignStats | null;
   error: string | null;
+  /** Machine code for the stored error, when the server knew one. */
+  code?: string | null;
 }
 
 export async function fetchDesignJob(jobId: string): Promise<DesignJob | null> {
@@ -231,6 +238,8 @@ export async function streamDesign(
     lockModel?: boolean;
     /** Bypass a cached answer and cache the new one instead. */
     fresh?: boolean;
+    /** UI language; the agent answers explanations in this language. */
+    language?: "vi" | "en" | "zh";
     customApiConfig?: CustomApiConfig;
     /** Command Code API key used to authenticate the local CLI (no cmd login needed). */
     commandCodeApiKey?: string;
@@ -569,14 +578,23 @@ export interface SavedModelRevision {
   parameters: number;
 }
 
-export async function fetchModelHistory(id: string): Promise<SavedModelRevision[]> {
+export interface HistoryPage {
+  revisions: SavedModelRevision[];
+  /** Revisions kept per model; 0 = unlimited. */
+  keep: number;
+}
+
+export async function fetchModelHistory(id: string): Promise<HistoryPage> {
   try {
     const res = await fetch(`/api/models/${encodeURIComponent(id)}/history`);
-    if (!res.ok) return [];
+    if (!res.ok) return { revisions: [], keep: 20 };
     const data = await res.json();
-    return data.revisions || [];
+    return {
+      revisions: data.revisions || [],
+      keep: typeof data.keep === "number" ? data.keep : 20,
+    };
   } catch {
-    return [];
+    return { revisions: [], keep: 20 };
   }
 }
 
