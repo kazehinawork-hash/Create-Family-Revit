@@ -6,6 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
+import "./helpers/jobs-dir.js";
 import { JOBS_DIR } from "../src/jobs.js";
 
 const SERVER_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -130,7 +131,14 @@ test("design jobs endpoint, heartbeat and disk survival", async (t) => {
       job_id: persistedId,
       kind: "design",
       status: "done",
-      spec: { schemaVersion: "1.0", name: "Restored", category: "Generic Model", units: "mm", parameters: [], parts: [] },
+      spec: {
+        schemaVersion: "1.0",
+        name: "Restored",
+        category: "Generic Model",
+        units: "mm",
+        parameters: [],
+        parts: [],
+      },
       stats: { parts: 0, parameters: 0 },
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),

@@ -11,6 +11,8 @@ export interface DesignStats {
   elapsedMs: number;
   usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null;
   cached?: boolean;
+  /** When the cached answer was produced (ms since epoch). */
+  cachedAt?: number;
   tier?: number;
   tierLabel?: string;
   /** false when the spec does not satisfy the extracted requirement checklist. */
@@ -227,6 +229,8 @@ export async function streamDesign(
     model?: string;
     /** Never switch to a fallback model, even if the selected one is overloaded. */
     lockModel?: boolean;
+    /** Bypass a cached answer and cache the new one instead. */
+    fresh?: boolean;
     customApiConfig?: CustomApiConfig;
     /** Command Code API key used to authenticate the local CLI (no cmd login needed). */
     commandCodeApiKey?: string;
@@ -450,6 +454,12 @@ export interface SavedModelMeta {
   typeName?: string;
   /** Snapshot of the viewer, or null when the family was saved without one. */
   thumbUrl?: string | null;
+  /** Parameter health, computed by the server from analyzeSpec. */
+  usability?: {
+    parameters: number;
+    driving: number;
+    dead: number;
+  };
 }
 
 export interface LibraryGroupSummary {
@@ -543,6 +553,14 @@ export async function fetchSavedModelDetail(id: string): Promise<SavedModelDetai
   }
 }
 
+/** Write only the .thumb.jpg for a saved model; the JSON and savedAt are untouched. */
+export function uploadModelThumbnail(
+  id: string,
+  thumbnail: string,
+): Promise<{ ok: boolean; id: string; thumbUrl: string }> {
+  return libraryRequest(`/api/models/${encodeURIComponent(id)}/thumb`, "POST", { thumbnail });
+}
+
 export interface SavedModelRevision {
   stamp: string;
   savedAt: number;
@@ -610,11 +628,53 @@ export async function renameModel(
   return data;
 }
 
-export async function deleteSavedModel(id: string): Promise<{ ok: boolean }> {
+export async function deleteSavedModel(
+  id: string,
+): Promise<{ ok: boolean; id: string; key: string; trashed?: boolean; group?: string }> {
   const res = await fetch(`/api/models/${encodeURIComponent(id)}`, {
     method: "DELETE",
   });
   return await res.json();
+}
+
+export interface TrashItem {
+  /** Unique trash key (`<id>__<deletedAt>`); use it for restore/purge/thumb. */
+  key: string;
+  id: string;
+  name: string;
+  deletedAt: number;
+  group: string;
+  daysLeft: number;
+  hasThumbnail: boolean;
+  thumbUrl?: string | null;
+}
+
+export async function fetchTrash(): Promise<{ items: TrashItem[]; ttlDays: number }> {
+  try {
+    const res = await fetch("/api/trash");
+    if (!res.ok) return { items: [], ttlDays: 30 };
+    const data = await res.json();
+    return {
+      items: Array.isArray(data.items) ? data.items : [],
+      ttlDays: Number(data.ttlDays) || 30,
+    };
+  } catch {
+    return { items: [], ttlDays: 30 };
+  }
+}
+
+export function restoreTrashedModel(
+  key: string,
+): Promise<{ ok: boolean; id: string; key: string; group: string }> {
+  return libraryRequest(`/api/trash/${encodeURIComponent(key)}/restore`, "POST");
+}
+
+export function purgeTrashedModel(key: string): Promise<{ ok: boolean; id: string; key: string }> {
+  return libraryRequest(`/api/trash/${encodeURIComponent(key)}`, "DELETE");
+}
+
+export function emptyTrash(): Promise<{ ok: boolean; removed: number }> {
+  return libraryRequest("/api/trash", "DELETE");
 }
 
 export interface ExternalSpecPayload {

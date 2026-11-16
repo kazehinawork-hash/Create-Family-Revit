@@ -135,9 +135,10 @@ export function maxTurnsError(maxTurns) {
 }
 
 export function outputLimitError(outputTokens) {
-  const size = Number.isFinite(Number(outputTokens)) && outputTokens
-    ? `${Number(outputTokens).toLocaleString("en-US")} token`
-    : "giới hạn token";
+  const size =
+    Number.isFinite(Number(outputTokens)) && outputTokens
+      ? `${Number(outputTokens).toLocaleString("en-US")} token`
+      : "giới hạn token";
   const error = new LlmError(
     `Model viết quá dài (${size}) mà chưa xong spec — yêu cầu cần được chia nhỏ (OUTPUT_LIMIT).`,
   );
@@ -229,13 +230,21 @@ function killTree(child) {
     return;
   }
 
-  try { child.kill("SIGTERM"); } catch { /* ignore */ }
+  try {
+    child.kill("SIGTERM");
+  } catch {
+    /* ignore */
+  }
 
   // A wedged CLI can ignore SIGTERM; without a hard kill the run would hold the
   // model slot (and the studio connection) until the step timeout expires.
   const hardKill = setTimeout(() => {
     if (child.exitCode === null) {
-      try { child.kill("SIGKILL"); } catch { /* already gone */ }
+      try {
+        child.kill("SIGKILL");
+      } catch {
+        /* already gone */
+      }
     }
   }, 5000);
   hardKill.unref?.();
@@ -344,7 +353,7 @@ function runCliProcess({
 
     timer = setTimeout(() => {
       console.warn(`[agent${tag}] timeout after ${timeoutMs}ms`);
-      fail(`Agent run timed out after ${Math.round(timeoutMs / 1000)}s`);
+      fail(`Agent chạy quá ${Math.round(timeoutMs / 1000)} giây`);
     }, timeoutMs);
 
     onAbort = () => {
@@ -443,15 +452,27 @@ export const CLI_EFFORTS = ["off", "low", "medium", "high", "max"];
  * user's choice and wins; otherwise build/repair turns use the cheap default.
  */
 export function resolveCliEffort({ effort, buildEffort } = {}) {
-  const explicit = String(effort ?? config.agent.effort ?? "").trim().toLowerCase();
+  const explicit = String(effort ?? config.agent.effort ?? "")
+    .trim()
+    .toLowerCase();
   if (explicit) return explicit;
-  const build = String(buildEffort ?? config.agent.buildEffort ?? "").trim().toLowerCase();
+  const build = String(buildEffort ?? config.agent.buildEffort ?? "")
+    .trim()
+    .toLowerCase();
   return build;
 }
 
 /** Args shared by every cmdc design turn. */
 export function commandCodeArgs({ maxTurns, model, effort } = {}) {
-  const args = ["-p", "--no-session", "--output-format", "json", "--skip-onboarding", "--max-turns", String(maxTurns)];
+  const args = [
+    "-p",
+    "--no-session",
+    "--output-format",
+    "json",
+    "--skip-onboarding",
+    "--max-turns",
+    String(maxTurns),
+  ];
 
   // Skills and mods are project automation, useless for writing one JSON spec and
   // expensive to discover on every call.
@@ -467,7 +488,17 @@ export function commandCodeArgs({ maxTurns, model, effort } = {}) {
   return args;
 }
 
-function runCommandCode(prompt, timeoutMs, model, cwd, onProgress, signal, maxTurns = 3, apiKey = null, effort = null) {
+function runCommandCode(
+  prompt,
+  timeoutMs,
+  model,
+  cwd,
+  onProgress,
+  signal,
+  maxTurns = 3,
+  apiKey = null,
+  effort = null,
+) {
   const chosen = model || config.agent.model;
   const isAgy = Boolean(chosen && chosen.startsWith("agy:"));
   let executable = config.agent.command;
@@ -519,7 +550,12 @@ function runCodexCli(prompt, timeoutMs, model, cwd, onProgress, signal) {
     effort = safeArg(reasoning); // low, medium, high
   }
 
-  const args = ["exec", "--json", "--dangerously-bypass-approvals-and-sandbox", "--skip-git-repo-check"];
+  const args = [
+    "exec",
+    "--json",
+    "--dangerously-bypass-approvals-and-sandbox",
+    "--skip-git-repo-check",
+  ];
   if (effort) args.push("-c", `model_reasoning_effort="${effort}"`);
   if (rawModel && rawModel !== "default") args.push("-m", rawModel);
   args.push("-");
@@ -560,6 +596,14 @@ function runClaudeCli(prompt, timeoutMs, model, cwd, onProgress, signal) {
 function prepareWorkspace(attachments) {
   if (!attachments || attachments.length === 0) return { dir: null, names: [] };
 
+  // Check every source first so a missing file leaves no half-copied workspace.
+  for (const file of attachments) {
+    if (!file.path || !fs.existsSync(file.path)) {
+      const safe = path.basename(file.name || file.path || "document");
+      throw new Error(`Không tìm thấy tệp đính kèm "${safe}" trên ổ đĩa (${file.path ?? "?"}).`);
+    }
+  }
+
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "family-agent-"));
   const names = [];
 
@@ -591,14 +635,19 @@ async function codexJson(messages, options = {}) {
   for (let i = lines.length - 1; i >= 0; i--) {
     try {
       const parsed = JSON.parse(lines[i]);
-      if (parsed.type === "item.completed" && parsed.item?.type === "agent_message" && parsed.item.text && !text) {
+      if (
+        parsed.type === "item.completed" &&
+        parsed.item?.type === "agent_message" &&
+        parsed.item.text &&
+        !text
+      ) {
         text = parsed.item.text.trim();
       }
       if (parsed.type === "turn.completed" && parsed.usage && !usage) {
         const u = parsed.usage;
         const inputTokens = u.input_tokens || 0;
         const outputTokens = u.output_tokens || 0;
-        const totalTokens = u.total_tokens || (inputTokens + outputTokens);
+        const totalTokens = u.total_tokens || inputTokens + outputTokens;
         usage = {
           prompt_tokens: inputTokens,
           completion_tokens: outputTokens,
@@ -724,10 +773,15 @@ async function commandCodeJson(messages, options = {}) {
     }
 
     if (!text) {
-      const summary = (result.stderr.trim() || result.stdout.trim() || "no output from agent").slice(
-        -400,
+      const summary = (
+        result.stderr.trim() ||
+        result.stdout.trim() ||
+        "no output from agent"
+      ).slice(-400);
+      throw attachModel(
+        new LlmError(`Agent completed without returning a spec: ${summary}`),
+        usedModel,
       );
-      throw attachModel(new LlmError(`Agent completed without returning a spec: ${summary}`), usedModel);
     }
 
     const json = parseModelJson(text);
@@ -745,7 +799,11 @@ async function commandCodeJson(messages, options = {}) {
     };
   } finally {
     if (workspace.dir) {
-      try { fs.rmSync(workspace.dir, { recursive: true, force: true }); } catch { /* ignore */ }
+      try {
+        fs.rmSync(workspace.dir, { recursive: true, force: true });
+      } catch {
+        /* ignore */
+      }
     }
   }
 }
@@ -779,7 +837,9 @@ const modelsTtlMs = () => Number(process.env.AGENT_MODELS_TTL_MS || 60000);
 const BACKENDS_TTL_MS = 30000;
 
 function spawnProcess(executable, args, options = {}) {
-  return spawnOverride ? spawnOverride(executable, args, options) : spawnCli(executable, args, options);
+  return spawnOverride
+    ? spawnOverride(executable, args, options)
+    : spawnCli(executable, args, options);
 }
 
 function spawnBinary(command, args, options = {}) {
@@ -808,7 +868,11 @@ function checkBinaryExists(bin) {
 
     timer = setTimeout(() => {
       console.warn(`[agent] checking "${bin}" timed out after ${binTimeoutMs()}ms`);
-      try { child.kill(); } catch { /* already gone */ }
+      try {
+        child.kill();
+      } catch {
+        /* already gone */
+      }
       finish(false);
     }, binTimeoutMs());
 
@@ -887,7 +951,11 @@ export function listCommandModels(command) {
 
     timer = setTimeout(() => {
       console.warn(`[agent] "${command} --list-models" timed out after ${listTimeoutMs()}ms`);
-      try { child.kill(); } catch { /* already gone */ }
+      try {
+        child.kill();
+      } catch {
+        /* already gone */
+      }
       finish([]);
     }, listTimeoutMs());
   });
@@ -938,7 +1006,11 @@ function listAgyModels() {
 
     timer = setTimeout(() => {
       console.warn(`[agent] "agy models" timed out after ${listTimeoutMs()}ms`);
-      try { child.kill(); } catch { /* already gone */ }
+      try {
+        child.kill();
+      } catch {
+        /* already gone */
+      }
       finish([]);
     }, listTimeoutMs());
   });
@@ -986,21 +1058,73 @@ function refreshModels() {
     if (hasCodex) {
       list.push(
         { id: "codex:default", category: "OpenAI Codex CLI", label: "[Codex] Default Model" },
-        { id: "codex:gpt-6-astra:low", category: "OpenAI Codex CLI", label: "[Codex] GPT-6 Astra (Low)" },
-        { id: "codex:gpt-6-astra:medium", category: "OpenAI Codex CLI", label: "[Codex] GPT-6 Astra (Medium)" },
-        { id: "codex:gpt-6-astra:high", category: "OpenAI Codex CLI", label: "[Codex] GPT-6 Astra (High)" },
-        { id: "codex:gpt-6.1-sol:low", category: "OpenAI Codex CLI", label: "[Codex] GPT-6.1 Sol (Low)" },
-        { id: "codex:gpt-6.1-sol:medium", category: "OpenAI Codex CLI", label: "[Codex] GPT-6.1 Sol (Medium)" },
-        { id: "codex:gpt-6.1-sol:high", category: "OpenAI Codex CLI", label: "[Codex] GPT-6.1 Sol (High)" },
-        { id: "codex:gpt-6-sol:low", category: "OpenAI Codex CLI", label: "[Codex] GPT-6 Sol (Low)" },
-        { id: "codex:gpt-6-sol:medium", category: "OpenAI Codex CLI", label: "[Codex] GPT-6 Sol (Medium)" },
-        { id: "codex:gpt-6-luna:low", category: "OpenAI Codex CLI", label: "[Codex] GPT-6 Luna (Low)" },
-        { id: "codex:gpt-6-luna:medium", category: "OpenAI Codex CLI", label: "[Codex] GPT-6 Luna (Medium)" },
+        {
+          id: "codex:gpt-6-astra:low",
+          category: "OpenAI Codex CLI",
+          label: "[Codex] GPT-6 Astra (Low)",
+        },
+        {
+          id: "codex:gpt-6-astra:medium",
+          category: "OpenAI Codex CLI",
+          label: "[Codex] GPT-6 Astra (Medium)",
+        },
+        {
+          id: "codex:gpt-6-astra:high",
+          category: "OpenAI Codex CLI",
+          label: "[Codex] GPT-6 Astra (High)",
+        },
+        {
+          id: "codex:gpt-6.1-sol:low",
+          category: "OpenAI Codex CLI",
+          label: "[Codex] GPT-6.1 Sol (Low)",
+        },
+        {
+          id: "codex:gpt-6.1-sol:medium",
+          category: "OpenAI Codex CLI",
+          label: "[Codex] GPT-6.1 Sol (Medium)",
+        },
+        {
+          id: "codex:gpt-6.1-sol:high",
+          category: "OpenAI Codex CLI",
+          label: "[Codex] GPT-6.1 Sol (High)",
+        },
+        {
+          id: "codex:gpt-6-sol:low",
+          category: "OpenAI Codex CLI",
+          label: "[Codex] GPT-6 Sol (Low)",
+        },
+        {
+          id: "codex:gpt-6-sol:medium",
+          category: "OpenAI Codex CLI",
+          label: "[Codex] GPT-6 Sol (Medium)",
+        },
+        {
+          id: "codex:gpt-6-luna:low",
+          category: "OpenAI Codex CLI",
+          label: "[Codex] GPT-6 Luna (Low)",
+        },
+        {
+          id: "codex:gpt-6-luna:medium",
+          category: "OpenAI Codex CLI",
+          label: "[Codex] GPT-6 Luna (Medium)",
+        },
         { id: "codex:o4-mini:low", category: "OpenAI Codex CLI", label: "[Codex] o4-mini (Low)" },
-        { id: "codex:o4-mini:medium", category: "OpenAI Codex CLI", label: "[Codex] o4-mini (Medium)" },
+        {
+          id: "codex:o4-mini:medium",
+          category: "OpenAI Codex CLI",
+          label: "[Codex] o4-mini (Medium)",
+        },
         { id: "codex:o4-mini:high", category: "OpenAI Codex CLI", label: "[Codex] o4-mini (High)" },
-        { id: "codex:gpt-5.6-sol:medium", category: "OpenAI Codex CLI", label: "[Codex] GPT-5.6 Sol (Medium)" },
-        { id: "codex:gpt-5.6-terra:medium", category: "OpenAI Codex CLI", label: "[Codex] GPT-5.6 Terra (Medium)" },
+        {
+          id: "codex:gpt-5.6-sol:medium",
+          category: "OpenAI Codex CLI",
+          label: "[Codex] GPT-5.6 Sol (Medium)",
+        },
+        {
+          id: "codex:gpt-5.6-terra:medium",
+          category: "OpenAI Codex CLI",
+          label: "[Codex] GPT-5.6 Terra (Medium)",
+        },
       );
     }
 
@@ -1009,7 +1133,11 @@ function refreshModels() {
     if (hasClaude) {
       list.push(
         { id: "claude:default", category: "Claude Code CLI", label: "[Claude] Default" },
-        { id: "claude:claude-3-7-sonnet", category: "Claude Code CLI", label: "[Claude] Claude 3.7 Sonnet" },
+        {
+          id: "claude:claude-3-7-sonnet",
+          category: "Claude Code CLI",
+          label: "[Claude] Claude 3.7 Sonnet",
+        },
       );
     }
 
@@ -1097,7 +1225,9 @@ export function agentStatus() {
     provider,
     model: config.agent.model || (isAgy ? "Antigravity CLI (agy)" : "command code default"),
     ready: true,
-    detail: isAgy ? `runs Antigravity CLI (agy) on this machine` : `runs "${config.agent.command} -p" on this machine`,
+    detail: isAgy
+      ? `runs Antigravity CLI (agy) on this machine`
+      : `runs "${config.agent.command} -p" on this machine`,
   };
 }
 
@@ -1192,7 +1322,11 @@ function callBackend(messages, options) {
 }
 
 /** Models to try for one call: the selected one, then fallbacks unless the user locked it. */
-export function modelCandidates(primary, fallbacks = [], { lockModel = false, customApiConfig } = {}) {
+export function modelCandidates(
+  primary,
+  fallbacks = [],
+  { lockModel = false, customApiConfig } = {},
+) {
   const base = [primary || "default"];
   if (lockModel || customApiConfig) return base;
 

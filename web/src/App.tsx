@@ -1,4 +1,12 @@
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import {
   analyzeSpec,
   paramKey,
@@ -7,7 +15,9 @@ import {
   type FamilySpec,
   type FamilyTypeEntry,
   type Issue,
+  type MaterialDef,
   type ParameterType,
+  type ResolvedModel,
 } from "@family/spec-core";
 import fcuExampleRaw from "../../spec/examples/fcu-080.json";
 import pumpExampleRaw from "../../spec/examples/pump-dn80.json";
@@ -39,6 +49,11 @@ import {
   renameLibraryGroup,
   deleteLibraryGroup,
   moveModelToGroup,
+  fetchTrash,
+  restoreTrashedModel,
+  purgeTrashedModel,
+  emptyTrash,
+  uploadModelThumbnail,
   fetchLatestExternalSpec,
   subscribeExternalSpecStream,
   type ExternalSpecPayload,
@@ -48,6 +63,7 @@ import {
   type SavedModelMeta,
   type SavedModelRevision,
   type LibraryGroupSummary,
+  type TrashItem,
   type DesignJob,
   type DesignStats,
 } from "./lib/api";
@@ -109,6 +125,16 @@ interface ToastState {
   text: string;
   sub?: string;
   tone: "ok" | "warn" | "error";
+  /** Optional action shown inside the toast (e.g. "Hoàn tác" after a delete). */
+  action?: { label: string; onClick: () => void };
+}
+
+/** One saved model rendered offscreen to fill a missing library thumbnail. */
+interface ThumbJob {
+  id: string;
+  model: ResolvedModel;
+  parameters: FamilyParameter[];
+  materials: MaterialDef[];
 }
 
 const DEFAULT_LEFT_WIDTH = 322;
@@ -199,7 +225,8 @@ export function App() {
   const [health, setHealth] = useState<Health | null>(null);
   const [serverOnline, setServerOnline] = useState<boolean | null>(null);
   const serverOnlineRef = useRef<boolean | null>(null);
-  const [lastBeatAt, setLastBeatAt] = useState<number | null>(null); void lastBeatAt;
+  const [lastBeatAt, setLastBeatAt] = useState<number | null>(null);
+  void lastBeatAt;
   const [toast, setToast] = useState<ToastState | null>(null);
   const [currentModelId, setCurrentModelId] = useState<string | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
@@ -207,12 +234,17 @@ export function App() {
   const [libraryGroups, setLibraryGroups] = useState<LibraryGroupSummary[]>([]);
   const [libraryGroup, setLibraryGroup] = useState(() => readLibraryState().group);
   const [libraryLoading, setLibraryLoading] = useState(false);
+  const [trashItems, setTrashItems] = useState<TrashItem[]>([]);
+  const [thumbJob, setThumbJob] = useState<ThumbJob | null>(null);
+  const thumbCaptureRef = useRef<(() => string | null) | null>(null);
+  const thumbStartedRef = useRef(false);
+  const thumbAbortRef = useRef(false);
   const [historyModelId, setHistoryModelId] = useState<string | null>(null);
   const [themeMode, setThemeMode] = useState<ThemeMode>(() => readTheme());
   const [systemDark, setSystemDark] = useState(() => systemPrefersDark());
   const [mobileTab, setMobileTab] = useState<"chat" | "viewer" | "params">("chat");
   const [paramsOpen, setParamsOpen] = useState(false);
-  const viewerCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const viewerCaptureRef = useRef<(() => string | null) | null>(null);
   const resolvedTheme = resolveTheme(themeMode, systemDark);
 
   useEffect(() => {
@@ -249,7 +281,9 @@ export function App() {
   const canUndo = pastRef.current.length > 0;
   const canRedo = futureRef.current.length > 0;
   void historyVersion;
-  const [leftWidth, setLeftWidth] = useState(() => readStoredWidth("fa.leftWidth", DEFAULT_LEFT_WIDTH));
+  const [leftWidth, setLeftWidth] = useState(() =>
+    readStoredWidth("fa.leftWidth", DEFAULT_LEFT_WIDTH),
+  );
   const [rightWidth, setRightWidth] = useState(() =>
     readStoredWidth("fa.rightWidth", DEFAULT_RIGHT_WIDTH),
   );
@@ -431,7 +465,10 @@ export function App() {
   }, [running]);
 
   const elapsed = runStartedAt ? Math.max(0, Math.floor((now - runStartedAt) / 1000)) : 0;
-  const elapsedLabel = running && runStartedAt ? `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, "0")}` : null;
+  const elapsedLabel =
+    running && runStartedAt
+      ? `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, "0")}`
+      : null;
 
   // beatAge removed
   // beatLabel removed
@@ -440,7 +477,8 @@ export function App() {
 
   useEffect(() => {
     if (!toast) return;
-    const timer = setTimeout(() => setToast(null), 9000);
+    // An undo toast disappears sooner than a plain information toast.
+    const timer = setTimeout(() => setToast(null), toast.action ? 6000 : 9000);
     return () => clearTimeout(timer);
   }, [toast]);
 
@@ -514,7 +552,8 @@ export function App() {
       setNative(false);
 
       const partsCount = data.geometry_summary?.parts_count ?? (data.spec.parts?.length || 0);
-      const paramsCount = data.geometry_summary?.parameters_count ?? (data.spec.parameters?.length || 0);
+      const paramsCount =
+        data.geometry_summary?.parameters_count ?? (data.spec.parameters?.length || 0);
       const bounds = data.geometry_summary?.bounds;
       const dims = bounds ? ` · ${bounds.x} × ${bounds.y} × ${bounds.z} mm` : "";
 
@@ -523,7 +562,11 @@ export function App() {
         text: `Đã nhận Family Spec từ MCP: ${data.spec.name || "Family"}.\n${partsCount} chi tiết · ${paramsCount} tham số${dims}`,
         notes: data.spec.notes,
         meta: "⚡ MCP Real-time Sync",
-        issues: (data.warnings || []).map((w) => ({ message: w, severity: "warning", path: "spec" })),
+        issues: (data.warnings || []).map((w) => ({
+          message: w,
+          severity: "warning",
+          path: "spec",
+        })),
       });
 
       setToast({
@@ -583,7 +626,6 @@ export function App() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
     // Handlers only touch refs and stable setters.
-     
   }, []);
 
   const handleAttach = async (files: File[]) => {
@@ -638,7 +680,11 @@ export function App() {
     }
   };
 
-  const handleSend = async (text: string, specOverride?: FamilySpec) => {
+  const handleSend = async (
+    text: string,
+    specOverride?: FamilySpec,
+    sendOptions?: { fresh?: boolean },
+  ) => {
     if (running || uploading) return;
     lastPromptRef.current = text;
     const baseSpec = specOverride ?? spec;
@@ -679,7 +725,9 @@ export function App() {
       outcome: "ok" | "incomplete" | "has-errors" | "unchanged" | null = null,
       errors: Array<{ message?: string } | string> = [],
     ) => {
-      const dims = stats.bounds ? `${stats.bounds.x} × ${stats.bounds.y} × ${stats.bounds.z} mm` : "";
+      const dims = stats.bounds
+        ? `${stats.bounds.x} × ${stats.bounds.y} × ${stats.bounds.z} mm`
+        : "";
       const fast = stats.fastEdit;
       const fastUnit = fast?.type === "Length" ? " mm" : fast?.type === "Angle" ? "°" : "";
       const fastLine = fast
@@ -688,8 +736,9 @@ export function App() {
       const stepLine =
         Array.isArray(stats.steps) && stats.steps.length > 1
           ? `\n${stats.steps
-              .map((step: { label: string; ms: number; ok: boolean; error?: string }) =>
-                `${step.ok ? "✓" : "⚠"} ${step.label}: ${formatDuration(step.ms)}${step.error ? ` (${step.error})` : ""}`,
+              .map(
+                (step: { label: string; ms: number; ok: boolean; error?: string }) =>
+                  `${step.ok ? "✓" : "⚠"} ${step.label}: ${formatDuration(step.ms)}${step.error ? ` (${step.error})` : ""}`,
               )
               .join(" · ")}`
           : "";
@@ -735,12 +784,11 @@ export function App() {
         `${dims ? ` · ${dims}` : ""}${fastLine}${stepLine}${callLine}`;
 
       setSessionUsage((current) => {
-        const calls =
-          stats.calls?.length
-            ? stats.calls
-            : stats.model
-              ? [{ model: stats.model, modelCalls: stats.modelCalls ?? 1 }]
-              : [];
+        const calls = stats.calls?.length
+          ? stats.calls
+          : stats.model
+            ? [{ model: stats.model, modelCalls: stats.modelCalls ?? 1 }]
+            : [];
         if (calls.length === 0) return current;
 
         const next = { ...current };
@@ -754,15 +802,14 @@ export function App() {
       pushEntry({
         role: "agent",
         tone: copy.tone === "normal" ? "normal" : "error",
-        text:
-          `${copy.title}${bullets ? `\n${bullets}` : ""}\n` +
-          `${prefix}${summary}`,
+        text: `${copy.title}${bullets ? `\n${bullets}` : ""}\n` + `${prefix}${summary}`,
         warnings: (stats.warnings as string[] | undefined) ?? undefined,
         notes: specValue.notes ?? [],
         // Errors are the clickable issue list (jump to the offending part).
         issues: copy.outcome === "has-errors" ? (errors as never[]) : undefined,
-        action:
-          copy.outcome === "unchanged"
+        action: stats.cached
+          ? { label: t.runFresh, kind: "fresh" as const }
+          : copy.outcome === "unchanged"
             ? { label: "Gửi lại" }
             : undefined,
         resolution: Array.isArray(stats.resolution)
@@ -776,7 +823,15 @@ export function App() {
         meta: fast
           ? `⚡ local · ${formatDuration(stats.elapsedMs)}${savedLine}`
           : stats.cached
-            ? `⚡ cached · 0 token${savedLine}`
+            ? (() => {
+                const time = stats.cachedAt
+                  ? new Date(stats.cachedAt).toLocaleTimeString("vi-VN", {
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })
+                  : "--:--";
+                return `${t.cachedResult(time)} · 0 token${savedLine}`;
+              })()
             : `${formatDuration(stats.elapsedMs)}${tierLine}${savedLine}`,
       });
     };
@@ -788,18 +843,31 @@ export function App() {
           spec: baseSpec,
           lod,
           model: model || undefined,
-          customApiConfig: model === 'custom:api' ? (() => {
+          fresh: sendOptions?.fresh || undefined,
+          customApiConfig:
+            model === "custom:api"
+              ? (() => {
+                  try {
+                    const raw = localStorage.getItem("custom_api_config");
+                    if (!raw) return undefined;
+                    const config = JSON.parse(raw);
+                    // A display name ("Gemini 3.8 Flash") is not a model id: never send it.
+                    if (config?.model && !isModelId(config.model)) config.model = "";
+                    return config;
+                  } catch {
+                    return undefined;
+                  }
+                })()
+              : undefined,
+          commandCodeApiKey: (() => {
             try {
-              const raw = localStorage.getItem('custom_api_config');
-              if (!raw) return undefined;
-              const config = JSON.parse(raw);
-              // A display name ("Gemini 3.8 Flash") is not a model id: never send it.
-              if (config?.model && !isModelId(config.model)) config.model = '';
-              return config;
-            } catch { return undefined; }
-          })() : undefined,
-          commandCodeApiKey: (() => { try { return localStorage.getItem('command_code_api_key') || undefined; } catch { return undefined; } })(),
-          attachments: docs.length > 0 ? docs.map((d) => ({ path: d.path, name: d.name })) : undefined,
+              return localStorage.getItem("command_code_api_key") || undefined;
+            } catch {
+              return undefined;
+            }
+          })(),
+          attachments:
+            docs.length > 0 ? docs.map((d) => ({ path: d.path, name: d.name })) : undefined,
         },
         (event) => {
           if (event.type === "job") {
@@ -810,10 +878,9 @@ export function App() {
           if (event.type === "suggestion") {
             pushEntry({
               role: "agent",
-              text:
-                `Có family đã lưu gần giống: ${event.sample.name} (khớp ${Math.round(
-                  event.sample.score * 100,
-                )}%).\nBắt đầu từ mẫu này sẽ rẻ hơn tạo mới — chỉ cần sửa lại theo yêu cầu.`,
+              text: `Có family đã lưu gần giống: ${event.sample.name} (khớp ${Math.round(
+                event.sample.score * 100,
+              )}%).\nBắt đầu từ mẫu này sẽ rẻ hơn tạo mới — chỉ cần sửa lại theo yêu cầu.`,
               action: {
                 label: "Bắt đầu từ mẫu gần nhất",
                 kind: "use-sample",
@@ -1059,10 +1126,7 @@ export function App() {
     setNative(false);
   };
 
-  const handleUpdateConnectorHost = (
-    connectorId: string,
-    host: "solid" | "reference-plane",
-  ) => {
+  const handleUpdateConnectorHost = (connectorId: string, host: "solid" | "reference-plane") => {
     const current = specRef.current;
     if (!current) return;
     applySpec({
@@ -1074,7 +1138,11 @@ export function App() {
     setNative(false);
   };
 
-  const handleAddParameter = (draft: { name: string; type: ParameterType; value: number | string }) => {
+  const handleAddParameter = (draft: {
+    name: string;
+    type: ParameterType;
+    value: number | string;
+  }) => {
     const current = specRef.current;
     if (!current) return;
 
@@ -1146,17 +1214,23 @@ export function App() {
         const notes = [
           ...(result.warnings ?? []),
           ...(buildMode === "planes"
-            ? ["Revit giữ được dimension theo reference plane nhưng không giữ được ràng buộc mặt: hình cập nhật bằng rebuild."]
+            ? [
+                "Revit giữ được dimension theo reference plane nhưng không giữ được ràng buộc mặt: hình cập nhật bằng rebuild.",
+              ]
             : []),
           ...(buildMode === "rebuild"
-            ? ["Family chạy chế độ rebuild: đổi tham số sẽ giải lại spec, dimension chỉ để tham chiếu."]
+            ? [
+                "Family chạy chế độ rebuild: đổi tham số sẽ giải lại spec, dimension chỉ để tham chiếu.",
+              ]
             : []),
           ...(missingForms > 0
             ? [`Thiếu ${missingForms} part/copy khi build — xem danh sách bên dưới.`]
             : []),
           ...failedParts.slice(0, 5).map((item) => `Part không dựng được: ${item}`),
           ...(qa?.rebuildRequired
-            ? ["Build QA: có part cần Rebuild from spec khi đổi tham số (FreeFormElement hoặc ràng buộc chưa compile)."]
+            ? [
+                "Build QA: có part cần Rebuild from spec khi đổi tham số (FreeFormElement hoặc ràng buộc chưa compile).",
+              ]
             : []),
           ...unlabelled.map((item) => `Chưa dẫn động: ${item}`),
           ...inert.map((name) => `Có nhãn nhưng chưa kéo được hình: ${name}`),
@@ -1234,42 +1308,24 @@ export function App() {
     }
   };
 
+  const skippedCutPartIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const issue of analysis?.issues ?? []) {
+      const match = /^logic\.geometry\.([^.]+)\.cuts\[/.exec(issue.path);
+      if (match) ids.add(match[1]);
+    }
+    return [...ids];
+  }, [analysis]);
+
   /**
-   * The library card preview: a square JPEG of what the viewer is showing.
-   * The browser canvas is already WebGL, so drawing it into a 320px canvas is enough.
+   * The library card preview. The viewer renders a frame and copies the pixels in
+   * the same tick (a WebGL canvas is empty once the frame ends); it also returns
+   * null for a nearly uniform image so the card keeps its category icon.
    */
   const captureThumbnail = (): string | undefined => {
-    const canvas = viewerCanvasRef.current;
-    if (!canvas || !canvas.width || !canvas.height) return undefined;
     try {
-      const size = 320;
-      const off = document.createElement("canvas");
-      off.width = size;
-      off.height = size;
-      const context = off.getContext("2d");
-      if (!context) return undefined;
-
-      const background =
-        getComputedStyle(document.documentElement).getPropertyValue("--viewer-bg-solid").trim() ||
-        "#f4f3ef";
-      context.fillStyle = background;
-      context.fillRect(0, 0, size, size);
-
-      const side = Math.min(canvas.width, canvas.height);
-      context.drawImage(
-        canvas,
-        (canvas.width - side) / 2,
-        (canvas.height - side) / 2,
-        side,
-        side,
-        0,
-        0,
-        size,
-        size,
-      );
-      return off.toDataURL("image/jpeg", 0.82);
+      return viewerCaptureRef.current?.() ?? undefined;
     } catch {
-      // A tainted canvas or a lost context only means "no thumbnail".
       return undefined;
     }
   };
@@ -1339,14 +1395,18 @@ export function App() {
   };
 
   /** Group to pre-assign a brand-new family to; "Tất cả" means no group. */
-  const activeSaveGroup = () =>
-    libraryGroup === ALL_GROUPS ? UNGROUPED : libraryGroup;
+  const activeSaveGroup = () => (libraryGroup === ALL_GROUPS ? UNGROUPED : libraryGroup);
 
   const refreshLibrary = async () => {
     setLibraryLoading(true);
-    const [models, snapshot] = await Promise.all([fetchSavedModels(), fetchLibraryGroups()]);
+    const [models, snapshot, trash] = await Promise.all([
+      fetchSavedModels(),
+      fetchLibraryGroups(),
+      fetchTrash(),
+    ]);
     setSavedList(models);
     setLibraryGroups(snapshot.groups);
+    setTrashItems(trash.items);
     // A group removed elsewhere must not leave the panel on an empty selection.
     setLibraryGroup((current) => {
       if (current === ALL_GROUPS || current === UNGROUPED) return current;
@@ -1360,6 +1420,100 @@ export function App() {
     setHistoryModelId(null);
     await refreshLibrary();
   };
+
+  /**
+   * Old families were saved before the thumbnail existed. While the library is open,
+   * render the missing ones one at a time through the same Viewer (fixed isometric
+   * frame) and upload only the .thumb.jpg. Never blocks the panel.
+   */
+  useEffect(() => {
+    if (!libraryOpen) {
+      thumbAbortRef.current = true;
+      thumbStartedRef.current = false;
+      setThumbJob(null);
+      return;
+    }
+    if (thumbStartedRef.current || libraryLoading) return;
+
+    const missing = savedList.filter((model) => !model.thumbUrl);
+    if (missing.length === 0) return;
+
+    thumbStartedRef.current = true;
+    thumbAbortRef.current = false;
+
+    const captureJob = (job: ThumbJob) =>
+      new Promise<string | null>((resolve) => {
+        thumbCaptureRef.current = null;
+        setThumbJob(job);
+        const startedAt = Date.now();
+        let timer = 0;
+        let done = false;
+        const finish = (value: string | null) => {
+          if (done) return;
+          done = true;
+          window.clearTimeout(timer);
+          resolve(value);
+        };
+        const tick = () => {
+          if (thumbAbortRef.current) {
+            finish(null);
+            return;
+          }
+          const image = thumbCaptureRef.current?.() ?? null;
+          if (image) {
+            finish(image);
+            return;
+          }
+          // Geometry builds asynchronously; retry until a non-blank frame appears.
+          if (Date.now() - startedAt > 6000) {
+            finish(null);
+            return;
+          }
+          timer = window.setTimeout(tick, 250);
+        };
+        timer = window.setTimeout(tick, 150);
+      });
+
+    void (async () => {
+      for (const model of missing) {
+        if (thumbAbortRef.current) break;
+        const detail = await fetchSavedModelDetail(model.id).catch(() => null);
+        const savedSpec = detail?.spec;
+        if (!savedSpec) continue;
+
+        let thumbAnalysis;
+        try {
+          thumbAnalysis = analyzeSpec(savedSpec);
+        } catch {
+          continue;
+        }
+        if (!thumbAnalysis.model) continue;
+
+        const image = await captureJob({
+          id: model.id,
+          model: thumbAnalysis.model,
+          parameters: savedSpec.parameters ?? [],
+          materials: savedSpec.materials ?? [],
+        });
+        if (thumbAbortRef.current) break;
+
+        if (image) {
+          try {
+            await uploadModelThumbnail(model.id, image);
+            const thumbUrl = `/api/models/${encodeURIComponent(model.id)}/thumb?t=${Date.now()}`;
+            setSavedList((current) =>
+              current.map((entry) => (entry.id === model.id ? { ...entry, thumbUrl } : entry)),
+            );
+          } catch {
+            /* a failed preview must not block the library */
+          }
+        }
+        setThumbJob(null);
+        await new Promise((resolve) => window.setTimeout(resolve, 50));
+      }
+      setThumbJob(null);
+    })();
+  }, [libraryOpen, libraryLoading, savedList]);
 
   const handleCreateGroup = async (name: string) => {
     try {
@@ -1518,22 +1672,28 @@ export function App() {
   };
 
   const handleDeleteModel = async (id: string) => {
-    if (!window.confirm("Bạn có chắc chắn muốn xoá mô hình này khỏi thư viện?")) return;
+    if (!window.confirm(t.confirmTrash)) return;
     try {
-      await deleteSavedModel(id);
+      const removed = await deleteSavedModel(id);
       setSavedList((curr) => curr.filter((item) => item.id !== id));
+      const trash = await fetchTrash();
+      setTrashItems(trash.items);
       setLibraryGroups((current) =>
         current.map((group) => ({
           ...group,
-          count: Math.max(0, group.count - (savedList.find((item) => item.id === id)?.group === group.name ? 1 : 0)),
+          count: Math.max(
+            0,
+            group.count - (savedList.find((item) => item.id === id)?.group === group.name ? 1 : 0),
+          ),
         })),
       );
       if (currentModelId === id) {
         setCurrentModelId(null);
       }
       setToast({
-        text: "Đã xoá mô hình",
+        text: t.trashMoved,
         tone: "ok",
+        action: { label: t.undoTrash, onClick: () => void handleRestoreTrash(removed.key) },
       });
     } catch (error) {
       setToast({
@@ -1543,8 +1703,52 @@ export function App() {
     }
   };
 
+  const handleRestoreTrash = async (key: string) => {
+    try {
+      await restoreTrashedModel(key);
+      await refreshLibrary();
+      setToast({ text: t.trashRestored, tone: "ok" });
+    } catch (error) {
+      setToast({
+        text: `Khôi phục thất bại: ${error instanceof Error ? error.message : String(error)}`,
+        tone: "error",
+      });
+    }
+  };
+
+  const handlePurgeTrash = async (key: string) => {
+    try {
+      await purgeTrashedModel(key);
+      await refreshLibrary();
+      setToast({ text: t.trashPurged, tone: "ok" });
+    } catch (error) {
+      setToast({
+        text: `Xoá vĩnh viễn thất bại: ${error instanceof Error ? error.message : String(error)}`,
+        tone: "error",
+      });
+    }
+  };
+
+  const handleEmptyTrash = async () => {
+    try {
+      await emptyTrash();
+      await refreshLibrary();
+      setToast({ text: t.trashEmptied, tone: "ok" });
+    } catch (error) {
+      setToast({
+        text: `Dọn thùng rác thất bại: ${error instanceof Error ? error.message : String(error)}`,
+        tone: "error",
+      });
+    }
+  };
+
   const handleNewModel = () => {
-    if (spec && !window.confirm("Bắt đầu mô hình mới? Hãy chắc chắn bạn đã bấm Save nếu muốn lưu mô hình hiện tại.")) {
+    if (
+      spec &&
+      !window.confirm(
+        "Bắt đầu mô hình mới? Hãy chắc chắn bạn đã bấm Save nếu muốn lưu mô hình hiện tại.",
+      )
+    ) {
       return;
     }
     applySpec(null, { reset: true });
@@ -1572,7 +1776,8 @@ export function App() {
       userPromptText = "Dựng Y lọc DN80 PN16 bích 8 bulong, nhánh 45 độ, nắp bulong (Demo Preset)";
     } else if (key === "ystrainer-tube") {
       demoRaw = ystrainerTubeExampleRaw;
-      userPromptText = "Dựng Y lọc DN80 nhánh tube 45°, bích và nắp vuông góc trục nhánh (Demo Preset)";
+      userPromptText =
+        "Dựng Y lọc DN80 nhánh tube 45°, bích và nắp vuông góc trục nhánh (Demo Preset)";
     } else if (key === "elbow") {
       userPromptText = "Dựng cút gió 90 độ nối ren DN50 (Demo Preset)";
       demoRaw = {
@@ -1681,7 +1886,10 @@ export function App() {
 
     // Step 2: Thinking / Analyzing (t=700ms)
     setTimeout(() => {
-      setStage({ stage: "thinking", message: "Phân tích đầu nối MEP, kích thước & mặt phẳng làm việc..." });
+      setStage({
+        stage: "thinking",
+        message: "Phân tích đầu nối MEP, kích thước & mặt phẳng làm việc...",
+      });
     }, 700);
 
     // Step 3: Progressive Generation directly in real time (Agent dựng từng part như xây nhà)
@@ -1695,26 +1903,35 @@ export function App() {
         stage: "generating",
         message: `Đang dựng: ${allParts[0]?.name || "Khung chính"} (1/${allParts.length})`,
       });
-      applySpec({
-        ...parsed,
-        parts: allParts.slice(0, 1),
-        connectors: [],
-      }, { record: false });
+      applySpec(
+        {
+          ...parsed,
+          parts: allParts.slice(0, 1),
+          connectors: [],
+        },
+        { record: false },
+      );
     }, baseDelay);
 
     // Các part tiếp theo mọc dần lên
     for (let i = 2; i <= allParts.length; i++) {
-      setTimeout(() => {
-        setStage({
-          stage: "generating",
-          message: `Đang dựng: ${allParts[i - 1]?.name || `Part ${i}`} (${i}/${allParts.length})`,
-        });
-        applySpec({
-          ...parsed,
-          parts: allParts.slice(0, i),
-          connectors: i === allParts.length ? parsed.connectors : [],
-        }, { record: false });
-      }, baseDelay + (i - 1) * partStep);
+      setTimeout(
+        () => {
+          setStage({
+            stage: "generating",
+            message: `Đang dựng: ${allParts[i - 1]?.name || `Part ${i}`} (${i}/${allParts.length})`,
+          });
+          applySpec(
+            {
+              ...parsed,
+              parts: allParts.slice(0, i),
+              connectors: i === allParts.length ? parsed.connectors : [],
+            },
+            { record: false },
+          );
+        },
+        baseDelay + (i - 1) * partStep,
+      );
     }
 
     const totalBuildTime = baseDelay + allParts.length * partStep;
@@ -1738,7 +1955,10 @@ export function App() {
         text: `⚡ [Giả lập Agent - 0 token] Đã hoàn thành thiết kế ${parsed.name}.\n${partCount} parts · ${paramCount} parameters`,
         notes: Array.isArray(parsed.notes)
           ? parsed.notes
-          : [parsed.notes || "Chạy giả lập kiểm thử giao diện & hiệu ứng dựng tuần tự từng part thời gian thực thành công."],
+          : [
+              parsed.notes ||
+                "Chạy giả lập kiểm thử giao diện & hiệu ứng dựng tuần tự từng part thời gian thực thành công.",
+            ],
         meta: `${((totalBuildTime + 600) / 1000).toFixed(1)}s · Simulated pass`,
       });
 
@@ -1760,7 +1980,7 @@ export function App() {
         running={running}
         agentStage={stage?.stage ?? null}
         elapsed={elapsedLabel}
-                units={units}
+        units={units}
         onUnits={setUnits}
         revitVersion={revitVersion}
         onRevitVersion={setRevitVersion}
@@ -1818,18 +2038,16 @@ export function App() {
         <ChatPanel
           entries={entries}
           running={running}
-          stageMessage={stage ? `${stage.message}${elapsedLabel ? ` · ${elapsedLabel}` : ""}` : null}
+          stageMessage={
+            stage ? `${stage.message}${elapsedLabel ? ` · ${elapsedLabel}` : ""}` : null
+          }
           stageIssues={stage?.issues}
           onSend={handleSend}
           onStop={handleStop}
           disabled={running || uploading}
           agentReady={health ? health.agent.ready : null}
           agentLabel={
-            health
-              ? health.agent.provider === "commandcode"
-                ? "cmdc"
-                : health.agent.model
-              : null
+            health ? (health.agent.provider === "commandcode" ? "cmdc" : health.agent.model) : null
           }
           agentDetail={health?.agent.detail ?? null}
           provider={health?.agent.provider ?? null}
@@ -1846,6 +2064,12 @@ export function App() {
             if (lastPromptRef.current) void handleSend(lastPromptRef.current);
           }}
           onAction={(action) => {
+            if (action.kind === "fresh") {
+              if (lastPromptRef.current) {
+                void handleSend(lastPromptRef.current, undefined, { fresh: true });
+              }
+              return;
+            }
             if (action.kind === "use-sample" && action.sampleId) {
               void (async () => {
                 const loaded = await fetchSavedModelDetail(action.sampleId!);
@@ -1869,7 +2093,7 @@ export function App() {
           aria-orientation="vertical"
           aria-label="Resize the agent panel"
           tabIndex={0}
-          title="Drag to resize · double-click to reset"
+          title={t.resizePanel}
           onPointerDown={(event) => beginResize("left", event)}
           onDoubleClick={() => setLeftWidth(DEFAULT_LEFT_WIDTH)}
           onKeyDown={(event) => {
@@ -1881,8 +2105,10 @@ export function App() {
 
         <Viewer
           model={previewModel ?? deferredModel}
-          onCanvasReady={(canvas) => {
-            viewerCanvasRef.current = canvas;
+          fileName={spec?.name ?? undefined}
+          skippedCutPartIds={skippedCutPartIds}
+          onCaptureReady={(capture) => {
+            viewerCaptureRef.current = capture;
           }}
           onLoadSample={() => {
             if (running) return;
@@ -1919,7 +2145,7 @@ export function App() {
           aria-orientation="vertical"
           aria-label="Resize the parameter panel"
           tabIndex={0}
-          title="Drag to resize · double-click to reset"
+          title={t.resizePanel}
           onPointerDown={(event) => beginResize("right", event)}
           onDoubleClick={() => setRightWidth(DEFAULT_RIGHT_WIDTH)}
           onKeyDown={(event) => {
@@ -1957,7 +2183,14 @@ export function App() {
           <section className="pane right">
             <div className="pane-header">{t.paramsTab}</div>
             <div className="pane-empty">
-              <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4">
+              <svg
+                width="34"
+                height="34"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.4"
+              >
                 <path d="M4 7h16M4 12h10M4 17h6" />
               </svg>
               <p>{t.parametersEmpty}</p>
@@ -1973,7 +2206,14 @@ export function App() {
           aria-label={paramsOpen ? t.closeParams : t.openParams}
           title={paramsOpen ? t.closeParams : t.openParams}
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+          >
             <path d="M4 7h16M4 12h10M4 17h6" />
           </svg>
           <span>{t.paramsTab}</span>
@@ -1984,6 +2224,18 @@ export function App() {
         <div className={`toast ${toast.tone === "error" ? "error" : ""}`} role="status">
           {toast.text}
           {toast.sub && <span className="sub">{toast.sub}</span>}
+          {toast.action && (
+            <button
+              type="button"
+              className="toast-action"
+              onClick={() => {
+                toast.action?.onClick();
+                setToast(null);
+              }}
+            >
+              {toast.action.label}
+            </button>
+          )}
         </div>
       )}
 
@@ -2013,9 +2265,32 @@ export function App() {
           onRenameGroup={(from, to) => void handleRenameGroup(from, to)}
           onDeleteGroup={(name) => void handleDeleteGroup(name)}
           onMoveModel={(id, group) => void handleMoveModel(id, group)}
+          trashItems={trashItems}
+          onRestoreTrash={(id) => void handleRestoreTrash(id)}
+          onPurgeTrash={(id) => void handlePurgeTrash(id)}
+          onEmptyTrash={() => void handleEmptyTrash()}
         />
+      )}
+
+      {thumbJob && (
+        <div className="thumb-render-host" aria-hidden="true">
+          <Viewer
+            model={thumbJob.model}
+            parameters={thumbJob.parameters}
+            materials={thumbJob.materials}
+            units="mm"
+            showGrid={false}
+            onToggleGrid={() => {}}
+            showPlanes={false}
+            showConnectors={false}
+            showHandles={false}
+            fileName={`${thumbJob.id}.jpg`}
+            onCaptureReady={(capture) => {
+              thumbCaptureRef.current = capture;
+            }}
+          />
+        </div>
       )}
     </div>
   );
 }
-

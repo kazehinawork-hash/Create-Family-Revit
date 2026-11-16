@@ -5,8 +5,10 @@ import {
   LIMITS,
   PARAMETER_GROUPS,
   PARAMETER_TYPES,
+  PART_TYPES,
   type FamilyParameter,
   type FamilyPart,
+  type FamilyPartType,
   type FamilySpec,
   type Issue,
   type ParameterGroup,
@@ -67,8 +69,10 @@ function segmentsCross(
   const d2 = cross(a, b, d);
   const d3 = cross(c, d, a);
   const d4 = cross(c, d, b);
-  return ((d1 > 1e-9 && d2 < -1e-9) || (d1 < -1e-9 && d2 > 1e-9)) &&
-    ((d3 > 1e-9 && d4 < -1e-9) || (d3 < -1e-9 && d4 > 1e-9));
+  return (
+    ((d1 > 1e-9 && d2 < -1e-9) || (d1 < -1e-9 && d2 > 1e-9)) &&
+    ((d3 > 1e-9 && d4 < -1e-9) || (d3 < -1e-9 && d4 > 1e-9))
+  );
 }
 
 function polygonSelfIntersects(points: [number, number][]): boolean {
@@ -95,16 +99,7 @@ function sanitizeId(value: string, fallback: string): string {
   return cleaned || fallback;
 }
 
-const SOLID_KINDS = [
-  "box",
-  "cylinder",
-  "frustum",
-  "bend",
-  "prism",
-  "loft",
-  "revolve",
-  "tube",
-];
+const SOLID_KINDS = ["box", "cylinder", "frustum", "bend", "prism", "loft", "revolve", "tube"];
 
 function checkSolid(raw: unknown, path: string, issues: Issue[]): void {
   if (!isObject(raw)) {
@@ -124,7 +119,11 @@ function checkSolid(raw: unknown, path: string, issues: Issue[]): void {
   const requireVec = (field: string) => {
     const value = raw[field];
     if (!isObject(value)) {
-      issues.push({ severity: "error", path: `${path}.${field}`, message: `${field} must be {x, y, z}` });
+      issues.push({
+        severity: "error",
+        path: `${path}.${field}`,
+        message: `${field} must be {x, y, z}`,
+      });
       return;
     }
     for (const axis of ["x", "y", "z"]) {
@@ -185,7 +184,7 @@ function checkSolid(raw: unknown, path: string, issues: Issue[]): void {
         severity: "warning",
         path: `${path}.rotationZ`,
         message:
-          "A box rotated off the 90° axes builds, but Revit cannot lock its faces to the reference planes; use Rebuild from spec after changing parameters.",
+          "Khối hộp xoay lệch trục 90° vẫn dựng được, nhưng Revit không thể khoá mặt vào mặt phẳng tham chiếu; dùng Rebuild from spec sau khi đổi tham số.",
       });
     }
   } else if (kind === "cylinder") {
@@ -200,10 +199,18 @@ function checkSolid(raw: unknown, path: string, issues: Issue[]): void {
     const height = literalNumber(raw.height);
     const innerRadius = literalNumber(raw.innerRadius);
     if (radius !== null && radius <= 0) {
-      issues.push({ severity: "error", path: `${path}.radius`, message: "radius must be greater than zero" });
+      issues.push({
+        severity: "error",
+        path: `${path}.radius`,
+        message: "radius must be greater than zero",
+      });
     }
     if (height !== null && Math.abs(height) < 1e-9) {
-      issues.push({ severity: "error", path: `${path}.height`, message: "height must not be zero" });
+      issues.push({
+        severity: "error",
+        path: `${path}.height`,
+        message: "height must not be zero",
+      });
     }
     if (innerRadius !== null && innerRadius < 0) {
       issues.push({
@@ -266,7 +273,11 @@ function checkSolid(raw: unknown, path: string, issues: Issue[]): void {
       });
     }
     if (height !== null && Math.abs(height) < 1e-9) {
-      issues.push({ severity: "error", path: `${path}.height`, message: "height must not be zero" });
+      issues.push({
+        severity: "error",
+        path: `${path}.height`,
+        message: "height must not be zero",
+      });
     }
   } else if (kind === "bend") {
     requireVec("center");
@@ -281,13 +292,21 @@ function checkSolid(raw: unknown, path: string, issues: Issue[]): void {
       });
     }
     if (raw.plane !== undefined && !["xy", "xz", "yz"].includes(text(raw.plane))) {
-      issues.push({ severity: "error", path: `${path}.plane`, message: "plane must be xy, xz or yz" });
+      issues.push({
+        severity: "error",
+        path: `${path}.plane`,
+        message: "plane must be xy, xz or yz",
+      });
     }
     const radius = literalNumber(raw.radius);
     const tubeRadius = literalNumber(raw.tubeRadius);
     const angle = literalNumber(raw.angle);
     if (radius !== null && radius <= 0) {
-      issues.push({ severity: "error", path: `${path}.radius`, message: "radius must be greater than zero" });
+      issues.push({
+        severity: "error",
+        path: `${path}.radius`,
+        message: "radius must be greater than zero",
+      });
     }
     if (tubeRadius !== null && tubeRadius <= 0) {
       issues.push({
@@ -312,7 +331,11 @@ function checkSolid(raw: unknown, path: string, issues: Issue[]): void {
     }
   } else if (kind === "prism") {
     if (!["xy", "xz", "yz"].includes(text(raw.plane))) {
-      issues.push({ severity: "error", path: `${path}.plane`, message: "plane must be xy, xz or yz" });
+      issues.push({
+        severity: "error",
+        path: `${path}.plane`,
+        message: "plane must be xy, xz or yz",
+      });
     }
     if (!Array.isArray(raw.points) || raw.points.length < 3) {
       issues.push({
@@ -359,14 +382,22 @@ function checkSolid(raw: unknown, path: string, issues: Issue[]): void {
             message: "polygon edges intersect each other",
           });
         } else if (Math.abs(polygonArea(points)) < 1e-6) {
-          issues.push({ severity: "error", path: `${path}.points`, message: "polygon has zero area" });
+          issues.push({
+            severity: "error",
+            path: `${path}.points`,
+            message: "polygon has zero area",
+          });
         }
       }
     }
 
     if (raw.holes !== undefined) {
       if (!Array.isArray(raw.holes)) {
-        issues.push({ severity: "error", path: `${path}.holes`, message: "holes must be an array" });
+        issues.push({
+          severity: "error",
+          path: `${path}.holes`,
+          message: "holes must be an array",
+        });
       } else {
         raw.holes.forEach((hole, holeIndex) => {
           if (!Array.isArray(hole) || hole.length < 3) {
@@ -663,7 +694,11 @@ export function validateSpec(raw: unknown): ValidationResult {
   let name = text(root.name);
   if (!name) {
     name = "Untitled Family";
-    issues.push({ severity: "warning", path: "name", message: 'Missing "name", using "Untitled Family"' });
+    issues.push({
+      severity: "warning",
+      path: "name",
+      message: 'Missing "name", using "Untitled Family"',
+    });
   }
 
   const category = text(root.category) || "Generic Model";
@@ -675,6 +710,23 @@ export function validateSpec(raw: unknown): ValidationResult {
     });
   }
   const resolvedCategory = CATEGORIES.includes(category) ? category : "Generic Model";
+
+  // Optional Revit Part Type. Case is normalised; an unknown value is an error so a
+  // typo never silently produces a fitting without its Part Type.
+  let partType: FamilyPartType | undefined;
+  const rawPartType = text(root.partType);
+  if (rawPartType) {
+    const matched = PART_TYPES.find((entry) => entry.toLowerCase() === rawPartType.toLowerCase());
+    if (matched) {
+      partType = matched;
+    } else {
+      issues.push({
+        severity: "error",
+        path: "partType",
+        message: `partType "${rawPartType}" không hợp lệ; dùng một trong: ${PART_TYPES.join(", ")}`,
+      });
+    }
+  }
 
   const rawParameters = Array.isArray(root.parameters) ? root.parameters : [];
   if (!Array.isArray(root.parameters)) {
@@ -767,8 +819,7 @@ export function validateSpec(raw: unknown): ValidationResult {
     }
 
     const formula = text(entry.formula) || undefined;
-    let value =
-      type === "Text" || type === "YesNo" ? entry.value : coerceNumericText(entry.value);
+    let value = type === "Text" || type === "YesNo" ? entry.value : coerceNumericText(entry.value);
 
     if (formula && value !== undefined && value !== "") {
       issues.push({
@@ -790,7 +841,8 @@ export function validateSpec(raw: unknown): ValidationResult {
 
     if (type === "Text" && value !== undefined) value = String(value);
     if (type === "YesNo" && value !== undefined) {
-      const flag = typeof value === "boolean" ? value : String(value).toLowerCase() === "yes" || value === 1;
+      const flag =
+        typeof value === "boolean" ? value : String(value).toLowerCase() === "yes" || value === 1;
       value = flag;
     }
 
@@ -851,7 +903,11 @@ export function validateSpec(raw: unknown): ValidationResult {
 
     const id = sanitizeId(text(entry.id) || text(entry.name), `part-${index + 1}`);
     if (seenIds.has(id)) {
-      issues.push({ severity: "warning", path: `${path}.id`, message: `Duplicate part id "${id}" ignored` });
+      issues.push({
+        severity: "warning",
+        path: `${path}.id`,
+        message: `Duplicate part id "${id}" ignored`,
+      });
       return;
     }
     seenIds.add(id);
@@ -869,14 +925,22 @@ export function validateSpec(raw: unknown): ValidationResult {
     let array: FamilyPart["array"];
     if (entry.array !== undefined) {
       if (!isObject(entry.array)) {
-        issues.push({ severity: "error", path: `${path}.array`, message: "array must be an object" });
+        issues.push({
+          severity: "error",
+          path: `${path}.array`,
+          message: "array must be an object",
+        });
       } else {
         const rawCount = entry.array.count;
         const axis = text(entry.array.axis) || "x";
         const countIsNumber = typeof rawCount === "number";
 
         if (rawCount === undefined || rawCount === null || rawCount === "") {
-          issues.push({ severity: "error", path: `${path}.array.count`, message: "count is required" });
+          issues.push({
+            severity: "error",
+            path: `${path}.array.count`,
+            message: "count is required",
+          });
         } else if (
           countIsNumber &&
           (!Number.isInteger(rawCount) || rawCount < 1 || rawCount > LIMITS.maxArrayCount)
@@ -887,11 +951,23 @@ export function validateSpec(raw: unknown): ValidationResult {
             message: `count must be a whole number between 1 and ${LIMITS.maxArrayCount}`,
           });
         } else if (!countIsNumber && typeof rawCount !== "string") {
-          issues.push({ severity: "error", path: `${path}.array.count`, message: "count must be a number" });
+          issues.push({
+            severity: "error",
+            path: `${path}.array.count`,
+            message: "count must be a number",
+          });
         } else if (!["x", "y", "z"].includes(axis)) {
-          issues.push({ severity: "error", path: `${path}.array.axis`, message: "axis must be x, y or z" });
+          issues.push({
+            severity: "error",
+            path: `${path}.array.axis`,
+            message: "axis must be x, y or z",
+          });
         } else if (entry.array.spacing === undefined) {
-          issues.push({ severity: "error", path: `${path}.array.spacing`, message: "spacing is required" });
+          issues.push({
+            severity: "error",
+            path: `${path}.array.spacing`,
+            message: "spacing is required",
+          });
         } else {
           array = {
             count: rawCount as number | string,
@@ -905,7 +981,11 @@ export function validateSpec(raw: unknown): ValidationResult {
     let anchor: FamilyPart["anchor"];
     if (entry.anchor !== undefined) {
       if (!isObject(entry.anchor)) {
-        issues.push({ severity: "error", path: `${path}.anchor`, message: "anchor must be an object" });
+        issues.push({
+          severity: "error",
+          path: `${path}.anchor`,
+          message: "anchor must be an object",
+        });
       } else {
         for (const axis of ["x", "y", "z"] as const) {
           const rawSide = text(entry.anchor[axis]);
@@ -943,51 +1023,58 @@ export function validateSpec(raw: unknown): ValidationResult {
     if (parameter.formula) collectReferences(parameter.formula, referenced);
   }
   for (const parameter of parameters) {
-    if (parameter.type === "Text" || parameter.type === "YesNo") continue;
+    // Text / YesNo are metadata, and Number / Integer are technical spec values
+    // (air flow, voltage, motor power) that legitimately live without geometry.
+    if (
+      parameter.type === "Text" ||
+      parameter.type === "YesNo" ||
+      parameter.type === "Number" ||
+      parameter.type === "Integer"
+    ) {
+      continue;
+    }
     if (referenced.has(paramKey(parameter.name))) continue;
     issues.push({
       severity: "warning",
       path: `parameters.${parameter.name}`,
-      message: "Parameter is declared but never used by a formula or a geometry field",
+      message:
+        `Kích thước "${parameter.name}" không điều khiển hình nào — sửa trong Revit sẽ không có ` +
+        "tác dụng. Nối vào hình hoặc bỏ đi.",
     });
   }
 
   const materials = Array.isArray(root.materials)
-    ? root.materials
-        .filter(isObject)
-        .map((material) => ({
-          name: text(material.name) || "Default",
-          color: text(material.color) || undefined,
-          metalness: typeof material.metalness === "number" ? material.metalness : undefined,
-          roughness: typeof material.roughness === "number" ? material.roughness : undefined,
-        }))
+    ? root.materials.filter(isObject).map((material) => ({
+        name: text(material.name) || "Default",
+        color: text(material.color) || undefined,
+        metalness: typeof material.metalness === "number" ? material.metalness : undefined,
+        roughness: typeof material.roughness === "number" ? material.roughness : undefined,
+      }))
     : undefined;
 
   const connectors = Array.isArray(root.connectors)
-    ? root.connectors
-        .filter(isObject)
-        .map((conn, idx) => ({
-          id: sanitizeId(text(conn.id) || text(conn.name), `connector-${idx + 1}`),
-          name: text(conn.name) || `Connector ${idx + 1}`,
-          systemType: (text(conn.systemType) || "SupplyAir") as any,
-          shape: (text(conn.shape) === "round" ? "round" : "rectangular") as any,
-          direction: (["in", "out", "bidirectional"].includes(text(conn.direction))
-            ? text(conn.direction)
-            : "out") as any,
-          host: (text(conn.host) === "reference-plane"
-            ? "reference-plane"
-            : text(conn.host) === "solid"
-              ? "solid"
-              : undefined) as any,
-          origin: (isObject(conn.origin) ? conn.origin : { x: 0, y: 0, z: 0 }) as any,
-          directionVector: isObject(conn.directionVector) ? (conn.directionVector as any) : undefined,
-          width: conn.width as any,
-          height: conn.height as any,
-          diameter: conn.diameter as any,
-          flow: conn.flow as any,
-          flowUnit: conn.flowUnit as any,
-          pressureDrop: conn.pressureDrop as any,
-        }))
+    ? root.connectors.filter(isObject).map((conn, idx) => ({
+        id: sanitizeId(text(conn.id) || text(conn.name), `connector-${idx + 1}`),
+        name: text(conn.name) || `Connector ${idx + 1}`,
+        systemType: (text(conn.systemType) || "SupplyAir") as any,
+        shape: (text(conn.shape) === "round" ? "round" : "rectangular") as any,
+        direction: (["in", "out", "bidirectional"].includes(text(conn.direction))
+          ? text(conn.direction)
+          : "out") as any,
+        host: (text(conn.host) === "reference-plane"
+          ? "reference-plane"
+          : text(conn.host) === "solid"
+            ? "solid"
+            : undefined) as any,
+        origin: (isObject(conn.origin) ? conn.origin : { x: 0, y: 0, z: 0 }) as any,
+        directionVector: isObject(conn.directionVector) ? (conn.directionVector as any) : undefined,
+        width: conn.width as any,
+        height: conn.height as any,
+        diameter: conn.diameter as any,
+        flow: conn.flow as any,
+        flowUnit: conn.flowUnit as any,
+        pressureDrop: conn.pressureDrop as any,
+      }))
     : undefined;
 
   // The Types tab owns this list; an agent edit must not erase it.
@@ -1018,9 +1105,12 @@ export function validateSpec(raw: unknown): ValidationResult {
     typeName: text(root.typeName) || undefined,
     category: resolvedCategory,
     template: text(root.template) || undefined,
+    partType,
     units: "mm",
     revitVersion: text(root.revitVersion) || undefined,
-    lod: [200, 300, 350, 400].includes(Number(root.lod)) ? (Number(root.lod) as 200 | 300 | 350 | 400) : undefined,
+    lod: [200, 300, 350, 400].includes(Number(root.lod))
+      ? (Number(root.lod) as 200 | 300 | 350 | 400)
+      : undefined,
     description: text(root.description) || undefined,
     parameters,
     parts,

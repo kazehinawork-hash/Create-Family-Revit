@@ -18,6 +18,9 @@ namespace FamilyAgent.Addin
                 { "Duct Tee", "Metric Duct Tee.rft" },
                 { "Duct Cross", "Metric Duct Cross.rft" },
                 { "Pipe Fitting", "Metric Generic Model.rft" },
+                // Revit 2024 has no cable-tray family template: build from a generic
+                // model and let the add-in move it to Cable Tray Fitting afterwards.
+                { "Cable Tray Fitting", "Metric Generic Model.rft" },
                 { "Generic Model", "Metric Generic Model.rft" },
                 { "Plumbing Fixture", "Metric Plumbing Fixture.rft" },
                 { "Electrical Equipment", "Metric Electrical Equipment.rft" },

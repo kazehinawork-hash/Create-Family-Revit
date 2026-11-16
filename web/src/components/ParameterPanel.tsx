@@ -13,7 +13,7 @@ import {
 } from "@family/spec-core";
 import { parameterDisplay, parameterUnit, type Units } from "../lib/format";
 import { TypesPanel } from "./TypesPanel";
-import { t } from "../lib/strings";
+import { t, localizeIssueMessage } from "../lib/strings";
 
 interface Props {
   spec: FamilySpec;
@@ -89,7 +89,11 @@ function ParameterRow({
 }) {
   const derived = Boolean(resolved.formula);
   const isYesNo = param.type === "YesNo";
-  const isNumeric = param.type === "Length" || param.type === "Angle" || param.type === "Number" || param.type === "Integer";
+  const isNumeric =
+    param.type === "Length" ||
+    param.type === "Angle" ||
+    param.type === "Number" ||
+    param.type === "Integer";
   const locked = derived || (param.type === "Length" && units === "ft-in");
   const display = parameterDisplay(resolved, units);
   const unit = parameterUnit(resolved, units);
@@ -128,7 +132,7 @@ function ParameterRow({
     if (locked || derived) return;
     const currentNum = typeof resolved.value === "number" ? resolved.value : Number(draft);
     if (!Number.isFinite(currentNum)) return;
-    const delta = param.type === "Integer" ? 1 : (currentNum < 10 ? 1 : currentNum < 100 ? 5 : 10);
+    const delta = param.type === "Integer" ? 1 : currentNum < 10 ? 1 : currentNum < 100 ? 5 : 10;
     const updated = Math.max(0, currentNum + direction * delta);
     onUpdate(param.name, updated);
   };
@@ -317,7 +321,7 @@ export function ParameterPanel({
   }, [analysis.partParity]);
 
   const selectedPart = selectedPartId
-    ? spec.parts.find((part) => part.id === selectedPartId) ?? null
+    ? (spec.parts.find((part) => part.id === selectedPartId) ?? null)
     : null;
 
   // Parameters that drive the selected part, including the base parameters behind
@@ -347,7 +351,10 @@ export function ParameterPanel({
         const resolved = analysis.parameters.byKey.get(key);
         return param && resolved ? { param, resolved, direct: directKeys.has(key) } : null;
       })
-      .filter((item): item is { param: FamilyParameter; resolved: ResolvedParameter; direct: boolean } => Boolean(item))
+      .filter(
+        (item): item is { param: FamilyParameter; resolved: ResolvedParameter; direct: boolean } =>
+          Boolean(item),
+      )
       .sort(
         (a, b) =>
           Number(Boolean(a.resolved.formula)) - Number(Boolean(b.resolved.formula)) ||
@@ -376,9 +383,7 @@ export function ParameterPanel({
             <strong className="selected-part-name" title={selectedPart.name}>
               {selectedPart.name}
             </strong>
-            <span className="selected-part-count">
-              {selectedPartParameters.length} parameter
-            </span>
+            <span className="selected-part-count">{selectedPartParameters.length} parameter</span>
             <button
               type="button"
               className="selected-part-clear"
@@ -401,7 +406,9 @@ export function ParameterPanel({
                 />
               ))
             ) : (
-              <div className="selected-part-empty">Part này không tham chiếu parameter trực tiếp.</div>
+              <div className="selected-part-empty">
+                Part này không tham chiếu parameter trực tiếp.
+              </div>
             )}
           </div>
         </div>
@@ -453,7 +460,7 @@ export function ParameterPanel({
           <div className="param-scroll">
             {spec.typeName && (
               <div className="editing-type-badge">
-                <span className="editing-label">Editing type</span>
+                <span className="editing-label">Đang sửa Type</span>
                 <span className="editing-name">{spec.typeName}</span>
               </div>
             )}
@@ -505,7 +512,10 @@ export function ParameterPanel({
                   }}
                 />
                 <div className="row">
-                  <select value={draftType} onChange={(event) => setDraftType(event.target.value as ParameterType)}>
+                  <select
+                    value={draftType}
+                    onChange={(event) => setDraftType(event.target.value as ParameterType)}
+                  >
                     {PARAM_TYPES.map((type) => (
                       <option key={type} value={type}>
                         {type}
@@ -519,13 +529,13 @@ export function ParameterPanel({
               </div>
             ) : (
               <button type="button" className="add-param" onClick={() => setAdding(true)}>
-                + Add parameter
+                {t.addParameter}
               </button>
             )}
 
             {spec.parameters.some((parameter) => parameter.formula) && (
               <div className="banner info" style={{ marginTop: 4 }}>
-                Values marked with a formula are driven by other parameters — edit the driver instead.
+                {t.formulaHint}
               </div>
             )}
           </div>
@@ -541,7 +551,10 @@ export function ParameterPanel({
               placeholder={t.filterParts}
               aria-label="Filter parts"
             />
-            <label className="parity-filter" title="Chỉ hiện part sẽ khác preview hoặc mất native form">
+            <label
+              className="parity-filter"
+              title="Chỉ hiện part sẽ khác preview hoặc mất native form"
+            >
               <input
                 type="checkbox"
                 checked={onlyRisks}
@@ -561,144 +574,187 @@ export function ParameterPanel({
 
           <div className="param-scroll">
             <div className="parts-list">
-            {spec.parts
-              .filter((part) => {
-                const parity = parityById.get(part.id);
-                if (onlyRisks && (!parity || parity.risks.length === 0)) return false;
-                const query = partFilter.trim().toLowerCase();
-                if (!query) return true;
-                return (
-                  part.name.toLowerCase().includes(query) || part.id.toLowerCase().includes(query)
-                );
-              })
-              .map((part) => {
-                const isSelected = part.id === selectedPartId;
-                const isHidden = hiddenPartIds.includes(part.id);
-                const isTransparent = transparentPartIds.includes(part.id);
-                const parity = parityById.get(part.id);
-                const partIssues = analysis.issues.filter((issue) => {
-                  const isLogic =
-                    issue.path === `logic.geometry.${part.id}` ||
-                    issue.path.startsWith(`logic.geometry.${part.id}.`);
-                  if (isLogic) return true;
-                  if (!showInfo) return false;
+              {spec.parts
+                .filter((part) => {
+                  const parity = parityById.get(part.id);
+                  if (onlyRisks && (!parity || parity.risks.length === 0)) return false;
+                  const query = partFilter.trim().toLowerCase();
+                  if (!query) return true;
                   return (
-                    issue.path === `info.geometry.${part.id}` ||
-                    issue.path.startsWith(`info.geometry.${part.id}.`)
+                    part.name.toLowerCase().includes(query) || part.id.toLowerCase().includes(query)
                   );
-                });
-                const hasIssue =
-                  partIssues.some((issue) => issue.severity !== "info") ||
-                  issuePartIds.includes(part.id);
-                return (
-                  <div
-                    key={part.id}
-                    className={`part-row-wrap ${isSelected ? "selected" : ""}`}
-                  >
-                    <div
-                      className={`part-row ${isSelected ? "selected" : ""} ${isHidden ? "hidden-part" : ""} ${isTransparent ? "transparent-part" : ""}`}
-                      onClick={() => onSelectPart?.(isSelected ? null : part.id)}
-                      title="Click to highlight in 3D viewer"
-                    >
-                      <span className="swatch" style={{ background: part.color || materialColor(part.material) }} />
-                      <span className="name">{part.name}</span>
-                      {parity && (
+                })
+                .map((part) => {
+                  const isSelected = part.id === selectedPartId;
+                  const isHidden = hiddenPartIds.includes(part.id);
+                  const isTransparent = transparentPartIds.includes(part.id);
+                  const parity = parityById.get(part.id);
+                  const partIssues = analysis.issues.filter((issue) => {
+                    const isLogic =
+                      issue.path === `logic.geometry.${part.id}` ||
+                      issue.path.startsWith(`logic.geometry.${part.id}.`);
+                    if (isLogic) return true;
+                    if (!showInfo) return false;
+                    return (
+                      issue.path === `info.geometry.${part.id}` ||
+                      issue.path.startsWith(`info.geometry.${part.id}.`)
+                    );
+                  });
+                  const hasIssue =
+                    partIssues.some((issue) => issue.severity !== "info") ||
+                    issuePartIds.includes(part.id);
+                  return (
+                    <div key={part.id} className={`part-row-wrap ${isSelected ? "selected" : ""}`}>
+                      <div
+                        className={`part-row ${isSelected ? "selected" : ""} ${isHidden ? "hidden-part" : ""} ${isTransparent ? "transparent-part" : ""}`}
+                        onClick={() => onSelectPart?.(isSelected ? null : part.id)}
+                        title="Click to highlight in 3D viewer"
+                      >
                         <span
-                          className={`part-parity-badge ${parity.status}`}
-                          title={
-                            parity.risks.length > 0
-                              ? parity.risks.map((risk) => risk.message).join("\n")
-                              : "Part giữ native form trong Revit"
-                          }
-                        >
-                          {PARITY_LABELS[parity.status]}
-                        </span>
-                      )}
-                      {hasIssue && <span className="part-issue-dot" title="Cảnh báo bố trí" />}
-                      <span className="id">{part.id}</span>
-                      <div className="part-actions" onClick={(e) => e.stopPropagation()}>
-                        {onIsolatePart && (
+                          className="swatch"
+                          style={{ background: part.color || materialColor(part.material) }}
+                        />
+                        <span className="name">{part.name}</span>
+                        {parity && (
+                          <span
+                            className={`part-parity-badge ${parity.status}`}
+                            title={
+                              parity.risks.length > 0
+                                ? parity.risks.map((risk) => risk.message).join("\n")
+                                : "Part giữ native form trong Revit"
+                            }
+                          >
+                            {PARITY_LABELS[parity.status]}
+                          </span>
+                        )}
+                        {hasIssue && <span className="part-issue-dot" title="Cảnh báo bố trí" />}
+                        <span className="id">{part.id}</span>
+                        <div className="part-actions" onClick={(e) => e.stopPropagation()}>
+                          {onIsolatePart && (
+                            <button
+                              type="button"
+                              className="btn-part-action"
+                              title="Chỉ hiện part này (Isolate)"
+                              onClick={() => onIsolatePart(part.id)}
+                            >
+                              <svg
+                                width="13"
+                                height="13"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                              >
+                                <circle cx="12" cy="12" r="7" />
+                                <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
+                              </svg>
+                            </button>
+                          )}
                           <button
                             type="button"
-                            className="btn-part-action"
-                            title="Chỉ hiện part này (Isolate)"
-                            onClick={() => onIsolatePart(part.id)}
+                            className={`btn-part-action ${isTransparent ? "active" : ""}`}
+                            title={
+                              isTransparent
+                                ? "Làm đặc lại (Opaque)"
+                                : "Làm mờ (Ghost / Translucent)"
+                            }
+                            onClick={() => onToggleTransparentPart?.(part.id)}
                           >
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <circle cx="12" cy="12" r="7" />
-                              <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
+                            <svg
+                              width="13"
+                              height="13"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                            >
+                              <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z" />
+                              <path
+                                d="M12 6a6 6 0 0 0 0 12z"
+                                fill="currentColor"
+                                opacity={isTransparent ? 0.9 : 0.4}
+                              />
                             </svg>
                           </button>
-                        )}
-                        <button
-                        type="button"
-                        className={`btn-part-action ${isTransparent ? "active" : ""}`}
-                        title={isTransparent ? "Làm đặc lại (Opaque)" : "Làm mờ (Ghost / Translucent)"}
-                        onClick={() => onToggleTransparentPart?.(part.id)}
-                      >
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z" />
-                          <path d="M12 6a6 6 0 0 0 0 12z" fill="currentColor" opacity={isTransparent ? 0.9 : 0.4} />
-                        </svg>
-                      </button>
-                      <button
-                        type="button"
-                        className={`btn-hide-part ${isHidden ? "hidden" : ""}`}
-                        title={isHidden ? "Unhide part (Hiện cấu kiện)" : "Hide part (Ẩn cấu kiện)"}
-                        onClick={() => onToggleHidePart?.(part.id)}
-                      >
-                        {isHidden ? (
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
-                            <line x1="1" y1="1" x2="23" y2="23" />
-                          </svg>
-                        ) : (
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                            <circle cx="12" cy="12" r="3" />
-                          </svg>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                  {partIssues.length > 0 && (
-                    <div className="part-issues-list">
-                      {partIssues.map((issue, idx) => (
-                        <div key={idx} className={`part-issue-item ${issue.severity}`}>
-                          <span className="issue-icon">⚠</span>
-                          <span className="issue-msg">{issue.message}</span>
+                          <button
+                            type="button"
+                            className={`btn-hide-part ${isHidden ? "hidden" : ""}`}
+                            title={
+                              isHidden ? "Unhide part (Hiện cấu kiện)" : "Hide part (Ẩn cấu kiện)"
+                            }
+                            onClick={() => onToggleHidePart?.(part.id)}
+                          >
+                            {isHidden ? (
+                              <svg
+                                width="13"
+                                height="13"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                              >
+                                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                                <line x1="1" y1="1" x2="23" y2="23" />
+                              </svg>
+                            ) : (
+                              <svg
+                                width="13"
+                                height="13"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                              >
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                                <circle cx="12" cy="12" r="3" />
+                              </svg>
+                            )}
+                          </button>
                         </div>
-                      ))}
-                    </div>
-                  )}
-                  {parity && parity.risks.length > 0 && (
-                    <div className="part-issues-list parity">
-                      {parity.risks.map((risk, idx) => (
-                        <div key={`${risk.code}-${idx}`} className={`part-issue-item ${risk.severity}`}>
-                          <span className="issue-icon">⚠</span>
-                          <span className="issue-msg">
-                            {risk.message}
-                            {risk.hint ? ` — ${risk.hint}` : ""}
-                          </span>
+                      </div>
+                      {partIssues.length > 0 && (
+                        <div className="part-issues-list">
+                          {partIssues.map((issue, idx) => (
+                            <div key={idx} className={`part-issue-item ${issue.severity}`}>
+                              <span className="issue-icon">⚠</span>
+                              <span className="issue-msg">
+                                {localizeIssueMessage(issue.message)}
+                              </span>
+                            </div>
+                          ))}
                         </div>
-                      ))}
+                      )}
+                      {parity && parity.risks.length > 0 && (
+                        <div className="part-issues-list parity">
+                          {parity.risks.map((risk, idx) => (
+                            <div
+                              key={`${risk.code}-${idx}`}
+                              className={`part-issue-item ${risk.severity}`}
+                            >
+                              <span className="issue-icon">⚠</span>
+                              <span className="issue-msg">
+                                {risk.message}
+                                {risk.hint ? ` — ${risk.hint}` : ""}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-                );
-              })}
-          </div>
-          {paritySummary.risky > 0 && (
-            <div className="banner warn">
-              {paritySummary.risky}/{paritySummary.total} part sẽ khác preview hoặc mất native form trong .rfa.
-              Bật “Rủi ro” để lọc.
+                  );
+                })}
             </div>
-          )}
-          <div className="banner info">
-            {analysis.model.instances} solids · {paritySummary.native}/{paritySummary.total} native ·{" "}
-            {spec.materials?.length ?? 0} materials
+            {paritySummary.risky > 0 && (
+              <div className="banner warn">
+                {paritySummary.risky}/{paritySummary.total} part sẽ khác preview hoặc mất native
+                form trong .rfa. Bật “Rủi ro” để lọc.
+              </div>
+            )}
+            <div className="banner info">
+              {analysis.model.instances} solids · {paritySummary.native}/{paritySummary.total}{" "}
+              native · {spec.materials?.length ?? 0} materials
+            </div>
           </div>
-        </div>
         </>
       )}
 
@@ -713,13 +769,12 @@ export function ParameterPanel({
               (spec.connectors ?? []).map((conn, idx) => {
                 const resolved = resolvedConnectors.get(conn.id);
                 const connIssues = analysis.issues.filter(
-                  (issue) => issue.path === `logic.geometry.connector.${conn.id}`
+                  (issue) => issue.path === `logic.geometry.connector.${conn.id}`,
                 );
                 const referenceHost =
                   resolved?.host === "reference-plane" || conn.host === "reference-plane";
                 const isOrphan =
-                  !referenceHost &&
-                  connIssues.some((issue) => issue.message.includes("orphaned"));
+                  !referenceHost && connIssues.some((issue) => issue.message.includes("orphaned"));
                 const dir = (conn.direction ?? "bidirectional").toLowerCase();
                 const isRound = conn.shape !== "rectangular";
                 const origin = resolved?.origin ?? conn.origin;
@@ -734,7 +789,9 @@ export function ParameterPanel({
                   ? `Ø${rounded(diameter, 50)}mm`
                   : `${rounded(width, 200)}×${rounded(height, 200)}mm`;
                 const coordinates = [origin?.x, origin?.y, origin?.z]
-                  .map((value) => (Number.isFinite(Number(value)) ? Math.round(Number(value)) : "—"))
+                  .map((value) =>
+                    Number.isFinite(Number(value)) ? Math.round(Number(value)) : "—",
+                  )
                   .join(", ");
 
                 return (
@@ -772,8 +829,12 @@ export function ParameterPanel({
 
                     {conn.flow !== undefined && (
                       <div className="connector-flow-row">
-                        <span>Flow: {conn.flow} {conn.flowUnit || "L/s"}</span>
-                        {conn.pressureDrop !== undefined && <span> · ΔP: {conn.pressureDrop} Pa</span>}
+                        <span>
+                          Flow: {conn.flow} {conn.flowUnit || "L/s"}
+                        </span>
+                        {conn.pressureDrop !== undefined && (
+                          <span> · ΔP: {conn.pressureDrop} Pa</span>
+                        )}
                       </div>
                     )}
 

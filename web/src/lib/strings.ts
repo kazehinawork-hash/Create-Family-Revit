@@ -58,10 +58,16 @@ export const t = {
   chatTab: "Chat",
   viewerTab: "3D",
   paramsTab: "Tham số",
-  parameters: "Parameters",
-  parts: "Parts",
-  connectors: "Connectors",
-  types: "Types",
+  parameters: "Tham số",
+  parts: "Chi tiết",
+  connectors: "Cổng",
+  types: "Type",
+  addParameter: "+ Thêm tham số",
+  formulaHint: "Giá trị có công thức do tham số khác điều khiển — hãy sửa tham số gốc.",
+  alignView: "Bấm vào một mặt để căn hướng nhìn",
+  resizePanel: "Kéo để đổi độ rộng · nhấp đúp để đặt lại",
+  rotatedBoxWarning:
+    "Khối hộp xoay lệch trục 90° vẫn dựng được, nhưng Revit không thể khoá mặt vào mặt phẳng tham chiếu; dùng Rebuild from spec sau khi đổi tham số.",
   parametersEmpty: "Tham số sẽ xuất hiện sau khi family được tạo.",
   filterParameters: "Lọc tham số",
   filterParts: "Lọc chi tiết",
@@ -74,13 +80,21 @@ export const t = {
   viewerTryPrefix: "Thử:",
   fitView: "Vừa khung",
   grid: "Lưới",
-  shadows: "Đổ bóng",
-  refPlanes: "Mặt phẳng",
+  shadows: "Bóng",
+  refPlanes: "Mặt phẳng tham chiếu",
+  connectorsTooltip: "Cổng kết nối MEP",
   section: "Mặt cắt",
   measure: "Đo",
-  coarse: "Coarse",
-  fine: "Fine",
+  coarse: "Đơn giản",
+  fine: "Chi tiết",
   turnaround: "Xoay 360°",
+  dimOthers: "Làm mờ chi tiết khác",
+  sectionFill: "Tô mặt cắt",
+  explode: "Tách rời",
+  dimensions: "Kích thước",
+  saveImage: "Lưu ảnh PNG",
+  moreViewerTools: "Thêm công cụ",
+  part: "Chi tiết",
   unhideAll: "Hiện lại tất cả",
   assembling: "Đang lắp",
 
@@ -107,4 +121,38 @@ export const t = {
   moveGroup: "Chuyển nhóm",
   renameModel: "Đổi tên family",
   deleteModel: "Xoá family",
+  trash: "Thùng rác",
+  trashMoved: "Đã chuyển vào thùng rác",
+  undoTrash: "Hoàn tác",
+  deleteForever: "Xoá vĩnh viễn",
+  emptyTrash: "Dọn sạch",
+  confirmTrash: "Chuyển vào thùng rác?",
+  confirmPurge:
+    "Xoá vĩnh viễn mô hình này? Thao tác này không thể hoàn tác.",
+  confirmEmptyTrash:
+    "Dọn sạch thùng rác? Tất cả mô hình trong thùng rác sẽ bị xoá vĩnh viễn.",
+  trashEmpty: "Thùng rác trống.",
+  trashHint: "Mô hình đã xoá được giữ ở đây 30 ngày và có thể khôi phục.",
+  daysLeft: (days: number) => `còn ${days} ngày`,
+  trashRestored: "Đã khôi phục mô hình",
+  trashPurged: "Đã xoá vĩnh viễn",
+  trashEmptied: "Đã dọn sạch thùng rác",
+  cachedResult: (time: string) => `Kết quả lặp lại từ lần chạy trước (${time})`,
+  runFresh: "Chạy mới",
 } as const;
+
+/**
+ * Validation messages can arrive from an older server build or a cached job.
+ * Known English wording is swapped for the Vietnamese copy here, where the UI
+ * already keeps every other label.
+ */
+export function localizeIssueMessage(message: string): string {
+  const text = String(message ?? "");
+  if (/rotated off the 90° axes/i.test(text)) return t.rotatedBoxWarning;
+  if (/host is offset .* from the spec origin/i.test(text)) {
+    return text
+      .replace(/Connector ("[^"]*") host is offset /i, "Cổng $1 lệch ")
+      .replace(/ mm from the spec origin/i, " mm so với gốc spec");
+  }
+  return text;
+}

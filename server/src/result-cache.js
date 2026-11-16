@@ -9,6 +9,11 @@ export function cacheKey(value) {
 }
 
 export function readCachedResult(key) {
+  return readCachedResultEntry(key)?.value ?? null;
+}
+
+/** The value plus when it was cached, so the UI can say "from HH:mm". */
+export function readCachedResultEntry(key) {
   const entry = entries.get(key);
   if (!entry) return null;
   if (Date.now() - entry.at > TTL_MS) {
@@ -19,7 +24,7 @@ export function readCachedResult(key) {
   // Refresh LRU position.
   entries.delete(key);
   entries.set(key, entry);
-  return entry.value;
+  return { value: entry.value, at: entry.at };
 }
 
 export function writeCachedResult(key, value) {

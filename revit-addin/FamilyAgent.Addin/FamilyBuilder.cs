@@ -76,6 +76,7 @@ namespace FamilyAgent.Addin
                 stage = "opening the family template";
                 var template = TemplateCatalog.Resolve(app, spec);
                 document = app.NewFamilyDocument(template);
+                FamilyCategoryAssigner.Apply(document, spec, result.Warnings);
 
                 var showParameters = new List<Autodesk.Revit.DB.FamilyParameter>();
                 var typeNames = new List<string>();
@@ -242,7 +243,7 @@ namespace FamilyAgent.Addin
                     var status = transaction.Commit();
                     if (status != TransactionStatus.Committed)
                     {
-                        result.Warnings.Add($"Family types were rolled back ({status}).");
+                        result.Warnings.Add($"Các Type của family đã bị hoàn tác ({status}).");
                     }
                 }
 
@@ -262,7 +263,7 @@ namespace FamilyAgent.Addin
                         if (transaction.Commit() != TransactionStatus.Committed)
                         {
                             result.Warnings.Add(
-                                "MEP connector hosts were rolled back: " +
+                                "Vị trí host của Connector MEP đã bị hoàn tác: " +
                                 string.Join(" ", connectorFailures.Messages.Take(2)));
                         }
                     }
@@ -691,6 +692,7 @@ namespace FamilyAgent.Addin
                 stage = "opening the family template";
                 var template = TemplateCatalog.Resolve(app, spec);
                 document = app.NewFamilyDocument(template);
+                FamilyCategoryAssigner.Apply(document, spec, result.Warnings);
 
                 PlaneSkeleton skeleton = null;
                 List<Element> forms;
@@ -2000,7 +2002,7 @@ namespace FamilyAgent.Addin
                 if (skeleton.Constraints.WouldOverconstrain(fromKey, toKey))
                 {
                     warnings.Add(
-                        $"Skipped overconstraining dimension \"{label.Definition?.Name}\" " +
+                        $"Bỏ qua ràng buộc thừa cho kích thước \"{label.Definition?.Name}\" " +
                         $"({from.Name} ↔ {to.Name})");
                     return;
                 }

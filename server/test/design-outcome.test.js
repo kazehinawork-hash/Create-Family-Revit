@@ -34,9 +34,15 @@ test("401/403 never retries and is reported as auth", () => {
 });
 
 test("other failure kinds are distinguished for the advice text", () => {
-  assert.equal(classifyDesignError(Object.assign(new Error("busy"), { status: 429 })), "overloaded");
-  assert.equal(classifyDesignError(Object.assign(new Error("down"), { status: 503 })), "overloaded");
-  assert.equal(classifyDesignError(new Error("Agent run timed out after 300s")), "timeout");
+  assert.equal(
+    classifyDesignError(Object.assign(new Error("busy"), { status: 429 })),
+    "overloaded",
+  );
+  assert.equal(
+    classifyDesignError(Object.assign(new Error("down"), { status: 503 })),
+    "overloaded",
+  );
+  assert.equal(classifyDesignError(new Error("Agent chạy quá 300 giây")), "timeout");
 
   const truncated = new Error("Model output ended before the JSON was closed (OUTPUT_LIMIT)");
   truncated.code = "OUTPUT_LIMIT";

@@ -8,13 +8,7 @@ export interface Vec3 {
 
 export type Axis = "x" | "y" | "z";
 
-export type ParameterType =
-  | "Length"
-  | "Angle"
-  | "Number"
-  | "Integer"
-  | "Text"
-  | "YesNo";
+export type ParameterType = "Length" | "Angle" | "Number" | "Integer" | "Text" | "YesNo";
 
 export type ParameterGroup =
   | "Dimensions"
@@ -223,6 +217,8 @@ export interface MepConnector {
     | "Hydronic Return"
     | "Domestic Cold Water"
     | "Domestic Hot Water"
+    | "CableTray"
+    | "Cable Tray"
     | "Power - Unbalanced"
     | "Power - Balanced"
     | "Fire Protection Wet"
@@ -249,6 +245,8 @@ export interface FamilySpec {
   typeName?: string;
   category: string;
   template?: string;
+  /** Revit "Part Type" for MEP fittings (Elbow, Tee, Cross, …). */
+  partType?: FamilyPartType;
   units: "mm";
   revitVersion?: string;
   /** Level of detail the family was designed for. */
@@ -306,6 +304,21 @@ export const PARAMETER_GROUPS: ParameterGroup[] = [
   "Other",
 ];
 
+/** Revit family part type, written to FAMILY_CONTENT_PART_TYPE for fittings. */
+export type FamilyPartType = "Elbow" | "Tee" | "Cross" | "Transition" | "Union" | "Other";
+
+export const PART_TYPES: FamilyPartType[] = [
+  "Elbow",
+  "Tee",
+  "Cross",
+  "Transition",
+  "Union",
+  "Other",
+];
+
+/** Categories whose families expose a Part Type in Revit. */
+export const FITTING_CATEGORIES = ["Duct Fitting", "Pipe Fitting", "Cable Tray Fitting"];
+
 /** Revit category name -> metric family template used by the add-in. */
 export const CATEGORY_TEMPLATES: Record<string, string> = {
   "Mechanical Equipment": "Metric Mechanical Equipment.rft",
@@ -315,6 +328,7 @@ export const CATEGORY_TEMPLATES: Record<string, string> = {
   "Duct Tee": "Metric Duct Tee.rft",
   "Duct Cross": "Metric Duct Cross.rft",
   "Pipe Fitting": "Metric Generic Model.rft",
+  "Cable Tray Fitting": "Metric Generic Model.rft",
   "Generic Model": "Metric Generic Model.rft",
   "Plumbing Fixture": "Metric Plumbing Fixture.rft",
   "Electrical Equipment": "Metric Electrical Equipment.rft",
@@ -334,6 +348,38 @@ export const CATEGORY_TEMPLATES: Record<string, string> = {
 };
 
 export const CATEGORIES = Object.keys(CATEGORY_TEMPLATES);
+
+/**
+ * Revit category name -> BuiltInCategory enum name. Revit 2024 has no cable-tray
+ * template, so the family is built from a generic template and moved to this
+ * category afterwards; the same table is mirrored in FamilyAgent.Core/CategoryCatalog.cs.
+ */
+export const CATEGORY_BUILTIN: Record<string, string> = {
+  "Mechanical Equipment": "OST_MechanicalEquipment",
+  "Duct Fitting": "OST_DuctFitting",
+  "Duct Elbow": "OST_DuctFitting",
+  "Duct Transition": "OST_DuctFitting",
+  "Duct Tee": "OST_DuctFitting",
+  "Duct Cross": "OST_DuctFitting",
+  "Pipe Fitting": "OST_PipeFitting",
+  "Cable Tray Fitting": "OST_CableTrayFitting",
+  "Generic Model": "OST_GenericModel",
+  "Plumbing Fixture": "OST_PlumbingFixtures",
+  "Electrical Equipment": "OST_ElectricalEquipment",
+  "Lighting Fixture": "OST_LightingFixtures",
+  "Specialty Equipment": "OST_SpecialtyEquipment",
+  Furniture: "OST_Furniture",
+  Casework: "OST_Casework",
+  Door: "OST_Doors",
+  Window: "OST_Windows",
+  "Structural Framing": "OST_StructuralFraming",
+  "Structural Column": "OST_StructuralColumns",
+  "Structural Foundation": "OST_StructuralFoundation",
+  Site: "OST_Site",
+  Planting: "OST_Planting",
+  Entourage: "OST_Entourage",
+  "Data Device": "OST_DataDevice",
+};
 
 export const LIMITS = {
   maxParameters: 200,

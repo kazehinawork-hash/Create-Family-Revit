@@ -14,12 +14,32 @@ import {
 import { buildPartGeometryAsync, type BuiltPartGeometry } from "../lib/geometry-pool";
 import { t } from "../lib/strings";
 
+/** Camera presets the ViewCube can request. */
+type ViewDirection =
+  | "top"
+  | "front"
+  | "back"
+  | "left"
+  | "right"
+  | "iso"
+  | "tfr"
+  | "tfl"
+  | "tbr"
+  | "tbl"
+  | "bfr"
+  | "bfl"
+  | "bbr"
+  | "bbl";
+
 interface PartCacheEntry {
   geometryKey: string;
   styleKey: string;
   group: THREE.Group;
   meshMaterial: THREE.MeshStandardMaterial;
   edgeMaterial: THREE.LineBasicMaterial;
+  /** Stencil helpers that mark the solid part of a section cut. */
+  stencilBack?: THREE.Mesh;
+  stencilFront?: THREE.Mesh;
   disposables: { dispose: () => void }[];
 }
 
@@ -48,10 +68,14 @@ interface Props {
   highlightPartIds?: string[];
   focusPartId?: string | null;
   onUpdateParameter?: (name: string, value: number) => void;
-  /** The canvas, so the studio can save a thumbnail of what is on screen. */
-  onCanvasReady?: (canvas: HTMLCanvasElement) => void;
   /** Empty-state suggestion: start a sample family. */
   onLoadSample?: () => void;
+  /** Hands the parent a function that renders and returns a 320px JPEG snapshot. */
+  onCaptureReady?: (capture: (() => string | null) | null) => void;
+  /** File name used when exporting the current view as PNG. */
+  fileName?: string;
+  /** Parts whose cuts the add-in will skip (thin prism): drawn as dashed ghosts. */
+  skippedCutPartIds?: string[];
 }
 
 /**
@@ -144,7 +168,7 @@ function snapToAxis(
   if (length < 1e-3) return { point: to.clone(), axis: null };
 
   const direction = delta.divideScalar(length);
-  const candidates: [("X" | "Y" | "Z"), number][] = [
+  const candidates: ["X" | "Y" | "Z", number][] = [
     ["X", Math.abs(direction.x)],
     ["Y", Math.abs(direction.y)],
     ["Z", Math.abs(direction.z)],
@@ -201,16 +225,19 @@ export function Viewer({
   highlightPartIds = [],
   focusPartId = null,
   onUpdateParameter,
-  onCanvasReady,
   onLoadSample,
+  onCaptureReady,
+  fileName,
+  skippedCutPartIds = [],
 }: Props) {
   const hostRef = useRef<HTMLDivElement>(null);
   const cubeHostRef = useRef<HTMLDivElement>(null);
-  // The canvas is created once; this ref lets the parent capture it without
-  // tearing the scene down whenever a callback identity changes.
-  const onCanvasReadyRef = useRef<Props["onCanvasReady"]>(onCanvasReady);
-  onCanvasReadyRef.current = onCanvasReady;
+  const onCaptureReadyRef = useRef<Props["onCaptureReady"]>(onCaptureReady);
+  onCaptureReadyRef.current = onCaptureReady;
   const stateRef = useRef<SceneState | null>(null);
+  // The ViewCube lives inside the scene effect (deps []); a ref keeps the latest
+  // setView without tearing the whole scene down when its identity changes.
+  const setViewRef = useRef<(direction: ViewDirection) => void>(() => {});
   // The scene only renders when something actually changed: camera motion fires a
   // "change" event, geometry/style effects mark it dirty. Saves GPU when idle.
   const renderDirtyRef = useRef(true);
@@ -302,6 +329,45 @@ export function Viewer({
 
   const statusRef = useRef(status);
   statusRef.current = status;
+
+  // Hover / selection presentation.
+  const [hoveredPartId, setHoveredPartId] = useState<string | null>(null);
+  const [hoverInfo, setHoverInfo] = useState<{ x: number; y: number; name: string } | null>(null);
+  const [dimOthers, setDimOthers] = useState(true);
+  // Section cap (hatched fill) is only worth it for families without hundreds of parts.
+  const [sectionFill, setSectionFill] = useState(true);
+  const [explode, setExplode] = useState(0);
+  const [explodeOpen, setExplodeOpen] = useState(false);
+  const [toolsMenuOpen, setToolsMenuOpen] = useState(false);
+  const [showDimensions, setShowDimensions] = useState(false);
+  // Which corner of the bounding box faces the camera; dimension lines follow it.
+  const [dimView, setDimView] = useState("111");
+  const dimViewRef = useRef("111");
+  const showDimensionsRef = useRef(false);
+  showDimensionsRef.current = showDimensions;
+  const explodeDirsRef = useRef(new WeakMap<THREE.Object3D, THREE.Vector3>());
+  // Camera target while the exploded view grows/shrinks: the tick loop eases to it.
+  const explodeFitRef = useRef<{ pos: THREE.Vector3; look: THREE.Vector3 } | null>(null);
+  const dimensionsRef = useRef<THREE.Group | null>(null);
+  const ghostCutsRef = useRef<THREE.Group | null>(null);
+  const sectionCapRef = useRef<THREE.Mesh | null>(null);
+  const hoverBlockedRef = useRef(false);
+  // Hover is off while the user is orbiting, measuring or placing a section plane.
+  hoverBlockedRef.current = measuring || pickingSection || sectionAxis !== "off";
+
+  /** Export the current view as a PNG named after the family. */
+  const saveImage = () => {
+    const state = stateRef.current;
+    if (!state) return;
+    state.renderer.render(state.scene, state.camera);
+    const link = document.createElement("a");
+    const safe = (fileName || "family").replace(/[\\/:*?"<>|]+/g, "-");
+    link.href = state.renderer.domElement.toDataURL("image/png");
+    link.download = `${safe}.png`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  };
 
   const clearMeasurements = () => {
     const state = stateRef.current;
@@ -399,7 +465,12 @@ export function Viewer({
     const host = hostRef.current;
     if (!host) return;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
+    const renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      alpha: true,
+      stencil: true,
+      powerPreference: "high-performance",
+    });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     // Transparent canvas: the CSS gradient behind it carries the light/dark theme.
     renderer.setClearColor(0x000000, 0);
@@ -411,7 +482,6 @@ export function Viewer({
     // refresh it when the scene changes instead of re-rendering it every frame.
     renderer.shadowMap.autoUpdate = false;
     renderer.shadowMap.needsUpdate = true;
-    onCanvasReadyRef.current?.(renderer.domElement);
     renderer.domElement.style.width = "100%";
     renderer.domElement.style.height = "100%";
     host.appendChild(renderer.domElement);
@@ -510,6 +580,42 @@ export function Viewer({
     gridMaterial.opacity = 0.2;
     gridMaterial.depthWrite = false;
     scene.add(grid);
+
+    // Hatched section cap.
+    // Stencil section cap: opaque fill with a screen-space hatch. The shader reads
+    // gl_FragCoord, so the stripe density is constant at every zoom level.
+    const sectionCap = new THREE.Mesh(
+      new THREE.PlaneGeometry(1, 1),
+      new THREE.ShaderMaterial({
+        vertexShader: `
+          void main() {
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          void main() {
+            vec3 base = vec3(0.898, 0.878, 0.827);
+            vec3 line = vec3(0.549, 0.525, 0.478);
+            float stripe = step(0.86, fract((gl_FragCoord.x + gl_FragCoord.y) / 14.0));
+            gl_FragColor = vec4(mix(base, line, stripe), 1.0);
+          }
+        `,
+        side: THREE.DoubleSide,
+        clipping: false,
+        stencilWrite: true,
+        stencilRef: 0,
+        stencilFunc: THREE.NotEqualStencilFunc,
+        stencilFail: THREE.KeepStencilOp,
+        stencilZFail: THREE.KeepStencilOp,
+        stencilZPass: THREE.KeepStencilOp,
+        depthWrite: true,
+        depthTest: true,
+      }),
+    );
+    sectionCap.renderOrder = 2;
+    sectionCap.visible = false;
+    scene.add(sectionCap);
+    sectionCapRef.current = sectionCap;
 
     // Catches the key light's shadow so parts read as sitting on the floor.
     const shadowPlane = new THREE.Mesh(
@@ -669,7 +775,12 @@ export function Viewer({
 
       if (handleHits.length > 0) {
         let handleObj: THREE.Object3D | null = handleHits[0].object;
-        while (handleObj && !handleObj.userData.isShapeHandle && handleObj.parent !== handlesGroup && handleObj.parent) {
+        while (
+          handleObj &&
+          !handleObj.userData.isShapeHandle &&
+          handleObj.parent !== handlesGroup &&
+          handleObj.parent
+        ) {
           handleObj = handleObj.parent;
         }
 
@@ -758,7 +869,7 @@ export function Viewer({
 
         // Project delta onto handle axis
         const axisDelta = deltaWorld.dot(axisVector) * draggingHandle.dir;
-        
+
         // Multiplier: if dimension is centered (like origin centered bounding box), delta is 2x for full width
         const deltaMultiplier = 2;
         const rawNewVal = draggingHandle.initialVal + axisDelta * deltaMultiplier;
@@ -980,9 +1091,7 @@ export function Viewer({
         previewLine.visible = false;
         previewLabel.visible = true;
         previewLabel.scale.set(labelHeight * (256 / 72), labelHeight, 1);
-        previewLabel.position
-          .copy(picked.point)
-          .add(new THREE.Vector3(0, 0, labelHeight * 0.9));
+        previewLabel.position.copy(picked.point).add(new THREE.Vector3(0, 0, labelHeight * 0.9));
         drawPreviewLabel(kindLabel);
         renderDirtyRef.current = true;
         return;
@@ -1009,7 +1118,9 @@ export function Viewer({
 
       previewLabel.visible = true;
       previewLabel.scale.set(labelHeight * (256 / 72), labelHeight, 1);
-      previewLabel.position.copy(previewLine.position).add(new THREE.Vector3(0, 0, labelHeight * 0.8));
+      previewLabel.position
+        .copy(previewLine.position)
+        .add(new THREE.Vector3(0, 0, labelHeight * 0.8));
       drawPreviewLabel(
         `${constrained.axis ? `Trục ${constrained.axis} · ` : ""}${Math.round(length)} mm`,
       );
@@ -1061,22 +1172,15 @@ export function Viewer({
 
       if (measuringRef.current) {
         const rect = renderer.domElement.getBoundingClientRect();
-        const picked = pickMeasurePoint(
-          mainRaycaster,
-          e.clientX - rect.left,
-          e.clientY - rect.top,
-        );
+        const picked = pickMeasurePoint(mainRaycaster, e.clientX - rect.left, e.clientY - rect.top);
         if (picked) {
           const { kind: snapKind } = picked;
           const points = measurePointsRef.current;
-          const constrained =
-            points.length === 1 ? snapToAxis(points[0], picked.point) : null;
+          const constrained = points.length === 1 ? snapToAxis(points[0], picked.point) : null;
           const point = constrained ? constrained.point : picked.point;
 
           const bounds = modelRef.current?.bounds;
-          const modelExtent = bounds
-            ? Math.max(bounds.size.x, bounds.size.y, bounds.size.z)
-            : 0;
+          const modelExtent = bounds ? Math.max(bounds.size.x, bounds.size.y, bounds.size.z) : 0;
 
           const markerRadius = Math.max(5, modelExtent / 220);
           const marker = new THREE.Mesh(
@@ -1116,7 +1220,12 @@ export function Viewer({
 
       if (intersects.length > 0) {
         let currentObj: THREE.Object3D | null = intersects[0].object;
-        while (currentObj && !currentObj.userData.partId && currentObj.parent !== content && currentObj.parent) {
+        while (
+          currentObj &&
+          !currentObj.userData.partId &&
+          currentObj.parent !== content &&
+          currentObj.parent
+        ) {
           currentObj = currentObj.parent;
         }
         const hitId = currentObj?.userData.partId || null;
@@ -1150,7 +1259,12 @@ export function Viewer({
       if (intersects.length > 0) {
         const hit = intersects[0];
         let currentObj: THREE.Object3D | null = hit.object;
-        while (currentObj && !currentObj.userData.partId && currentObj.parent !== content && currentObj.parent) {
+        while (
+          currentObj &&
+          !currentObj.userData.partId &&
+          currentObj.parent !== content &&
+          currentObj.parent
+        ) {
           currentObj = currentObj.parent;
         }
         const hitId = currentObj?.userData.partId || null;
@@ -1198,6 +1312,57 @@ export function Viewer({
     window.addEventListener("mousemove", onCanvasMouseMove);
     window.addEventListener("mouseup", onCanvasMouseUp);
     renderer.domElement.addEventListener("click", onCanvasClick);
+
+    // Hover: one raycast per animation frame, never while orbiting or using a tool.
+    let hoverFrame = 0;
+    const hoverRay = new THREE.Raycaster();
+    const hoverPointer = new THREE.Vector2();
+
+    const clearHover = () => {
+      setHoveredPartId((current) => (current === null ? current : null));
+      setHoverInfo((current) => (current === null ? current : null));
+    };
+
+    const onHoverMove = (event: MouseEvent) => {
+      if (event.buttons || hoverBlockedRef.current) {
+        clearHover();
+        return;
+      }
+      if (hoverFrame) return;
+      const x = event.clientX;
+      const y = event.clientY;
+
+      hoverFrame = requestAnimationFrame(() => {
+        hoverFrame = 0;
+        const rect = renderer.domElement.getBoundingClientRect();
+        if (!rect.width || !rect.height) return;
+
+        hoverPointer.set(
+          ((x - rect.left) / rect.width) * 2 - 1,
+          -((y - rect.top) / rect.height) * 2 + 1,
+        );
+        hoverRay.setFromCamera(hoverPointer, camera);
+        const hits = hoverRay
+          .intersectObjects(content.children, true)
+          .filter((entry) => (entry.object as THREE.Mesh).isMesh);
+        const hit = hits.find((entry) => entry.object.userData?.partId);
+        const partId = (hit?.object.userData?.partId as string) || null;
+        const name = (hit?.object.userData?.partName as string) || "";
+
+        setHoveredPartId((current) => (current === partId ? current : partId));
+        setHoverInfo((current) => {
+          if (!partId) return current === null ? current : null;
+          return { x: x - rect.left, y: y - rect.top, name };
+        });
+      });
+    };
+
+    const onHoverLeave = () => clearHover();
+    renderer.domElement.addEventListener("pointermove", onHoverMove);
+    // Some automation paths only emit mousemove; the rAF throttle collapses duplicates.
+    renderer.domElement.addEventListener("mousemove", onHoverMove);
+    renderer.domElement.addEventListener("pointerleave", onHoverLeave);
+    renderer.domElement.addEventListener("mouseleave", onHoverLeave);
 
     // Section plane drag handle: grab the red arrow and drag it along the normal.
     const sectionRay = new THREE.Raycaster();
@@ -1276,6 +1441,7 @@ export function Viewer({
     const animStartTarget = new THREE.Vector3();
     const animEndTarget = new THREE.Vector3();
     let animProgress = 1; // 1 = done
+    let lastFrameTime = performance.now();
 
     const createCubeMaterial = (text: string) => {
       const canvas = document.createElement("canvas");
@@ -1351,7 +1517,7 @@ export function Viewer({
       // Add crisp edges to the cube
       const cubeEdges = new THREE.LineSegments(
         new THREE.EdgesGeometry(geometry),
-        new THREE.LineBasicMaterial({ color: 0xa3a8ac, linewidth: 1 })
+        new THREE.LineBasicMaterial({ color: 0xa3a8ac, linewidth: 1 }),
       );
       cubeScene.add(cubeEdges);
 
@@ -1440,7 +1606,10 @@ export function Viewer({
         opacity: 0.01, // Invisible click targets normally, highlight mesh appears on click
       });
 
-      const corners: { mesh: THREE.Mesh; view: "tfr" | "tfl" | "tbr" | "tbl" | "bfr" | "bfl" | "bbr" | "bbl" }[] = [
+      const corners: {
+        mesh: THREE.Mesh;
+        view: "tfr" | "tfl" | "tbr" | "tbl" | "bfr" | "bfl" | "bbr" | "bbl";
+      }[] = [
         { mesh: new THREE.Mesh(cornerGeom, cornerMat), view: "tfr" },
         { mesh: new THREE.Mesh(cornerGeom, cornerMat), view: "tfl" },
         { mesh: new THREE.Mesh(cornerGeom, cornerMat), view: "tbr" },
@@ -1474,11 +1643,31 @@ export function Viewer({
         animProgress = 0; // Trigger smooth animation in tick()
       };
 
-      const calculateViewCameraPos = (direction: "top" | "front" | "back" | "left" | "right" | "iso" | "tfr" | "tfl" | "tbr" | "tbl" | "bfr" | "bfl" | "bbr" | "bbl") => {
+      const calculateViewCameraPos = (
+        direction:
+          | "top"
+          | "front"
+          | "back"
+          | "left"
+          | "right"
+          | "iso"
+          | "tfr"
+          | "tfl"
+          | "tbr"
+          | "tbl"
+          | "bfr"
+          | "bfl"
+          | "bbr"
+          | "bbl",
+      ) => {
         const current = modelRef.current;
         if (!current?.bounds) return null;
         const { min, max } = current.bounds;
-        const center = new THREE.Vector3((min.x + max.x) / 2, (min.y + max.y) / 2, (min.z + max.z) / 2);
+        const center = new THREE.Vector3(
+          (min.x + max.x) / 2,
+          (min.y + max.y) / 2,
+          (min.z + max.z) / 2,
+        );
         const radius = Math.max(
           new THREE.Vector3(max.x - min.x, max.y - min.y, max.z - min.z).length() / 2,
           120,
@@ -1488,21 +1677,49 @@ export function Viewer({
 
         const offset = new THREE.Vector3();
         switch (direction) {
-          case "top": offset.set(0, -0.001, distance); break;
-          case "front": offset.set(0, -distance, 0); break;
-          case "back": offset.set(0, distance, 0); break;
-          case "left": offset.set(-distance, 0, 0); break;
-          case "right": offset.set(distance, 0, 0); break;
+          case "top":
+            offset.set(0, -0.001, distance);
+            break;
+          case "front":
+            offset.set(0, -distance, 0);
+            break;
+          case "back":
+            offset.set(0, distance, 0);
+            break;
+          case "left":
+            offset.set(-distance, 0, 0);
+            break;
+          case "right":
+            offset.set(distance, 0, 0);
+            break;
           case "tfr":
-          case "iso": offset.set(dCorner, -dCorner, dCorner * 0.8); break;
-          case "tfl": offset.set(-dCorner, -dCorner, dCorner * 0.8); break;
-          case "tbr": offset.set(dCorner, dCorner, dCorner * 0.8); break;
-          case "tbl": offset.set(-dCorner, dCorner, dCorner * 0.8); break;
-          case "bfr": offset.set(dCorner, -dCorner, -dCorner * 0.5); break;
-          case "bfl": offset.set(-dCorner, -dCorner, -dCorner * 0.5); break;
-          case "bbr": offset.set(dCorner, dCorner, -dCorner * 0.5); break;
-          case "bbl": offset.set(-dCorner, dCorner, -dCorner * 0.5); break;
-          default: offset.set(distance * 0.7, -distance * 0.7, distance * 0.55); break;
+          case "iso":
+            offset.set(dCorner, -dCorner, dCorner * 0.8);
+            break;
+          case "tfl":
+            offset.set(-dCorner, -dCorner, dCorner * 0.8);
+            break;
+          case "tbr":
+            offset.set(dCorner, dCorner, dCorner * 0.8);
+            break;
+          case "tbl":
+            offset.set(-dCorner, dCorner, dCorner * 0.8);
+            break;
+          case "bfr":
+            offset.set(dCorner, -dCorner, -dCorner * 0.5);
+            break;
+          case "bfl":
+            offset.set(-dCorner, -dCorner, -dCorner * 0.5);
+            break;
+          case "bbr":
+            offset.set(dCorner, dCorner, -dCorner * 0.5);
+            break;
+          case "bbl":
+            offset.set(-dCorner, dCorner, -dCorner * 0.5);
+            break;
+          default:
+            offset.set(distance * 0.7, -distance * 0.7, distance * 0.55);
+            break;
         }
         return { pos: center.clone().add(offset), center };
       };
@@ -1533,21 +1750,27 @@ export function Viewer({
             if (faceHighlightMesh) {
               faceHighlightMesh.position.set(0, 0, 0);
               faceHighlightMesh.rotation.set(0, 0, 0);
-              if (index === 0) { // Right (+X)
+              if (index === 0) {
+                // Right (+X)
                 faceHighlightMesh.position.set(1.01, 0, 0);
                 faceHighlightMesh.rotation.y = Math.PI / 2;
-              } else if (index === 1) { // Left (-X)
+              } else if (index === 1) {
+                // Left (-X)
                 faceHighlightMesh.position.set(-1.01, 0, 0);
                 faceHighlightMesh.rotation.y = -Math.PI / 2;
-              } else if (index === 2) { // Back (+Y)
+              } else if (index === 2) {
+                // Back (+Y)
                 faceHighlightMesh.position.set(0, 1.01, 0);
                 faceHighlightMesh.rotation.x = -Math.PI / 2;
-              } else if (index === 3) { // Front (-Y)
+              } else if (index === 3) {
+                // Front (-Y)
                 faceHighlightMesh.position.set(0, -1.01, 0);
                 faceHighlightMesh.rotation.x = Math.PI / 2;
-              } else if (index === 4) { // Top (+Z)
+              } else if (index === 4) {
+                // Top (+Z)
                 faceHighlightMesh.position.set(0, 0, 1.01);
-              } else if (index === 5) { // Bottom (-Z)
+              } else if (index === 5) {
+                // Bottom (-Z)
                 faceHighlightMesh.position.set(0, 0, -1.01);
                 faceHighlightMesh.rotation.x = Math.PI;
               }
@@ -1587,7 +1810,7 @@ export function Viewer({
             if (hits.length > 0) {
               const target = calculateViewCameraPos(c.view);
               if (target) smoothTransitionTo(target.pos, target.center);
-              else setView(c.view);
+              else setViewRef.current(c.view);
               return;
             }
           }
@@ -1607,7 +1830,7 @@ export function Viewer({
 
               const target = calculateViewCameraPos(viewMap[index] || "iso");
               if (target) smoothTransitionTo(target.pos, target.center);
-              else setView(viewMap[index] || "iso");
+              else setViewRef.current(viewMap[index] || "iso");
             }
           }
         }
@@ -1618,12 +1841,16 @@ export function Viewer({
       cubeRenderer.domElement.addEventListener("click", onCubeClick);
     }
 
-    const tick = () => {
+    const tick = (now: number) => {
       frame = requestAnimationFrame(tick);
-      
+      if (!Number.isFinite(now)) now = performance.now();
+
       // Smooth camera transition when user clicks ViewCube - slower, cinematic & silky smooth (~800ms)
       if (animProgress < 1) {
-        animProgress = Math.min(1, animProgress + 0.02); // 0.02 step = ~50 frames (~800ms)
+        const elapsed = Math.max(0, now - lastFrameTime);
+        lastFrameTime = now;
+        // 600 ms regardless of frame rate, instead of 0.02 per rendered frame.
+        animProgress = Math.min(1, animProgress + elapsed / 600);
         // Quintic ease-out formula for super smooth, gentle glide into position
         const t = animProgress - 1;
         const ease = t * t * t * t * t + 1;
@@ -1641,7 +1868,32 @@ export function Viewer({
         controls.autoRotate = false;
       }
 
+      // Ease towards the exploded-view framing; new slider values retarget it.
+      const fit = explodeFitRef.current;
+      if (fit) {
+        camera.position.lerp(fit.pos, 0.12);
+        controls.target.lerp(fit.look, 0.12);
+        if (camera.position.distanceTo(fit.pos) < 0.5) explodeFitRef.current = null;
+        renderDirtyRef.current = true;
+      }
+
       controls.update();
+      if (showDimensionsRef.current) {
+        const current = modelRef.current;
+        if (current?.bounds) {
+          const midX = (current.bounds.min.x + current.bounds.max.x) / 2;
+          const midY = (current.bounds.min.y + current.bounds.max.y) / 2;
+          const midZ = (current.bounds.min.z + current.bounds.max.z) / 2;
+          const quadrant =
+            `${camera.position.x >= midX ? 1 : 0}` +
+            `${camera.position.y >= midY ? 1 : 0}` +
+            `${camera.position.z >= midZ ? 1 : 0}`;
+          if (quadrant !== dimViewRef.current) {
+            dimViewRef.current = quadrant;
+            setDimView(quadrant);
+          }
+        }
+      }
       if (renderDirtyRef.current) {
         renderDirtyRef.current = false;
         renderer.render(scene, camera);
@@ -1660,15 +1912,158 @@ export function Viewer({
         cubeRenderer.render(cubeScene, cubeCamera);
       }
     };
-    tick();
+    tick(performance.now());
 
-    stateRef.current = { renderer, scene, camera, controls, content, handlesGroup, grid, gridSize: 6000, refPlanesGroup, connectorsGroup, key, shadowPlane, disposables: [] };
+    stateRef.current = {
+      renderer,
+      scene,
+      camera,
+      controls,
+      content,
+      handlesGroup,
+      grid,
+      gridSize: 6000,
+      refPlanesGroup,
+      connectorsGroup,
+      key,
+      shadowPlane,
+      disposables: [],
+    };
+
+    /**
+     * Library thumbnail: render once with the helpers hidden and copy the pixels in
+     * the same frame. A canvas without preserveDrawingBuffer is cleared as soon as
+     * the frame ends, which is why the old "capture later" produced a flat colour.
+     *
+     * The camera is a fixed isometric framing of the model bounds, so the preview
+     * never depends on where the user left the camera and a 3600 mm ladder is not
+     * cropped at either end.
+     */
+    onCaptureReadyRef.current?.(() => {
+      const state = stateRef.current;
+      const currentModel = modelRef.current;
+      if (!state || !currentModel?.bounds) return null;
+
+      const wasVisible = {
+        grid: state.grid.visible,
+        refPlanes: state.refPlanesGroup.visible,
+        connectors: state.connectorsGroup.visible,
+        handles: state.handlesGroup.visible,
+      };
+
+      const width = 480;
+      const height = 270;
+      const previousSize = new THREE.Vector2();
+      state.renderer.getSize(previousSize);
+      const previousPixelRatio = state.renderer.getPixelRatio();
+      const previousPosition = state.camera.position.clone();
+      const previousQuaternion = state.camera.quaternion.clone();
+      const previousAspect = state.camera.aspect;
+      const previousNear = state.camera.near;
+      const previousFar = state.camera.far;
+      const previousTarget = state.controls.target.clone();
+
+      let image: string | null = null;
+      try {
+        state.grid.visible = false;
+        state.refPlanesGroup.visible = false;
+        state.connectorsGroup.visible = false;
+        state.handlesGroup.visible = false;
+
+        // Render at exactly 16:9 so the JPEG can be used without a square crop.
+        state.renderer.setPixelRatio(1);
+        state.renderer.setSize(width, height, false);
+
+        const { min, max } = currentModel.bounds;
+        const center = new THREE.Vector3(
+          (min.x + max.x) / 2,
+          (min.y + max.y) / 2,
+          (min.z + max.z) / 2,
+        );
+        const radius = Math.max(
+          new THREE.Vector3(max.x - min.x, max.y - min.y, max.z - min.z).length() / 2,
+          60,
+        );
+        const verticalFov = (state.camera.fov * Math.PI) / 180;
+        const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * (width / height));
+        const fitFov = Math.min(verticalFov, horizontalFov);
+        const distance = (radius / Math.sin(fitFov / 2)) * 1.18;
+
+        state.camera.up.set(0, 0, 1);
+        state.camera.aspect = width / height;
+        state.camera.near = Math.max(0.1, distance - radius * 4);
+        state.camera.far = distance + radius * 6;
+        state.camera.position.copy(center).addScaledVector(
+          new THREE.Vector3(0.7, -0.7, 0.56).normalize(),
+          distance,
+        );
+        state.camera.lookAt(center);
+        state.camera.updateProjectionMatrix();
+
+        state.renderer.render(state.scene, state.camera);
+        const source = state.renderer.domElement;
+
+        const off = document.createElement("canvas");
+        off.width = width;
+        off.height = height;
+        const context = off.getContext("2d");
+        if (context && source.width && source.height) {
+          // Light background for the library regardless of the studio theme.
+          context.fillStyle = "#f4f2ec";
+          context.fillRect(0, 0, width, height);
+          context.drawImage(source, 0, 0, source.width, source.height, 0, 0, width, height);
+
+          // A nearly uniform image means nothing was drawn: let the card use its icon.
+          const pixels = context.getImageData(0, 0, width, height).data;
+          let sum = 0;
+          let sumSquares = 0;
+          let count = 0;
+          for (let index = 0; index < pixels.length; index += 16) {
+            const luminance =
+              0.2126 * pixels[index] + 0.7152 * pixels[index + 1] + 0.0722 * pixels[index + 2];
+            sum += luminance;
+            sumSquares += luminance * luminance;
+            count += 1;
+          }
+          const mean = sum / Math.max(1, count);
+          const deviation = Math.sqrt(Math.max(0, sumSquares / Math.max(1, count) - mean * mean));
+          image = deviation < 6 ? null : off.toDataURL("image/jpeg", 0.86);
+        }
+      } catch {
+        image = null;
+      } finally {
+        state.grid.visible = wasVisible.grid;
+        state.refPlanesGroup.visible = wasVisible.refPlanes;
+        state.connectorsGroup.visible = wasVisible.connectors;
+        state.handlesGroup.visible = wasVisible.handles;
+
+        state.renderer.setPixelRatio(previousPixelRatio);
+        state.renderer.setSize(previousSize.x, previousSize.y, false);
+        state.camera.position.copy(previousPosition);
+        state.camera.quaternion.copy(previousQuaternion);
+        state.camera.aspect = previousAspect;
+        state.camera.near = previousNear;
+        state.camera.far = previousFar;
+        state.camera.updateProjectionMatrix();
+        state.controls.target.copy(previousTarget);
+        state.controls.update();
+        renderDirtyRef.current = true;
+      }
+
+      return image;
+    });
 
     const partCache = partCacheRef.current;
 
     return () => {
+      onCaptureReadyRef.current?.(null);
       cancelAnimationFrame(frame);
+      if (hoverFrame) cancelAnimationFrame(hoverFrame);
       observer.disconnect();
+      renderer.domElement.removeEventListener("pointermove", onHoverMove);
+      renderer.domElement.removeEventListener("mousemove", onHoverMove);
+      renderer.domElement.removeEventListener("pointerleave", onHoverLeave);
+      renderer.domElement.removeEventListener("mouseleave", onHoverLeave);
       renderer.domElement.removeEventListener("contextmenu", onContextMenu);
       renderer.domElement.removeEventListener("mousedown", onCanvasMouseDown);
       window.removeEventListener("mousemove", onCanvasMouseMove);
@@ -1682,6 +2077,10 @@ export function Viewer({
       environment.dispose();
       shadowPlane.geometry.dispose();
       (shadowPlane.material as THREE.Material).dispose();
+      scene.remove(sectionCap);
+      sectionCap.geometry.dispose();
+      (sectionCap.material as THREE.Material).dispose();
+      sectionCapRef.current = null;
       for (const entry of partCache.values()) {
         for (const item of entry.disposables) item.dispose();
       }
@@ -1710,84 +2109,88 @@ export function Viewer({
       const mesh = object as THREE.Mesh;
       if (!mesh.isMesh) return;
       const material = mesh.material;
-      if (Array.isArray(material)) material.forEach((item) => { item.needsUpdate = true; });
+      if (Array.isArray(material))
+        material.forEach((item) => {
+          item.needsUpdate = true;
+        });
       else if (material) material.needsUpdate = true;
     });
   }, [shadowsEnabled]);
 
-  const setView = useCallback(
-    (direction: "top" | "front" | "back" | "left" | "right" | "iso" | "tfr" | "tfl" | "tbr" | "tbl" | "bfr" | "bfl" | "bbr" | "bbl") => {
-      const state = stateRef.current;
-      const current = modelRef.current;
-      if (!state || !current?.bounds) return;
+  const setView = useCallback((direction: ViewDirection) => {
+    const state = stateRef.current;
+    const current = modelRef.current;
+    if (!state || !current?.bounds) return;
 
-      const { min, max } = current.bounds;
-      const center = new THREE.Vector3((min.x + max.x) / 2, (min.y + max.y) / 2, (min.z + max.z) / 2);
-      const radius = Math.max(
-        new THREE.Vector3(max.x - min.x, max.y - min.y, max.z - min.z).length() / 2,
-        120,
-      );
-      const distance = (radius / Math.sin((state.camera.fov * Math.PI) / 360)) * 1.15;
-      const dCorner = distance * 0.7;
+    const { min, max } = current.bounds;
+    const center = new THREE.Vector3((min.x + max.x) / 2, (min.y + max.y) / 2, (min.z + max.z) / 2);
+    const radius = Math.max(
+      new THREE.Vector3(max.x - min.x, max.y - min.y, max.z - min.z).length() / 2,
+      120,
+    );
+    const distance = (radius / Math.sin((state.camera.fov * Math.PI) / 360)) * 1.15;
+    const dCorner = distance * 0.7;
 
-      const offset = new THREE.Vector3();
-      switch (direction) {
-        case "top":
-          offset.set(0, -0.001, distance);
-          break;
-        case "front": // -Y
-          offset.set(0, -distance, 0);
-          break;
-        case "back": // +Y
-          offset.set(0, distance, 0);
-          break;
-        case "left": // -X
-          offset.set(-distance, 0, 0);
-          break;
-        case "right": // +X
-          offset.set(distance, 0, 0);
-          break;
-        // 8 Corners of the cube
-        case "tfr": // Top-Front-Right (+X, -Y, +Z)
-        case "iso":
-          offset.set(dCorner, -dCorner, dCorner * 0.8);
-          break;
-        case "tfl": // Top-Front-Left (-X, -Y, +Z)
-          offset.set(-dCorner, -dCorner, dCorner * 0.8);
-          break;
-        case "tbr": // Top-Back-Right (+X, +Y, +Z)
-          offset.set(dCorner, dCorner, dCorner * 0.8);
-          break;
-        case "tbl": // Top-Back-Left (-X, +Y, +Z)
-          offset.set(-dCorner, dCorner, dCorner * 0.8);
-          break;
-        case "bfr": // Bottom-Front-Right (+X, -Y, -Z)
-          offset.set(dCorner, -dCorner, -dCorner * 0.5);
-          break;
-        case "bfl": // Bottom-Front-Left (-X, -Y, -Z)
-          offset.set(-dCorner, -dCorner, -dCorner * 0.5);
-          break;
-        case "bbr": // Bottom-Back-Right (+X, +Y, -Z)
-          offset.set(dCorner, dCorner, -dCorner * 0.5);
-          break;
-        case "bbl": // Bottom-Back-Left (-X, +Y, -Z)
-          offset.set(-dCorner, dCorner, -dCorner * 0.5);
-          break;
-        default:
-          offset.set(distance * 0.7, -distance * 0.7, distance * 0.55);
-          break;
-      }
+    const offset = new THREE.Vector3();
+    switch (direction) {
+      case "top":
+        offset.set(0, -0.001, distance);
+        break;
+      case "front": // -Y
+        offset.set(0, -distance, 0);
+        break;
+      case "back": // +Y
+        offset.set(0, distance, 0);
+        break;
+      case "left": // -X
+        offset.set(-distance, 0, 0);
+        break;
+      case "right": // +X
+        offset.set(distance, 0, 0);
+        break;
+      // 8 Corners of the cube
+      case "tfr": // Top-Front-Right (+X, -Y, +Z)
+      case "iso":
+        offset.set(dCorner, -dCorner, dCorner * 0.8);
+        break;
+      case "tfl": // Top-Front-Left (-X, -Y, +Z)
+        offset.set(-dCorner, -dCorner, dCorner * 0.8);
+        break;
+      case "tbr": // Top-Back-Right (+X, +Y, +Z)
+        offset.set(dCorner, dCorner, dCorner * 0.8);
+        break;
+      case "tbl": // Top-Back-Left (-X, +Y, +Z)
+        offset.set(-dCorner, dCorner, dCorner * 0.8);
+        break;
+      case "bfr": // Bottom-Front-Right (+X, -Y, -Z)
+        offset.set(dCorner, -dCorner, -dCorner * 0.5);
+        break;
+      case "bfl": // Bottom-Front-Left (-X, -Y, -Z)
+        offset.set(-dCorner, -dCorner, -dCorner * 0.5);
+        break;
+      case "bbr": // Bottom-Back-Right (+X, +Y, -Z)
+        offset.set(dCorner, dCorner, -dCorner * 0.5);
+        break;
+      case "bbl": // Bottom-Back-Left (-X, +Y, -Z)
+        offset.set(-dCorner, dCorner, -dCorner * 0.5);
+        break;
+      default:
+        offset.set(distance * 0.7, -distance * 0.7, distance * 0.55);
+        break;
+    }
 
-      state.camera.position.copy(center).add(offset);
-      state.camera.near = Math.max(1, distance / 400);
-      state.camera.far = distance * 12;
-      state.camera.updateProjectionMatrix();
-      state.controls.target.copy(center);
-      state.controls.update();
-      renderDirtyRef.current = true;
-    },
-    [],
-  );
+    state.camera.position.copy(center).add(offset);
+    state.camera.near = Math.max(1, distance / 400);
+    state.camera.far = distance * 12;
+    state.camera.updateProjectionMatrix();
+    state.controls.target.copy(center);
+    state.controls.update();
+    renderDirtyRef.current = true;
+  }, []);
+
+  useEffect(() => {
+    setViewRef.current = setView;
+  }, [setView]);
 
   const fit = useCallback(() => {
     setView("iso");
@@ -1819,11 +2222,14 @@ export function Viewer({
     // floating around the origin while the rest of the family assembles.
     const partsToRender = model.parts;
     const wanted = new Set<string>();
-    const materialsKey = materials.map((material) => `${material.name}:${material.color ?? ""}`).join(",");
+    const materialsKey = materials
+      .map((material) => `${material.name}:${material.color ?? ""}`)
+      .join(",");
 
     const styleOf = (part: ResolvedPart, ghost = false) => {
       const isClearance =
-        part.id.toLowerCase().includes("clearance") || part.name.toLowerCase().includes("clearance");
+        part.id.toLowerCase().includes("clearance") ||
+        part.name.toLowerCase().includes("clearance");
       const props = partMaterialProps(part, materials);
       return {
         name: part.name,
@@ -1837,6 +2243,14 @@ export function Viewer({
         isAffected: highlightPartIds.includes(part.id),
         isAnimating: Boolean(animatingPartName) && part.name === animatingPartName,
         isGhost: ghost,
+        isHovered: part.id === hoveredPartId,
+        // Other parts recede a little so the selection reads at a glance.
+        isDimmed:
+          Boolean(selectedPartId) &&
+          dimOthers &&
+          part.id !== selectedPartId &&
+          !ghost &&
+          !isClearance,
       };
     };
 
@@ -1846,37 +2260,49 @@ export function Viewer({
       for (const child of entry.group.children) child.name = style.name;
       // Selection keeps the block solid; only "Make transparent" in the context menu
       // turns a part see-through.
-      const transparent = style.isTransparent || style.isGhost;
+      const transparent = style.isTransparent || style.isGhost || style.isDimmed;
       const transparencyChanged = material.transparent !== transparent;
-      material.color.set(style.isSelected ? 0xb7cff0 : style.color);
+      material.color.set(style.color);
       // Lift the palette a little: the old flat grey read as "washed out" on the beige
       // background, especially at low zoom.
-      if (!style.isSelected) material.color.lerp(new THREE.Color(0xffffff), 0.12);
+      material.color.lerp(new THREE.Color(0xffffff), 0.12);
+      if (style.isSelected) {
+        // 25% accent tint, visible on both the light and the dark palette.
+        material.color.lerp(new THREE.Color(0x4f9dff), 0.25);
+      }
       material.metalness = style.metalness;
       material.roughness = style.roughness;
       material.transparent = transparent;
       material.opacity = style.isGhost
         ? 0.1
-        : style.isTransparent
-          ? style.isClearance
-            ? 0.07
-            : 0.35
-          : 1;
+        : style.isDimmed
+          ? 0.85
+          : style.isTransparent
+            ? style.isClearance
+              ? 0.07
+              : 0.35
+            : 1;
       material.depthWrite = !transparent;
       material.emissive.set(style.isSelected ? 0x2f6fd0 : style.color);
-      material.emissiveIntensity = style.isSelected ? 0.04 : style.isAnimating ? 0.55 : 0;
+      material.emissiveIntensity = style.isSelected ? 0.25 : style.isAnimating ? 0.55 : 0;
       material.polygonOffsetFactor = style.isSelected ? -1 : 1;
       if (transparencyChanged) material.needsUpdate = true;
 
       edgeMaterial.visible = true;
 
-      if (style.isGhost) {
+      if (style.isSelected) {
+        // Accent outline around the selection.
+        edgeMaterial.color.setHex(0x2f6fd0);
+        edgeMaterial.opacity = 0.95;
+        edgeMaterial.transparent = true;
+      } else if (style.isHovered) {
+        // Thin hover outline.
+        edgeMaterial.color.setHex(0x4f9dff);
+        edgeMaterial.opacity = 0.85;
+        edgeMaterial.transparent = true;
+      } else if (style.isGhost) {
         edgeMaterial.color.setHex(0x8a9199);
         edgeMaterial.opacity = 0.12;
-        edgeMaterial.transparent = true;
-      } else if (style.isSelected) {
-        edgeMaterial.color.setHex(0x3f8ce8); // Viền xanh Revit dịu quanh part đang chọn
-        edgeMaterial.opacity = 0.75;
         edgeMaterial.transparent = true;
       } else if (style.hasIssue) {
         edgeMaterial.color.setHex(0xcf222e); // cảnh báo bố trí: viền đỏ
@@ -1930,6 +2356,7 @@ export function Viewer({
       disposables.push(geometry, meshMaterial, edgeGeometry, edgeMaterial);
 
       const count = Math.max(1, part.array.count);
+      let entryStencil: { back: THREE.Mesh; front: THREE.Mesh } | null = null;
 
       if (count > 1) {
         // Repeated parts (bolts, fins, louvres) are one draw call, not one per copy.
@@ -1970,26 +2397,74 @@ export function Viewer({
         const clone = new THREE.LineSegments(edgeGeometry, edgeMaterial);
         clone.userData = { partId: part.id };
         group.add(clone);
+
+        // Stencil pair for the section cap: back faces += 1, front faces -= 1, so
+        // only the solid wall of a closed part is non-zero where the plane cuts it.
+        const stencilBase = {
+          colorWrite: false,
+          depthWrite: false,
+          depthTest: false,
+          stencilWrite: true,
+          stencilFunc: THREE.AlwaysStencilFunc,
+          transparent: false,
+        };
+        const stencilBackMaterial = new THREE.MeshBasicMaterial({
+          ...stencilBase,
+          side: THREE.BackSide,
+          stencilFail: THREE.IncrementWrapStencilOp,
+          stencilZFail: THREE.IncrementWrapStencilOp,
+          stencilZPass: THREE.IncrementWrapStencilOp,
+        });
+        const stencilFrontMaterial = new THREE.MeshBasicMaterial({
+          ...stencilBase,
+          side: THREE.FrontSide,
+          stencilFail: THREE.DecrementWrapStencilOp,
+          stencilZFail: THREE.DecrementWrapStencilOp,
+          stencilZPass: THREE.DecrementWrapStencilOp,
+        });
+        disposables.push(stencilBackMaterial, stencilFrontMaterial);
+
+        const stencilBack = new THREE.Mesh(geometry, stencilBackMaterial);
+        const stencilFront = new THREE.Mesh(geometry, stencilFrontMaterial);
+        for (const proxy of [stencilBack, stencilFront]) {
+          proxy.visible = false;
+          proxy.frustumCulled = false;
+          proxy.renderOrder = 1;
+          group.add(proxy);
+        }
+        entryStencil = { back: stencilBack, front: stencilFront };
       }
 
       state.content.add(group);
-      const entry: PartCacheEntry = { geometryKey, styleKey, group, meshMaterial, edgeMaterial, disposables };
+      const entry: PartCacheEntry = {
+        geometryKey,
+        styleKey,
+        group,
+        meshMaterial,
+        edgeMaterial,
+        ...(entryStencil ? { stencilBack: entryStencil.back, stencilFront: entryStencil.front } : {}),
+        disposables,
+      };
       applyStyle(entry, styleOf(part, ghost));
       return entry;
     };
 
     let styleChanged = false;
-    const pending: { part: ResolvedPart; geometryKey: string; styleKey: string; ghost: boolean }[] = [];
+    const pending: { part: ResolvedPart; geometryKey: string; styleKey: string; ghost: boolean }[] =
+      [];
 
     for (const [index, part] of partsToRender.entries()) {
       if (hiddenPartIds.includes(part.id)) continue;
       const ghost = visiblePartCount > 0 && index >= limitParts;
 
       const isClearance =
-        part.id.toLowerCase().includes("clearance") || part.name.toLowerCase().includes("clearance");
+        part.id.toLowerCase().includes("clearance") ||
+        part.name.toLowerCase().includes("clearance");
 
       // In Coarse mode, hide clearance zones and small fasteners/bolts to preview Revit Coarse behavior
-      const isSmallDetail = /(bolt|nut|screw|washer|pin|label|tag|indicator|hole)/i.test(part.name || "");
+      const isSmallDetail = /(bolt|nut|screw|washer|pin|label|tag|indicator|hole)/i.test(
+        part.name || "",
+      );
       if (detailLevel === "coarse" && (isClearance || isSmallDetail)) continue;
 
       wanted.add(part.id);
@@ -2016,6 +2491,8 @@ export function Viewer({
         style.isAffected ? "affected" : "",
         style.isAnimating ? "hot" : "",
         style.isGhost ? "ghost" : "",
+        style.isHovered ? "hover" : "",
+        style.isDimmed ? "dim" : "",
       ].join("|");
 
       const existing = partCache.get(part.id);
@@ -2096,7 +2573,283 @@ export function Viewer({
     return () => {
       cancelled = true;
     };
-  }, [model, materials, selectedPartId, hiddenPartIds, transparentPartIds, issuePartIds, highlightPartIds, visiblePartCount, animatingPartName, detailLevel, previewQuality]);
+  }, [
+    model,
+    materials,
+    selectedPartId,
+    hiddenPartIds,
+    transparentPartIds,
+    issuePartIds,
+    highlightPartIds,
+    visiblePartCount,
+    animatingPartName,
+    hoveredPartId,
+    dimOthers,
+    detailLevel,
+    previewQuality,
+  ]);
+
+  // Explode: push each part away from the model centre. Positions are restored at 0%.
+  useEffect(() => {
+    const state = stateRef.current;
+    if (!state) return;
+    const bounds = model?.bounds;
+    const amount = explode / 100;
+    const center = bounds
+      ? new THREE.Vector3(
+          (bounds.min.x + bounds.max.x) / 2,
+          (bounds.min.y + bounds.max.y) / 2,
+          (bounds.min.z + bounds.max.z) / 2,
+        )
+      : new THREE.Vector3();
+    const extent = bounds ? Math.max(bounds.size.x, bounds.size.y, bounds.size.z, 1) : 1;
+
+    for (const child of state.content.children) {
+      if (amount <= 0.001) {
+        child.position.set(0, 0, 0);
+        continue;
+      }
+      let direction = explodeDirsRef.current.get(child);
+      if (!direction) {
+        const box = new THREE.Box3().setFromObject(child);
+        const partCenter = box.isEmpty() ? center.clone() : box.getCenter(new THREE.Vector3());
+        direction = partCenter.sub(center);
+        if (direction.lengthSq() < 1e-6) direction.set(0, 0, 1);
+        direction.normalize();
+        explodeDirsRef.current.set(child, direction);
+      }
+      child.position.copy(direction).multiplyScalar(extent * 0.55 * amount);
+    }
+
+    state.renderer.shadowMap.needsUpdate = true;
+    renderDirtyRef.current = true;
+
+    // Keep the whole family in view while the slider moves: ease the camera to a
+    // distance that fits the exploded bounds instead of snapping on every tick.
+    if (bounds) {
+      const box = new THREE.Box3().setFromObject(state.content);
+      if (!box.isEmpty()) {
+        const boxCenter = box.getCenter(new THREE.Vector3());
+        const radius = Math.max(box.getSize(new THREE.Vector3()).length() / 2, 120);
+        const direction = state.camera.position.clone().sub(state.controls.target);
+        if (direction.lengthSq() < 1e-6) direction.set(1, -1, 0.8);
+        direction.normalize();
+        const distance = (radius / Math.sin((state.camera.fov * Math.PI) / 360)) * 1.15;
+        explodeFitRef.current = {
+          pos: boxCenter.clone().addScaledVector(direction, distance),
+          look: boxCenter,
+        };
+      }
+    }
+  }, [explode, model]);
+
+  // Overall dimensions drawn next to the model.
+  useEffect(() => {
+    const state = stateRef.current;
+    if (!state) return;
+
+    if (dimensionsRef.current) {
+      state.scene.remove(dimensionsRef.current);
+      dimensionsRef.current.traverse((object) => {
+        const line = object as THREE.Line;
+        if (line.geometry) line.geometry.dispose();
+      });
+      dimensionsRef.current = null;
+    }
+
+    if (!showDimensions || !model?.bounds) {
+      renderDirtyRef.current = true;
+      return;
+    }
+
+    const { min, max, size } = model.bounds;
+    const group = new THREE.Group();
+    const extent = Math.max(size.x, size.y, size.z, 400);
+    const offset = extent * 0.1;
+    // depthTest off: the dimension lines and labels stay visible from every angle.
+    const material = new THREE.LineBasicMaterial({ color: 0x2f6feb, depthTest: false });
+
+    const addLine = (from: [number, number, number], to: [number, number, number]) => {
+      const geometry = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(...from),
+        new THREE.Vector3(...to),
+      ]);
+      group.add(new THREE.Line(geometry, material));
+    };
+
+    const addLabel = (text: string, x: number, y: number, z: number) => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 256;
+      canvas.height = 64;
+      const context = canvas.getContext("2d");
+      if (!context) return;
+      context.fillStyle = "rgba(255,255,255,0.92)";
+      context.fillRect(0, 0, 256, 64);
+      context.strokeStyle = "#2f6feb";
+      context.lineWidth = 3;
+      context.strokeRect(2, 2, 252, 60);
+      context.fillStyle = "#1f2328";
+      context.font = "bold 30px 'Segoe UI', Arial, sans-serif";
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      context.fillText(text, 128, 34);
+
+      const sprite = new THREE.Sprite(
+        new THREE.SpriteMaterial({
+          map: new THREE.CanvasTexture(canvas),
+          transparent: true,
+          depthTest: false,
+        }),
+      );
+      const height = extent * 0.05;
+      sprite.scale.set(height * (256 / 64), height, 1);
+      sprite.position.set(x, y, z);
+      group.add(sprite);
+    };
+
+    // Dimensions follow the corner nearest the camera, so they never sit behind the
+    // model and read the same way at every ISO angle.
+    const camera = stateRef.current?.camera;
+    const middle = new THREE.Vector3(
+      (min.x + max.x) / 2,
+      (min.y + max.y) / 2,
+      (min.z + max.z) / 2,
+    );
+    const view = camera ? camera.position.clone().sub(middle) : new THREE.Vector3(1, -1, 1);
+    const sx = view.x >= 0 ? 1 : -1;
+    const sy = view.y >= 0 ? 1 : -1;
+    const sz = view.z >= 0 ? 1 : -1;
+    const nearY = sy > 0 ? max.y : min.y;
+    const nearX = sx > 0 ? max.x : min.x;
+    const nearZ = sz > 0 ? max.z : min.z;
+
+    // X: along the near Y/Z edge.
+    const xLineY = nearY + sy * offset;
+    const xLineZ = nearZ + sz * offset * 0.2;
+    addLine([min.x, xLineY, xLineZ], [max.x, xLineY, xLineZ]);
+    addLine([min.x, nearY, xLineZ], [min.x, xLineY, xLineZ]);
+    addLine([max.x, nearY, xLineZ], [max.x, xLineY, xLineZ]);
+    addLabel(
+      `${Math.round(size.x)} ${units}`,
+      (min.x + max.x) / 2,
+      xLineY,
+      xLineZ + sz * offset * 0.35,
+    );
+
+    // Y: along the near X/Z edge.
+    const yLineX = nearX + sx * offset;
+    const yLineZ = nearZ + sz * offset * 0.2;
+    addLine([yLineX, min.y, yLineZ], [yLineX, max.y, yLineZ]);
+    addLine([nearX, min.y, yLineZ], [yLineX, min.y, yLineZ]);
+    addLine([nearX, max.y, yLineZ], [yLineX, max.y, yLineZ]);
+    addLabel(
+      `${Math.round(size.y)} ${units}`,
+      yLineX + sx * offset * 0.35,
+      (min.y + max.y) / 2,
+      yLineZ,
+    );
+
+    // Z: along the near X/Y edge.
+    const zLineX = nearX + sx * offset;
+    const zLineY = nearY + sy * offset;
+    addLine([zLineX, zLineY, min.z], [zLineX, zLineY, max.z]);
+    addLine([nearX, zLineY, min.z], [zLineX, zLineY, min.z]);
+    addLine([nearX, zLineY, max.z], [zLineX, zLineY, max.z]);
+    addLabel(
+      `${Math.round(size.z)} ${units}`,
+      zLineX + sx * offset * 0.35,
+      zLineY,
+      (min.z + max.z) / 2,
+    );
+
+    state.scene.add(group);
+    dimensionsRef.current = group;
+    renderDirtyRef.current = true;
+  }, [showDimensions, model, units, dimView]);
+
+  // Cuts the add-in will skip (thin prism) are shown as dashed ghosts so the preview
+  // matches what Revit will build.
+  useEffect(() => {
+    const state = stateRef.current;
+    if (!state) return;
+
+    if (ghostCutsRef.current) {
+      state.scene.remove(ghostCutsRef.current);
+      ghostCutsRef.current.traverse((object) => {
+        const line = object as THREE.LineSegments;
+        if (line.geometry) line.geometry.dispose();
+      });
+      ghostCutsRef.current = null;
+    }
+
+    if (!model || skippedCutPartIds.length === 0) {
+      renderDirtyRef.current = true;
+      return;
+    }
+
+    const material = new THREE.LineDashedMaterial({
+      color: 0xd28a00,
+      dashSize: 10,
+      gapSize: 6,
+      depthTest: false,
+    });
+    const group = new THREE.Group();
+
+    for (const part of model.parts) {
+      if (!skippedCutPartIds.includes(part.id)) continue;
+      for (const cut of part.cuts ?? []) {
+        let base: THREE.BufferGeometry | null = null;
+        const position = new THREE.Vector3();
+
+        if (cut.kind === "box") {
+          base = new THREE.BoxGeometry(
+            Math.abs(cut.size.x) || 1,
+            Math.abs(cut.size.y) || 1,
+            Math.abs(cut.size.z) || 1,
+          );
+          position.set(cut.origin.x, cut.origin.y, cut.origin.z);
+        } else if (cut.kind === "cylinder") {
+          const height = Math.abs(cut.height) || 1;
+          const radius = Math.abs(cut.radius) || 1;
+          base = new THREE.CylinderGeometry(radius, radius, height, 24);
+          const axis = cut.axis ?? "z";
+          if (axis === "x") base.rotateZ(Math.PI / 2);
+          else if (axis === "z") base.rotateX(Math.PI / 2);
+          position.set(cut.base.x, cut.base.y, cut.base.z);
+          const direction = Math.sign(cut.height) || 1;
+          if (axis === "x") position.x += (direction * height) / 2;
+          else if (axis === "y") position.y += (direction * height) / 2;
+          else position.z += (direction * height) / 2;
+        }
+
+        if (!base) continue;
+        const edges = new THREE.EdgesGeometry(base);
+        base.dispose();
+        const line = new THREE.LineSegments(edges, material);
+        line.computeLineDistances();
+        line.position.copy(position);
+        line.renderOrder = 3;
+        group.add(line);
+      }
+    }
+
+    state.scene.add(group);
+    ghostCutsRef.current = group;
+    renderDirtyRef.current = true;
+  }, [model, skippedCutPartIds]);
+
+  // Esc clears the selection when the measuring tool is not active.
+  useEffect(() => {
+    if (measuring) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setHoveredPartId(null);
+      setHoverInfo(null);
+      onSelectPartRef.current?.(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [measuring]);
 
   // Zoom the camera to a part when an issue is clicked in the chat.
   useEffect(() => {
@@ -2138,7 +2891,13 @@ export function Viewer({
         ? "off"
         : sectionAxis === "custom"
           ? sectionCustom
-            ? `custom:${sectionCustom.normal.toArray().map((v) => v.toFixed(4)).join(",")}:${sectionCustom.base.toArray().map((v) => v.toFixed(2)).join(",")}:${modelKey}`
+            ? `custom:${sectionCustom.normal
+                .toArray()
+                .map((v) => v.toFixed(4))
+                .join(",")}:${sectionCustom.base
+                .toArray()
+                .map((v) => v.toFixed(2))
+                .join(",")}:${modelKey}`
             : "custom-none"
           : `axis:${sectionAxis}:${modelKey}`;
 
@@ -2166,17 +2925,18 @@ export function Viewer({
 
     if (sectionAxis === "off" || !model?.bounds) {
       state.renderer.clippingPlanes = [];
+      if (sectionCapRef.current) sectionCapRef.current.visible = false;
+      for (const entry of partCacheRef.current.values()) {
+        if (entry.stencilBack) entry.stencilBack.visible = false;
+        if (entry.stencilFront) entry.stencilFront.visible = false;
+      }
       state.renderer.shadowMap.needsUpdate = true;
       renderDirtyRef.current = true;
       return;
     }
 
     const { min, max, size } = model.bounds;
-    const center = new THREE.Vector3(
-      (min.x + max.x) / 2,
-      (min.y + max.y) / 2,
-      (min.z + max.z) / 2,
-    );
+    const center = new THREE.Vector3((min.x + max.x) / 2, (min.y + max.y) / 2, (min.z + max.z) / 2);
     const extent = Math.max(size.x, size.y, size.z, 400);
 
     let normal: THREE.Vector3 | null = null;
@@ -2218,9 +2978,7 @@ export function Viewer({
       return;
     }
 
-    state.renderer.clippingPlanes = [
-      new THREE.Plane(normal.clone(), -normal.dot(planePoint)),
-    ];
+    state.renderer.clippingPlanes = [new THREE.Plane(normal.clone(), -normal.dot(planePoint))];
 
     // Keep the arrow on the plane, near the middle of the model.
     const planeCenter = center
@@ -2379,6 +3137,35 @@ export function Viewer({
     handleLabel.scale.set(sectionLabelHeight * (256 / 72), sectionLabelHeight, 1);
     handleLabel.position.copy(handlePoint).add(new THREE.Vector3(0, 0, handleHeight * 1.15));
 
+    // Stencil cap: only closed parts write stencil, so hollow interiors stay open.
+    const cap = sectionCapRef.current;
+    const canCap = model.parts.length < 200;
+    const active = sectionFill && canCap;
+    if (cap) {
+      cap.visible = active;
+      if (active) {
+        const capWidth =
+          sectionAxis === "x"
+            ? size.y
+            : sectionAxis === "custom"
+              ? Math.max(size.x, size.y)
+              : size.x;
+        const capHeight =
+          sectionAxis === "z"
+            ? size.y
+            : sectionAxis === "custom"
+              ? Math.max(size.y, size.z)
+              : size.z;
+        cap.position.copy(planePoint);
+        cap.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal.clone().normalize());
+        cap.scale.set(Math.max(capWidth, 1) * 1.02, Math.max(capHeight, 1) * 1.02, 1);
+      }
+    }
+    for (const entry of partCacheRef.current.values()) {
+      if (entry.stencilBack) entry.stencilBack.visible = active;
+      if (entry.stencilFront) entry.stencilFront.visible = active;
+    }
+
     const dragOrigin =
       sectionAxis === "custom" && sectionCustom ? sectionCustom.base.clone() : center.clone();
     const dragRange =
@@ -2393,7 +3180,7 @@ export function Viewer({
 
     state.renderer.shadowMap.needsUpdate = true;
     renderDirtyRef.current = true;
-  }, [sectionAxis, sectionT, model, sectionCustom]);
+  }, [sectionAxis, sectionT, model, sectionCustom, sectionFill]);
 
   useEffect(() => {
     if (measuring) return;
@@ -2448,7 +3235,12 @@ export function Viewer({
       state.scene.remove(state.grid);
       state.grid.geometry.dispose();
       state.grid.dispose();
-      const nextGrid = new THREE.GridHelper(gridSize, Math.max(12, Math.round(gridSize / 200)), 0x9aa0a6, 0xb9bec4);
+      const nextGrid = new THREE.GridHelper(
+        gridSize,
+        Math.max(12, Math.round(gridSize / 200)),
+        0x9aa0a6,
+        0xb9bec4,
+      );
       nextGrid.rotation.x = Math.PI / 2;
       nextGrid.position.z = -0.4;
       const nextMaterial = nextGrid.material as THREE.Material;
@@ -2470,7 +3262,8 @@ export function Viewer({
         (min.y + max.y) / 2,
         (min.z + max.z) / 2,
       );
-      const extent = Math.max(model.bounds.size.x, model.bounds.size.y, model.bounds.size.z, 600) * 1.6;
+      const extent =
+        Math.max(model.bounds.size.x, model.bounds.size.y, model.bounds.size.z, 600) * 1.6;
       state.key.position.set(center.x + extent * 0.7, center.y - extent, center.z + extent * 1.5);
       state.key.target.position.copy(center);
       state.key.target.updateMatrixWorld();
@@ -2496,7 +3289,8 @@ export function Viewer({
     state.handlesGroup.clear();
 
     // Hiện handle khi người dùng click chọn 1 Part cụ thể
-    const selectedPart = selectedPartId && model ? model.parts.find((p) => p.id === selectedPartId) : null;
+    const selectedPart =
+      selectedPartId && model ? model.parts.find((p) => p.id === selectedPartId) : null;
 
     if (selectedPart) {
       state.handlesGroup.visible = true;
@@ -2522,19 +3316,25 @@ export function Viewer({
 
         // Tìm parameter phù hợp nhất với Part đang chọn
         const partNameKeywords = selectedPart.name.toLowerCase().split(/\s+/);
-        const findParamForPartAxis = (axisKeywords: string[], fallbackName: string, fallbackVal: number) => {
+        const findParamForPartAxis = (
+          axisKeywords: string[],
+          fallbackName: string,
+          fallbackVal: number,
+        ) => {
           // Ưu tiên param có chứa cả tên part lẫn keyword trục (vd: Casing Length, Flange Thickness,...)
-          const exactMatch = parameters.find((p) =>
-            partNameKeywords.some((pk) => pk.length > 2 && p.name.toLowerCase().includes(pk)) &&
-            axisKeywords.some((ak) => p.name.toLowerCase().includes(ak.toLowerCase())) &&
-            typeof p.value === "number",
+          const exactMatch = parameters.find(
+            (p) =>
+              partNameKeywords.some((pk) => pk.length > 2 && p.name.toLowerCase().includes(pk)) &&
+              axisKeywords.some((ak) => p.name.toLowerCase().includes(ak.toLowerCase())) &&
+              typeof p.value === "number",
           );
           if (exactMatch && typeof exactMatch.value === "number") {
             return { name: exactMatch.name, val: exactMatch.value };
           }
-          const axisMatch = parameters.find((p) =>
-            axisKeywords.some((ak) => p.name.toLowerCase().includes(ak.toLowerCase())) &&
-            typeof p.value === "number",
+          const axisMatch = parameters.find(
+            (p) =>
+              axisKeywords.some((ak) => p.name.toLowerCase().includes(ak.toLowerCase())) &&
+              typeof p.value === "number",
           );
           return {
             name: axisMatch ? axisMatch.name : fallbackName,
@@ -2542,9 +3342,21 @@ export function Viewer({
           };
         };
 
-        const xParam = findParamForPartAxis(["length", "width", "od", "diameter", "radius"], `${selectedPart.name} X`, sizeX);
-        const yParam = findParamForPartAxis(["depth", "width", "od", "diameter", "radius"], `${selectedPart.name} Y`, sizeY);
-        const zParam = findParamForPartAxis(["height", "thickness", "length"], `${selectedPart.name} Z`, sizeZ);
+        const xParam = findParamForPartAxis(
+          ["length", "width", "od", "diameter", "radius"],
+          `${selectedPart.name} X`,
+          sizeX,
+        );
+        const yParam = findParamForPartAxis(
+          ["depth", "width", "od", "diameter", "radius"],
+          `${selectedPart.name} Y`,
+          sizeY,
+        );
+        const zParam = findParamForPartAxis(
+          ["height", "thickness", "length"],
+          `${selectedPart.name} Z`,
+          sizeZ,
+        );
 
         const createShapeHandle = (
           pos: THREE.Vector3,
@@ -2563,7 +3375,12 @@ export function Viewer({
           const coneGeom = new THREE.ConeGeometry(arrowRadius, arrowHead, 16);
           coneGeom.translate(0, arrowHead / 2 + arrowLength, 0);
 
-          const stemGeom = new THREE.CylinderGeometry(11 * scaleFactor, 11 * scaleFactor, arrowLength, 12);
+          const stemGeom = new THREE.CylinderGeometry(
+            11 * scaleFactor,
+            11 * scaleFactor,
+            arrowLength,
+            12,
+          );
           stemGeom.translate(0, arrowLength / 2, 0);
 
           const handleMat = new THREE.MeshStandardMaterial({
@@ -2579,7 +3396,10 @@ export function Viewer({
           coneMesh.renderOrder = 999;
           stemMesh.renderOrder = 999;
 
-          const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
+          const q = new THREE.Quaternion().setFromUnitVectors(
+            new THREE.Vector3(0, 1, 0),
+            dir.clone().normalize(),
+          );
           handle.quaternion.copy(q);
 
           handle.add(coneMesh);
@@ -2729,7 +3549,12 @@ export function Viewer({
 
       const axisForParameter = (name: string): "x" | "y" | "z" => {
         const text = name.toLowerCase();
-        if (text.includes("width") || text.includes("length") || text.includes("left") || text.includes("right")) {
+        if (
+          text.includes("width") ||
+          text.includes("length") ||
+          text.includes("left") ||
+          text.includes("right")
+        ) {
           return "x";
         }
         if (text.includes("depth") || text.includes("front") || text.includes("back")) return "y";
@@ -2755,17 +3580,19 @@ export function Viewer({
 
         if (axis === "x") {
           // Envelope dimensions sit on the far face, anything else is placed half-way out.
-          coordinate = near(bounds.max.x, value) || near(bounds.size.x, value)
-            ? bounds.max.x
-            : centerX + value / 2;
+          coordinate =
+            near(bounds.max.x, value) || near(bounds.size.x, value)
+              ? bounds.max.x
+              : centerX + value / 2;
           width = spanY;
           height = spanZ;
           rotate = (geometry) => geometry.rotateY(Math.PI / 2);
           place = (mesh) => mesh.position.set(coordinate, centerY, centerZ);
         } else if (axis === "y") {
-          coordinate = near(bounds.max.y, value) || near(bounds.size.y, value)
-            ? bounds.max.y
-            : centerY + value / 2;
+          coordinate =
+            near(bounds.max.y, value) || near(bounds.size.y, value)
+              ? bounds.max.y
+              : centerY + value / 2;
           width = spanX;
           height = spanZ;
           rotate = (geometry) => geometry.rotateX(Math.PI / 2);
@@ -2806,16 +3633,20 @@ export function Viewer({
 
         // System color mapping
         let colorHex = 0x0969da; // Default Blue
-        if (conn.systemType.includes("SupplyAir")) colorHex = 0x1f883d; // Green
-        else if (conn.systemType.includes("ReturnAir")) colorHex = 0xd9381e; // Red/Magenta
-        else if (conn.systemType.includes("HydronicSupply")) colorHex = 0x0969da; // Blue
-        else if (conn.systemType.includes("HydronicReturn")) colorHex = 0xd47600; // Orange
+        if (conn.systemType.includes("SupplyAir"))
+          colorHex = 0x1f883d; // Green
+        else if (conn.systemType.includes("ReturnAir"))
+          colorHex = 0xd9381e; // Red/Magenta
+        else if (conn.systemType.includes("HydronicSupply"))
+          colorHex = 0x0969da; // Blue
+        else if (conn.systemType.includes("HydronicReturn"))
+          colorHex = 0xd47600; // Orange
         else if (conn.systemType.includes("Sanitary")) colorHex = 0x8250df; // Purple
 
         const arrowDir = new THREE.Vector3(
           conn.directionVector.x,
           conn.directionVector.y,
-          conn.directionVector.z
+          conn.directionVector.z,
         ).normalize();
 
         // Connector Boundary Rim / Ring
@@ -2837,16 +3668,15 @@ export function Viewer({
           const rectGeom = new THREE.BoxGeometry(w, h, 6);
           const rectEdges = new THREE.LineSegments(
             new THREE.EdgesGeometry(rectGeom),
-            new THREE.LineBasicMaterial({ color: colorHex, linewidth: 2 })
+            new THREE.LineBasicMaterial({ color: colorHex, linewidth: 2 }),
           );
           state.disposables.push(rectGeom);
 
           // Connector box local axes: X = width, Y = height, Z = flow direction.
           // setFromUnitVectors alone leaves the roll undefined, so an X-facing
           // connector maps its width into world Z and looks rotated 90 degrees.
-          const up = Math.abs(arrowDir.z) < 0.9
-            ? new THREE.Vector3(0, 0, 1)
-            : new THREE.Vector3(0, 1, 0);
+          const up =
+            Math.abs(arrowDir.z) < 0.9 ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(0, 1, 0);
           const widthAxis = new THREE.Vector3().crossVectors(up, arrowDir).normalize();
           const heightAxis = new THREE.Vector3().crossVectors(arrowDir, widthAxis).normalize();
           const basis = new THREE.Matrix4().makeBasis(widthAxis, heightAxis, arrowDir);
@@ -2862,7 +3692,7 @@ export function Viewer({
           arrowLength,
           colorHex,
           24,
-          16
+          16,
         );
         connGroup.add(arrowHelper);
 
@@ -2871,7 +3701,9 @@ export function Viewer({
           const dir = (conn.direction ?? "bidirectional").toLowerCase();
           const dirLabel = dir === "in" ? "IN" : dir === "out" ? "OUT" : "BIDI";
           const isRound = conn.shape !== "rectangular";
-          const sizeStr = isRound ? `Ø${conn.diameter ?? 50}` : `${conn.width ?? 200}×${conn.height ?? 200}`;
+          const sizeStr = isRound
+            ? `Ø${conn.diameter ?? 50}`
+            : `${conn.width ?? 200}×${conn.height ?? 200}`;
           const badgeText = `${dirLabel} · ${sizeStr}`;
 
           const canvas = document.createElement("canvas");
@@ -2882,7 +3714,12 @@ export function Viewer({
             ctx.clearRect(0, 0, 256, 64);
             ctx.beginPath();
             ctx.roundRect(4, 4, 248, 56, 14);
-            ctx.fillStyle = dir === "in" ? "rgba(31, 136, 61, 0.92)" : dir === "out" ? "rgba(207, 34, 46, 0.92)" : "rgba(9, 105, 218, 0.92)";
+            ctx.fillStyle =
+              dir === "in"
+                ? "rgba(31, 136, 61, 0.92)"
+                : dir === "out"
+                  ? "rgba(207, 34, 46, 0.92)"
+                  : "rgba(9, 105, 218, 0.92)";
             ctx.fill();
             ctx.strokeStyle = "#ffffff";
             ctx.lineWidth = 2.5;
@@ -2897,14 +3734,18 @@ export function Viewer({
 
           const texture = new THREE.CanvasTexture(canvas);
           texture.anisotropy = 4;
-          const spriteMat = new THREE.SpriteMaterial({ map: texture, depthTest: false, transparent: true });
+          const spriteMat = new THREE.SpriteMaterial({
+            map: texture,
+            depthTest: false,
+            transparent: true,
+          });
           state.disposables.push(texture, spriteMat);
           const sprite = new THREE.Sprite(spriteMat);
           sprite.scale.set(65, 16.25, 1);
           sprite.position.copy(arrowDir).multiplyScalar(arrowLength + 22);
           sprite.renderOrder = 999;
           connGroup.add(sprite);
-        } catch { }
+        } catch {}
 
         state.connectorsGroup.add(connGroup);
       }
@@ -2957,8 +3798,15 @@ export function Viewer({
       <div ref={hostRef} style={{ position: "absolute", inset: 0 }} />
 
       <div className="viewer-tools">
-        <button type="button" className="tool" onClick={fit} title={t.fitView}>
-          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
+        <button type="button" className="tool tool-primary" onClick={fit} title={t.fitView}>
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.4"
+          >
             <path d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4" />
           </svg>
           <span className="tool-label">{t.fitView}</span>
@@ -2969,7 +3817,14 @@ export function Viewer({
           onClick={onToggleGrid}
           title={t.grid}
         >
-          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2">
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.2"
+          >
             <path d="M2 2h12v12H2zM2 6h12M2 10h12M6 2v12M10 2v12" />
           </svg>
           <span className="tool-label">{t.grid}</span>
@@ -2980,7 +3835,14 @@ export function Viewer({
           onClick={() => setShadowsEnabled((curr) => !curr)}
           title={t.shadows}
         >
-          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3">
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.3"
+          >
             <circle cx="8" cy="7" r="3" />
             <path d="M8 1v1.6M8 11.4V13M2 7h1.6M12.4 7H14M3.8 2.8l1.1 1.1M10.5 9.5l1.1 1.1M12.2 2.8l-1.1 1.1M5.1 9.5l-1.1 1.1" />
           </svg>
@@ -2993,15 +3855,34 @@ export function Viewer({
             onClick={onTogglePlanes}
             title={t.refPlanes}
           >
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3">
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.3"
+            >
               <path strokeDasharray="3 2" d="M8 1v14M1 8h14" />
             </svg>
-            <span className="tool-label">{t.refPlanes}</span>
           </button>
         )}
         <button
           type="button"
-          className={`tool ${sectionAxis !== "off" ? "active" : ""}`}
+          className="tool viewer-tools-more"
+          onClick={() => setToolsMenuOpen((current) => !current)}
+          title={t.moreViewerTools}
+          aria-expanded={toolsMenuOpen}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
+            <circle cx="5" cy="12" r="1.2" />
+            <circle cx="12" cy="12" r="1.2" />
+            <circle cx="19" cy="12" r="1.2" />
+          </svg>
+        </button>
+        <button
+          type="button"
+          className={`tool tool-primary ${sectionAxis !== "off" ? "active" : ""}`}
           onClick={() => {
             if (sectionAxis === "off") {
               setSectionT(1);
@@ -3013,7 +3894,14 @@ export function Viewer({
           }}
           title={t.section}
         >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+          >
             <path d="M3 7l9-4 9 4-9 4-9-4z" />
             <path d="M3 12l9 4 9-4M3 17l9 4 9-4" />
           </svg>
@@ -3021,40 +3909,66 @@ export function Viewer({
         </button>
         <button
           type="button"
-          className={`tool ${measuring ? "active" : ""}`}
+          className={`tool tool-primary ${measuring ? "active" : ""}`}
           onClick={() => setMeasuring((current) => !current)}
           title={t.measure}
         >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+          >
             <path d="M3 15 15 3l6 6L9 21l-6-6z" />
             <path d="M7 11l2 2M10 8l2 2M13 5l2 2" />
           </svg>
           <span className="tool-label">{t.measure}</span>
         </button>
+        <span className="tool-sep" aria-hidden="true" />
         <button
           type="button"
-          className={`tool ${detailLevel === "coarse" ? "active" : ""}`}
+          className={`tool tool-primary ${detailLevel === "coarse" ? "active" : ""}`}
           onClick={() => setDetailLevel((cur) => (cur === "coarse" ? "fine" : "coarse"))}
-          title={detailLevel === "coarse" ? "Chuyển sang chế độ Fine (Hiện mọi chi tiết bu lông, ốc vít)" : "Chuyển sang chế độ Coarse (Ẩn chi tiết nhỏ & vùng clearance như bản vẽ Revit 2D)"}
+          title={
+            detailLevel === "coarse"
+              ? "Chuyển sang chế độ Chi tiết (hiện mọi chi tiết nhỏ)"
+              : "Chuyển sang chế độ Đơn giản (ẩn chi tiết nhỏ và vùng clearance)"
+          }
         >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+          >
             <rect x="3" y="3" width="18" height="18" rx="2" />
             <path d="M3 9h18M9 21V9" />
           </svg>
-          <span className="tool-label">{detailLevel === "coarse" ? "Coarse" : "Fine"}</span>
+          <span className="tool-label">{detailLevel === "coarse" ? t.coarse : t.fine}</span>
         </button>
         {onToggleConnectors && (
           <button
             type="button"
-            className={`tool ${showConnectors ? "active" : ""}`}
+            className={`tool tool-primary ${showConnectors ? "active" : ""}`}
             onClick={onToggleConnectors}
-            title="Toggle MEP Connectors (Cổng kết nối Cơ điện & Mũi tên hướng dòng chảy)"
+            title={t.connectorsTooltip}
           >
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3">
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.3"
+            >
               <circle cx="8" cy="8" r="6" />
               <path d="M8 4v8M5 7l3-3 3 3" />
             </svg>
-            <span className="tool-label">Connectors</span>
+            <span className="tool-label">Cổng</span>
           </button>
         )}
         <button
@@ -3063,10 +3977,62 @@ export function Viewer({
           onClick={() => setTurntableActive((curr) => !curr)}
           title="Bật/Tắt hiệu ứng xoay tròn 360° tự động như bàn xoay trưng bày (Turntable)"
         >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
             <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
           </svg>
-          <span className="tool-label">Xoay 360°</span>
+          <span className="tool-label">360°</span>
+        </button>
+        <button
+          type="button"
+          className={`tool ${dimOthers ? "active" : ""}`}
+          onClick={() => setDimOthers((current) => !current)}
+          title={t.dimOthers}
+        >
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
+            <circle cx="8" cy="8" r="5.5" strokeDasharray="3 2" />
+            <circle cx="8" cy="8" r="2" fill="currentColor" stroke="none" />
+          </svg>
+          <span className="tool-label">{t.dimOthers}</span>
+        </button>
+        <button
+          type="button"
+          className={`tool ${explodeOpen ? "active" : ""}`}
+          onClick={() => {
+            setExplodeOpen((current) => !current);
+            if (explodeOpen) setExplode(0);
+          }}
+          title={t.explode}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <path d="M12 3v5M12 16v5M3 12h5M16 12h5M5.6 5.6l3.5 3.5M14.9 14.9l3.5 3.5M18.4 5.6l-3.5 3.5M9.1 14.9l-3.5 3.5" />
+          </svg>
+          <span className="tool-label">{t.explode}</span>
+        </button>
+        <button
+          type="button"
+          className={`tool ${showDimensions ? "active" : ""}`}
+          onClick={() => setShowDimensions((current) => !current)}
+          title={t.dimensions}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <path d="M3 17h18M3 14v6M21 14v6M7 20l-4-3 4-3M17 20l4-3-4-3" />
+          </svg>
+          <span className="tool-label">{t.dimensions}</span>
+        </button>
+        <button type="button" className="tool" onClick={saveImage} title={t.saveImage}>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+            <rect x="3" y="4" width="18" height="16" rx="2" />
+            <circle cx="8.5" cy="9.5" r="1.5" />
+            <path d="m4 17 5-5 4 4 3-3 4 4" />
+          </svg>
+          <span className="tool-label">{t.saveImage}</span>
         </button>
         {hiddenPartIds.length > 0 && onUnhideAll && (
           <button
@@ -3075,7 +4041,14 @@ export function Viewer({
             onClick={onUnhideAll}
             title="Unhide all hidden parts (Hiện lại tất cả các cấu kiện đang ẩn)"
           >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
               <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
               <circle cx="12" cy="12" r="3" />
             </svg>
@@ -3084,10 +4057,69 @@ export function Viewer({
         )}
       </div>
 
+      {explodeOpen && (
+        <div className="viewer-explode-panel floating">
+          <span>
+            {t.explode} · {explode}%
+          </span>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={1}
+            value={explode}
+            aria-label={t.explode}
+            onChange={(event) => setExplode(Number(event.target.value))}
+          />
+        </div>
+      )}
+
+      {toolsMenuOpen && (
+        <div className="viewer-more-menu">
+          <button type="button" onClick={() => { setToolsMenuOpen(false); onToggleGrid(); }}>
+            {t.grid}
+          </button>
+          <button type="button" onClick={() => { setToolsMenuOpen(false); setShadowsEnabled((v) => !v); }}>
+            {t.shadows}
+          </button>
+          {onTogglePlanes && (
+            <button type="button" onClick={() => { setToolsMenuOpen(false); onTogglePlanes(); }}>
+              {t.refPlanes}
+            </button>
+          )}
+          <button type="button" onClick={() => { setToolsMenuOpen(false); setTurntableActive((v) => !v); }}>
+            {t.turnaround}
+          </button>
+          <button type="button" onClick={() => { setToolsMenuOpen(false); setDimOthers((v) => !v); }}>
+            {t.dimOthers}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setToolsMenuOpen(false);
+              setExplodeOpen(true);
+            }}
+          >
+            {t.explode}
+          </button>
+          <button type="button" onClick={() => { setToolsMenuOpen(false); setShowDimensions((v) => !v); }}>
+            {t.dimensions}
+          </button>
+          <button type="button" onClick={() => { setToolsMenuOpen(false); saveImage(); }}>
+            {t.saveImage}
+          </button>
+          {hiddenPartIds.length > 0 && onUnhideAll && (
+            <button type="button" onClick={() => { setToolsMenuOpen(false); onUnhideAll(); }}>
+              {t.unhideAll}
+            </button>
+          )}
+        </div>
+      )}
+
       {sectionAxis !== "off" && (
         <div className="section-card">
           <div className="section-card-head">
-            <span>Section · mặt cắt</span>
+            <span>Mặt cắt</span>
             <button
               type="button"
               className="modal-close"
@@ -3121,6 +4153,23 @@ export function Viewer({
               ⌖
             </button>
           </div>
+
+          <label
+            className="section-fill-toggle"
+            title={
+              model && model.parts.length >= 200
+                ? "Tô mặt cắt tắt cho family từ 200 chi tiết để giữ tốc độ"
+                : t.sectionFill
+            }
+          >
+            <input
+              type="checkbox"
+              checked={sectionFill}
+              disabled={Boolean(model && model.parts.length >= 200)}
+              onChange={(event) => setSectionFill(event.target.checked)}
+            />
+            <span>{t.sectionFill}</span>
+          </label>
 
           {pickingSection && (
             <div className="section-hint">Bấm vào một mặt của mô hình để đặt mặt cắt…</div>
@@ -3157,6 +4206,12 @@ export function Viewer({
 
       {model && dims && <div className="viewer-dims">{dims}</div>}
 
+      {hoverInfo && (
+        <div className="viewer-hover-tip" style={{ left: hoverInfo.x + 14, top: hoverInfo.y + 14 }}>
+          {hoverInfo.name}
+        </div>
+      )}
+
       {measuring && !measureLabel && (
         <div className="measure-badge">Bấm điểm thứ nhất trên mô hình · Esc để huỷ</div>
       )}
@@ -3171,12 +4226,19 @@ export function Viewer({
         </div>
       )}
 
-      <div className="viewcube-container" ref={cubeHostRef} title="Click a face to align view" />
+      <div className="viewcube-container" ref={cubeHostRef} title={t.alignView} />
 
       {!model && (
         <div className="viewer-empty">
           <div className="chat-empty-icon" aria-hidden="true">
-            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.3">
+            <svg
+              width="36"
+              height="36"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.3"
+            >
               <path d="M3 7l9-4 9 4-9 4-9-4z" />
               <path d="M3 12l9 4 9-4M3 17l9 4 9-4" />
             </svg>
@@ -3203,7 +4265,9 @@ export function Viewer({
           }}
         >
           <span className="name">{activeHandle.label}</span>
-          <span className="val">{activeHandle.value} {units}</span>
+          <span className="val">
+            {activeHandle.value} {units}
+          </span>
         </div>
       )}
 
@@ -3223,7 +4287,7 @@ export function Viewer({
             </span>
           </div>
           <div className="menu-divider" />
-          
+
           <button
             type="button"
             className="menu-item"
@@ -3232,7 +4296,14 @@ export function Viewer({
               setContextMenu(null);
             }}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
               {hiddenPartIds.includes(contextMenu.partId) ? (
                 <>
                   <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
@@ -3245,7 +4316,11 @@ export function Viewer({
                 </>
               )}
             </svg>
-            <span>{hiddenPartIds.includes(contextMenu.partId) ? "Hiện cấu kiện (Unhide)" : "Ẩn cấu kiện (Hide)"}</span>
+            <span>
+              {hiddenPartIds.includes(contextMenu.partId)
+                ? "Hiện cấu kiện (Unhide)"
+                : "Ẩn cấu kiện (Hide)"}
+            </span>
           </button>
 
           <button
@@ -3256,7 +4331,14 @@ export function Viewer({
               setContextMenu(null);
             }}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
               <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z" />
               <path d="M12 6a6 6 0 0 0 0 12z" fill="currentColor" opacity="0.6" />
             </svg>
@@ -3275,7 +4357,9 @@ export function Viewer({
             onClick={() => {
               // Isolate element: hide all other parts except this one
               if (model) {
-                const otherIds = model.parts.map((p) => p.id).filter((id) => id !== contextMenu.partId);
+                const otherIds = model.parts
+                  .map((p) => p.id)
+                  .filter((id) => id !== contextMenu.partId);
                 // hide all other parts
                 otherIds.forEach((id) => {
                   if (!hiddenPartIds.includes(id)) {
@@ -3286,7 +4370,14 @@ export function Viewer({
               setContextMenu(null);
             }}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
               <rect x="3" y="3" width="18" height="18" rx="2" strokeDasharray="3 3" />
               <rect x="7" y="7" width="10" height="10" fill="currentColor" fillOpacity="0.3" />
             </svg>
@@ -3310,7 +4401,14 @@ export function Viewer({
               setContextMenu(null);
             }}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
               <path d="M3 3h18v18H3z" strokeDasharray="3 3" />
               <path d="M3 12h18" />
               <path d="M12 3v18" opacity="0.4" />
@@ -3330,7 +4428,14 @@ export function Viewer({
                     setContextMenu(null);
                   }}
                 >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
                     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
                     <circle cx="12" cy="12" r="3" />
                   </svg>
@@ -3346,7 +4451,14 @@ export function Viewer({
                     setContextMenu(null);
                   }}
                 >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                  >
                     <circle cx="12" cy="12" r="10" />
                   </svg>
                   <span>Khôi phục độ mờ tất cả</span>
@@ -3360,14 +4472,22 @@ export function Viewer({
       {animatingPartName && !status && (
         <div className="viewer-assembly-badge">
           <span className="assembly-pulse" />
-          <span>Assembling: <strong>{animatingPartName}</strong> ({visiblePartCount}/{model?.parts.length})</span>
+          <span>
+            Đang lắp: <strong>{animatingPartName}</strong> ({visiblePartCount}/{model?.parts.length}
+            )
+          </span>
         </div>
       )}
 
       {selectedPartId && (
         <div className="viewer-selected-chip">
           <span className="dot" />
-          <span>Part: <strong>{model?.parts.find((p) => p.id === selectedPartId)?.name || selectedPartId}</strong></span>
+          <span>
+            {t.part}:{" "}
+            <strong>
+              {model?.parts.find((p) => p.id === selectedPartId)?.name || selectedPartId}
+            </strong>
+          </span>
           {onToggleHidePart && (
             <button
               type="button"
@@ -3378,11 +4498,18 @@ export function Viewer({
                 onSelectPart?.(null);
               }}
             >
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
                 <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
                 <line x1="1" y1="1" x2="23" y2="23" />
               </svg>
-              <span>Hide</span>
+              <span>· Ẩn</span>
             </button>
           )}
           <button
@@ -3398,7 +4525,7 @@ export function Viewer({
 
       {model && (
         <div className="viewer-caption">
-          {model.parts.length} parts · {model.instances} solids
+          {model.parts.length} chi tiết · {model.instances} khối
         </div>
       )}
     </div>

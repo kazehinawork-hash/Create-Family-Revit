@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { config } from "./config.js";
@@ -26,7 +27,7 @@ export function setLatestExternalSpec({ spec, previewId, specHash, analysis, war
     updated_at: now,
     geometry_summary: {
       bounds: analysis?.model?.bounds || null,
-      parts_count: analysis?.model?.parts?.length || (spec?.geometry?.length || 0),
+      parts_count: analysis?.model?.parts?.length || spec?.geometry?.length || 0,
       parameters_count: spec?.parameters?.length || 0,
       connectors_count: spec?.connectors?.length || 0,
     },
@@ -52,7 +53,31 @@ export function subscribeExternalSpec(listener) {
     externalSpecListeners.delete(listener);
   };
 }
-export const JOBS_DIR = path.join(config.dirs.root, ".jobs");
+/**
+ * Where finished/running jobs are persisted. Tests set FAMILY_JOBS_DIR to a temp
+ * directory (see test/helpers/jobs-dir.js); a node:test child without it gets its
+ * own throwaway directory instead of writing into the repository's .jobs.
+ */
+function resolveJobsDir() {
+  const configured = (process.env.FAMILY_JOBS_DIR || "").trim();
+  if (configured) return path.resolve(configured);
+  if (process.env.NODE_TEST_CONTEXT) {
+    return path.join(os.tmpdir(), `family-agent-jobs-${process.pid}`);
+  }
+  return config.dirs.jobs;
+}
+
+export const JOBS_DIR = resolveJobsDir();
+
+if (process.env.NODE_TEST_CONTEXT && !process.env.FAMILY_JOBS_DIR) {
+  process.once("exit", () => {
+    try {
+      fs.rmSync(JOBS_DIR, { recursive: true, force: true });
+    } catch {
+      /* best effort */
+    }
+  });
+}
 
 export function computeSpecHash(spec) {
   const normalized = JSON.stringify(spec);
@@ -161,6 +186,11 @@ export function getJob(jobId) {
   return null;
 }
 
+/** Remove a job from the in-memory cache (used after its file is cleaned up). */
+export function forgetJob(jobId) {
+  jobs.delete(jobId);
+}
+
 export function listJobs({ limit = 20 } = {}) {
   return Array.from(jobs.values())
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
@@ -224,7 +254,18 @@ export function designJobSeenSince(jobId, sinceMs) {
   return Number.isFinite(seen) && seen >= sinceMs;
 }
 
-export function finishDesignJob(jobId, { status = "done", spec = null, issues = [], errors = [], warnings = [], stats = null, error = null } = {}) {
+export function finishDesignJob(
+  jobId,
+  {
+    status = "done",
+    spec = null,
+    issues = [],
+    errors = [],
+    warnings = [],
+    stats = null,
+    error = null,
+  } = {},
+) {
   return updateJob(jobId, {
     status,
     spec,
@@ -263,4 +304,3 @@ function persistJob(job) {
     console.warn(`[Jobs] Failed to persist job ${job.job_id}:`, err.message);
   }
 }
-

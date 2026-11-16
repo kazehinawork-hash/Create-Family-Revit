@@ -1,9 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import type { Issue } from "@family/spec-core";
-import { isImageDocument, type AgentBackends, type CmdcModel, type UploadedDocument } from "../lib/api";
+import {
+  isImageDocument,
+  type AgentBackends,
+  type CmdcModel,
+  type UploadedDocument,
+} from "../lib/api";
 import { ApiKeyPanel, type ApiKeyStatus } from "./ApiKeyPanel";
 import { isApiReady } from "../lib/api-key";
-import { t } from "../lib/strings";
+import { t, localizeIssueMessage } from "../lib/strings";
 
 export interface ResolutionRow {
   name: string;
@@ -24,7 +29,9 @@ function downloadResolutionCsv(rows: ResolutionRow[]) {
   const cell = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
   const csv = [
     ["Tham số", "Giá trị", "Mức", "Nguồn"].map(cell).join(","),
-    ...rows.map((row) => [row.name, row.value, row.level ?? "", row.source ?? ""].map(cell).join(",")),
+    ...rows.map((row) =>
+      [row.name, row.value, row.level ?? "", row.source ?? ""].map(cell).join(","),
+    ),
   ].join("\n");
 
   const url = URL.createObjectURL(new Blob([`\ufeff${csv}`], { type: "text/csv;charset=utf-8" }));
@@ -50,13 +57,12 @@ export interface ChatEntry {
   attachments?: UploadedDocument[];
   action?: {
     label: string;
-    kind?: "retry" | "use-sample" | "open-api";
+    kind?: "retry" | "use-sample" | "open-api" | "fresh";
     sampleId?: string;
   };
   /** Raw provider error, kept for the collapsible details block. */
   details?: string;
 }
-
 
 interface Props {
   entries: ChatEntry[];
@@ -175,9 +181,8 @@ export function ChatPanel({
 
   const modelList: CmdcModel[] = availableModels ?? EMPTY_MODELS;
   const hasModels = modelList.length > 0;
-  const modelValue = hasModels && modelList.some((entry) => entry.id === model)
-    ? model
-    : (modelList[0]?.id ?? "");
+  const modelValue =
+    hasModels && modelList.some((entry) => entry.id === model) ? model : (modelList[0]?.id ?? "");
 
   // The server lists only CLIs that exist on this machine. If the stored selection
   // is gone (other machine, uninstalled CLI), fall back to the first available one.
@@ -264,10 +269,28 @@ export function ChatPanel({
 
   return (
     <section className="pane left">
-      <div className="pane-header" style={{ justifyContent: "space-between", alignItems: "center", gap: 6, flexWrap: "nowrap" }}>
+      <div
+        className="pane-header"
+        style={{
+          justifyContent: "space-between",
+          alignItems: "center",
+          gap: 6,
+          flexWrap: "nowrap",
+        }}
+      >
         <span style={{ flexShrink: 0 }}>Agent</span>
 
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 6, maxWidth: "calc(100% - 60px)", flexWrap: "wrap", justifyContent: "flex-end", rowGap: 6 }}>
+        <div
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 6,
+            maxWidth: "calc(100% - 60px)",
+            flexWrap: "wrap",
+            justifyContent: "flex-end",
+            rowGap: 6,
+          }}
+        >
           <select
             className="model-select"
             value={modelValue}
@@ -346,7 +369,14 @@ export function ChatPanel({
         {entries.length === 0 && (
           <div className="chat-empty">
             <div className="chat-empty-icon" aria-hidden="true">
-              <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.3">
+              <svg
+                width="34"
+                height="34"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.3"
+              >
                 <path d="M3 7l9-4 9 4-9 4-9-4z" />
                 <path d="M3 12l9 4 9-4M3 17l9 4 9-4" />
               </svg>
@@ -411,7 +441,10 @@ export function ChatPanel({
               }`}
             >
               <div className="role">
-                <span className="dot" style={{ width: 5, height: 5, borderRadius: 3, background: "#3c7a63" }} />
+                <span
+                  className="dot"
+                  style={{ width: 5, height: 5, borderRadius: 3, background: "#3c7a63" }}
+                />
                 Family agent
               </div>
               <div className="body">{entry.text}</div>
@@ -495,7 +528,7 @@ export function ChatPanel({
                   <summary>Chi tiết · {entry.issues.length} mục</summary>
                   {entry.issues.map((issue, index) => {
                     const partId = issue.path.startsWith("logic.")
-                      ? issue.path.split(".").pop() ?? null
+                      ? (issue.path.split(".").pop() ?? null)
                       : null;
                     return (
                       <div
@@ -507,7 +540,7 @@ export function ChatPanel({
                         <span className="tag">{issue.severity}</span>
                         <span>
                           <span className="where">{issue.path}</span>
-                          {issue.message}
+                          {localizeIssueMessage(issue.message)}
                         </span>
                       </div>
                     );
@@ -533,9 +566,7 @@ export function ChatPanel({
         )}
 
         {!isCurrentModelReady && !running && (
-          <div className="banner warn">
-            Agent chưa sẵn sàng. {statusHint}
-          </div>
+          <div className="banner warn">Agent chưa sẵn sàng. {statusHint}</div>
         )}
       </div>
 
@@ -545,7 +576,10 @@ export function ChatPanel({
             {attachments.map((doc, idx) => {
               const showThumb = isImageDocument(doc) && Boolean(doc.url);
               return (
-                <div key={`${doc.path}-${idx}`} className={`attachment-chip${showThumb ? " image" : ""}`}>
+                <div
+                  key={`${doc.path}-${idx}`}
+                  className={`attachment-chip${showThumb ? " image" : ""}`}
+                >
                   {showThumb ? (
                     <button
                       type="button"
@@ -558,7 +592,14 @@ export function ChatPanel({
                     </button>
                   ) : (
                     <>
-                      <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
+                      <svg
+                        width="11"
+                        height="11"
+                        viewBox="0 0 16 16"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.4"
+                      >
                         <path d="M9.5 4.5 5 9a2.1 2.1 0 0 0 3 3l5-5a3.2 3.2 0 0 0-4.5-4.5L3 8a4.2 4.2 0 0 0 6 6l4-4" />
                       </svg>
                       <span className="name" title={doc.name}>
@@ -602,7 +643,9 @@ export function ChatPanel({
                 const blob = item.getAsFile();
                 if (blob) {
                   const ext = item.type.split("/")[1] || "png";
-                  const file = new File([blob], `pasted-drawing-${Date.now()}-${i + 1}.${ext}`, { type: item.type });
+                  const file = new File([blob], `pasted-drawing-${Date.now()}-${i + 1}.${ext}`, {
+                    type: item.type,
+                  });
                   imageFiles.push(file);
                 }
               }
@@ -641,20 +684,46 @@ export function ChatPanel({
           title="Attach a datasheet, drawing or schedule (PDF, image, Word, Excel)"
           aria-label="Attach a document"
         >
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.4"
+          >
             <path d="M9.5 4.5 5 9a2.1 2.1 0 0 0 3 3l5-5a3.2 3.2 0 0 0-4.5-4.5L3 8a4.2 4.2 0 0 0 6 6l4-4" />
           </svg>
         </button>
 
         {running ? (
-          <button type="button" className="send stop" onClick={onStop} title="Stop the agent" aria-label="Stop">
+          <button
+            type="button"
+            className="send stop"
+            onClick={onStop}
+            title="Stop the agent"
+            aria-label="Stop"
+          >
             <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
               <rect x="1" y="1" width="8" height="8" rx="1.5" />
             </svg>
           </button>
         ) : (
-          <button type="button" className="send" onClick={submit} disabled={disabled || !draft.trim()} aria-label="Send">
-            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6">
+          <button
+            type="button"
+            className="send"
+            onClick={submit}
+            disabled={disabled || !draft.trim()}
+            aria-label="Send"
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 16 16"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+            >
               <path d="M8 13V3M4 7l4-4 4 4" />
             </svg>
           </button>

@@ -35,6 +35,7 @@ When the user asks to change a parameter in an existing spec, do not edit only t
 5. **Knock-on constraints** — clearance, symmetry, connector positions, panel thickness and part offsets that must stay physically plausible.
 
 Then update the whole chain consistently:
+
 - Keep the existing parameter names and formulas unless the request requires changing them.
 - Prefer changing the base value or formula over hard-coding derived numbers.
 - Do not change unrelated parameters or parts just because their values happen to be nearby.
@@ -149,7 +150,10 @@ Verify the pairs above (pan-coil, fan-collar, electrical box-casing, door-pipes)
 ## Categories
 
 `category` must be exactly one of:
-Mechanical Equipment, Duct Fitting, Duct Elbow, Duct Transition, Duct Tee, Duct Cross, Pipe Fitting, Plumbing Fixture, Electrical Equipment, Lighting Fixture, Specialty Equipment, Data Device, Generic Model, Furniture, Casework, Door, Window, Structural Framing, Structural Column, Structural Foundation, Site, Planting, Entourage.
+Mechanical Equipment, Duct Fitting, Duct Elbow, Duct Transition, Duct Tee, Duct Cross, Pipe Fitting, Cable Tray Fitting, Plumbing Fixture, Electrical Equipment, Lighting Fixture, Specialty Equipment, Data Device, Generic Model, Furniture, Casework, Door, Window, Structural Framing, Structural Column, Structural Foundation, Site, Planting, Entourage.
+
+- **Cable tray / cable ladder fittings** (tee, cross, elbow, reducer between tray runs): use `category: "Cable Tray Fitting"` and set `partType` to `"Tee"`, `"Cross"`, `"Elbow"`, `"Transition"`, `"Union"` or `"Other"`. Their connectors use `systemType: "CableTray"`. A straight cable tray or a piece of equipment stays in its own category.
+- MEP fittings that need a Revit Part Type also carry `partType` (`Duct Fitting`, `Pipe Fitting`).
 
 ## Duct and pipe fittings
 

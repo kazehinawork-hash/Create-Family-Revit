@@ -22,6 +22,8 @@ export const designRequest = z.object({
   model: z.string().trim().max(160).optional(),
   /** Keep the selected model even when the provider is overloaded (no fallback). */
   lockModel: z.boolean().optional(),
+  /** Skip a cached answer; the new result replaces the cache entry. */
+  fresh: z.boolean().optional(),
   customApiConfig: customApiConfig.optional(),
   /** Command Code API key; exported to the CLI as COMMAND_CODE_API_KEY for this run. */
   commandCodeApiKey: z.string().trim().max(400).optional(),
@@ -53,6 +55,13 @@ export const modelSaveRequest = z.object({
     .max(400_000, "Ảnh thu nhỏ quá lớn.")
     .regex(/^data:image\/(jpeg|jpg|webp|png);base64,/, "Ảnh thu nhỏ không hợp lệ.")
     .optional(),
+});
+
+export const modelThumbnailRequest = z.object({
+  thumbnail: z
+    .string()
+    .max(400_000, "Ảnh thu nhỏ quá lớn.")
+    .regex(/^data:image\/(jpeg|jpg|webp|png);base64,/, "Ảnh thu nhỏ không hợp lệ."),
 });
 
 /** 60 chars, no path characters — the same rules as a Revit family/type name. */
