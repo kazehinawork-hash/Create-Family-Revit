@@ -24,7 +24,6 @@ function ladderSpec(name = "Ngã tư thang cáp") {
     parameters: [
       { name: "Ladder Width 1", type: "Length", group: "Dimensions", value: 400 },
       { name: "Ladder Height", type: "Length", group: "Dimensions", value: 100 },
-      { name: "Sheet Thickness", type: "Length", group: "Dimensions", value: 1.5 },
     ],
     materials: [{ name: "Steel", color: "#8a9ba8", metalness: 0.6, roughness: 0.4 }],
     parts: [
@@ -76,7 +75,7 @@ function crossSpec({ withRungs = true } = {}) {
       shape: "rectangular",
       origin: { x: sx * 300, y: sy * 200, z: 50 },
       directionVector: { x: sx, y: 0, z: 0 },
-      width: 400,
+      width: "[Ladder Width 1]",
       height: 100,
     });
   }
@@ -127,7 +126,7 @@ test("(a) a known template family still goes to the model, unchanged", async () 
   );
 
   const names = result.analysis.spec.parameters.map((parameter) => parameter.name);
-  assert.deepEqual(names, ["Ladder Width 1", "Ladder Height", "Sheet Thickness"]);
+  assert.deepEqual(names, ["Ladder Width 1", "Ladder Height"]);
   for (const forbidden of ["Width", "Height", "Depth", "CAO H"]) {
     assert.ok(!names.includes(forbidden), `${forbidden} was invented`);
   }
@@ -226,7 +225,7 @@ test("(d) every turn uses exactly the model the user picked", async () => {
   ]);
 });
 
-test("cached answers do not reach the model twice", async () => {
+test("a creation request is never replayed from cache", async () => {
   let calls = 0;
   const run = () =>
     design({
@@ -244,8 +243,8 @@ test("cached answers do not reach the model twice", async () => {
   await run();
   const second = await run();
 
-  assert.equal(calls, 1);
-  assert.equal(second.stats.cached, true);
+  assert.equal(calls, 2, "re-sending a create brief means another version");
+  assert.equal(second.stats.cached, undefined);
 });
 
 test("a precise parameter edit stays local and never calls the model", async () => {
@@ -319,9 +318,7 @@ test("still incomplete after three turns: reported as incomplete, never as succe
 });
 
 test("a part named 'Đông Bắc' is not counted as a rung", () => {
-  const checklist = extractChecklistHeuristic(
-    "ngã tư thang cáp 400x100, 4 thành góc, 6 bậc thang",
-  );
+  const checklist = extractChecklistHeuristic("ngã tư thang cáp 400x100, 4 thành góc, 6 bậc thang");
   const spec = crossSpec({ withRungs: false });
   const result = checkCompleteness(spec, checklist, { bounds: null });
 
@@ -339,7 +336,7 @@ test("an edit that times out keeps the family instead of failing the run", async
     emit: () => {},
     model: "cheap-model",
     generate: async () => {
-      throw new Error("Agent run timed out after 120s");
+      throw new Error("Agent chạy quá 120 giây");
     },
   });
 
@@ -350,7 +347,13 @@ test("an edit that times out keeps the family instead of failing the run", async
 });
 
 test("a split build keeps the sections that worked when a later one fails", async () => {
-  const brief = ["## Khung", "Khung thép 1200 x 600 mm.", "", "## Cửa thăm", "Cửa thăm 300 x 300."].join("\n");
+  const brief = [
+    "## Khung",
+    "Khung thép 1200 x 600 mm.",
+    "",
+    "## Cửa thăm",
+    "Cửa thăm 300 x 300.",
+  ].join("\n");
 
   let calls = 0;
   const result = await design({
@@ -367,7 +370,7 @@ test("a split build keeps the sections that worked when a later one fails", asyn
         throw error;
       }
       if (calls === 2) return { json: ladderSpec("Phần 1"), text: "", usage: null };
-      throw new Error("Agent run timed out after 240s");
+      throw new Error("Agent chạy quá 240 giây");
     },
   });
 
@@ -388,7 +391,7 @@ test("a supplement turn that times out reports the incomplete spec, not an error
     generate: async () => {
       calls += 1;
       if (calls === 1) return { json: ladderSpec(), text: "", usage: null };
-      throw new Error("Agent run timed out after 240s");
+      throw new Error("Agent chạy quá 240 giây");
     },
   });
 
@@ -428,7 +431,7 @@ test("a creation that times out retries once before giving up", async () => {
     model: "cheap-model",
     generate: async () => {
       calls += 1;
-      if (calls === 1) throw new Error("Agent run timed out after 300s");
+      if (calls === 1) throw new Error("Agent chạy quá 300 giây");
       return { json: ladderSpec(), text: "", usage: null };
     },
   });
@@ -457,7 +460,7 @@ test("a sectioned creation that times out is rebuilt section by section", async 
     generate: async (messages) => {
       calls.push(String(messages.at(-1).content));
       // The first answer times out; a sectioned brief is split instead of retried.
-      if (calls.length === 1) throw new Error("Agent run timed out after 300s");
+      if (calls.length === 1) throw new Error("Agent chạy quá 300 giây");
       return { json: ladderSpec(`Phần ${calls.length - 1}`), text: "", usage: null };
     },
   });
@@ -506,12 +509,9 @@ test("a family without a template is never filled with invented parts", async ()
 test("a long sectioned brief is built section by section from the first call", async () => {
   const section = (title) => `## ${title}\n${"Chi tiết kỹ thuật cho phần này. ".repeat(60)}`;
 
-  const brief = [
-    "Tạo ngã tư thang cáp 400x100.",
-    "",
-    section("Khung"),
-    section("Cửa thăm"),
-  ].join("\n");
+  const brief = ["Tạo ngã tư thang cáp 400x100.", "", section("Khung"), section("Cửa thăm")].join(
+    "\n",
+  );
 
   const calls = [];
   await design({
@@ -527,10 +527,7 @@ test("a long sectioned brief is built section by section from the first call", a
   });
 
   assert.ok(calls.length >= 2, "each section is its own call");
-  assert.ok(
-    !calls[0].includes("Cửa thăm"),
-    "the first call must not carry the whole brief",
-  );
+  assert.ok(!calls[0].includes("Cửa thăm"), "the first call must not carry the whole brief");
   assert.match(calls[0], /Khung/);
 });
 
@@ -609,11 +606,11 @@ test("a vision-enabled direct API gets the photo in the same turn", async () => 
 
   const content = lastContent(messages);
   assert.ok(Array.isArray(content), "the last user message carries parts");
-  assert.ok(content.some((part) => part.type === "image"), "the photo is an image part");
-  assert.match(
-    content.map((part) => part.text ?? "").join("\n"),
-    /dựng van theo ảnh này/,
+  assert.ok(
+    content.some((part) => part.type === "image"),
+    "the photo is an image part",
   );
+  assert.match(content.map((part) => part.text ?? "").join("\n"), /dựng van theo ảnh này/);
   const allText = messages.map((message) => String(message.content)).join("\n");
   assert.ok(!allText.includes("read_file"), "no separate vision step is asked for");
   assert.ok(result.analysis.ok);
@@ -627,7 +624,11 @@ test("a text-only provider keeps the c709e4c read_file instruction", async () =>
     lod: 300,
     emit: () => {},
     model: "custom:api",
-    customApiConfig: { baseUrl: "http://127.0.0.1:9/v1", apiKey: "sk-test", model: "deepseek-chat" },
+    customApiConfig: {
+      baseUrl: "http://127.0.0.1:9/v1",
+      apiKey: "sk-test",
+      model: "deepseek-chat",
+    },
     attachments: [photoFile()],
     generate: async (sent) => {
       messages = sent;
@@ -649,7 +650,7 @@ test("a timeout on the first call does not eat the repair budget", async () => {
     model: "cheap-model",
     generate: async (messages) => {
       calls.push(messages);
-      if (calls.length === 1) throw new Error("Agent run timed out after 300s");
+      if (calls.length === 1) throw new Error("Agent chạy quá 300 giây");
       if (calls.length === 2) return { json: brokenSpec(), text: "", usage: null };
       return { json: ladderSpec("Sau sửa"), text: "", usage: null };
     },
@@ -742,9 +743,14 @@ test("repair prompts do not grow with the number of attempts", async () => {
 
 test("an invalid section is skipped and never becomes the base of the next one", async () => {
   const brief = [
-    "## Khung", "Khung thép 1200 x 600 mm.", "",
-    "## Cửa thăm", "Cửa thăm 300 x 300 mm ở mặt trước.", "",
-    "## Chân đế", "Chân đế cao 150 mm.",
+    "## Khung",
+    "Khung thép 1200 x 600 mm.",
+    "",
+    "## Cửa thăm",
+    "Cửa thăm 300 x 300 mm ở mặt trước.",
+    "",
+    "## Chân đế",
+    "Chân đế cao 150 mm.",
   ].join("\n");
 
   const calls = [];
@@ -762,13 +768,17 @@ test("an invalid section is skipped and never becomes the base of the next one",
         throw error;
       }
       const last = String(messages.at(-1).content);
-      if (last.includes("Chân đế cao")) return { json: ladderSpec("Chân đế"), text: "", usage: null };
+      if (last.includes("Chân đế cao"))
+        return { json: ladderSpec("Chân đế"), text: "", usage: null };
       if (last.includes("Cửa thăm 300")) return { json: brokenSpec(), text: "", usage: null };
       return { json: ladderSpec("Khung"), text: "", usage: null };
     },
   });
 
-  const lastCall = calls.at(-1).map((message) => String(message.content)).join("\n");
+  const lastCall = calls
+    .at(-1)
+    .map((message) => String(message.content))
+    .join("\n");
   assert.match(lastCall, /"name":"Khung"/, "section 3 builds on the last valid spec");
   assert.doesNotMatch(lastCall, /Missing Parameter/, "the broken section is not carried");
   assert.equal(result.analysis.ok, true);
@@ -791,7 +801,7 @@ test("a patch answer from a section turn is merged into the spec built so far", 
   const body = {
     id: "body",
     name: "Thân hộp",
-    solid: { kind: "box", origin: { x: 0, y: 0, z: 0 }, size: { x: 600, y: 400, z: 200 } },
+    solid: { kind: "box", origin: { x: 0, y: 0, z: 0 }, size: { x: "[Box Width]", y: 400, z: 200 } },
   };
   const skeleton = {
     schemaVersion: "1.0",
@@ -825,7 +835,9 @@ test("a patch answer from a section turn is merged into the spec built so far", 
               solid: { kind: "cylinder", base: { x: 0, y: 0, z: -200 }, radius: 30, height: 25 },
             },
           ],
-          addParameters: [{ name: "Port Diameter", type: "Length", group: "Dimensions", value: 60 }],
+          addParameters: [
+            { name: "Port Diameter", type: "Length", group: "Dimensions", value: 60 },
+          ],
         },
         text: "",
         usage: null,
@@ -836,7 +848,11 @@ test("a patch answer from a section turn is merged into the spec built so far", 
   const ids = result.analysis.spec.parts.map((part) => part.id);
   assert.ok(ids.includes("body"), "the skeleton part survives a patch turn");
   assert.ok(ids.includes("port-in"), "the patched part is merged in");
-  assert.equal(ids.filter((id) => id === "port-in").length, 1, "a repeated patch does not duplicate");
+  assert.equal(
+    ids.filter((id) => id === "port-in").length,
+    1,
+    "a repeated patch does not duplicate",
+  );
   assert.ok(
     result.analysis.spec.parameters.some((parameter) => parameter.name === "Port Diameter"),
     "patched parameters are merged",
@@ -869,7 +885,7 @@ test("a section turn that returns a complete spec is still accepted", async () =
       {
         id: "frame",
         name: "Khung",
-        solid: { kind: "box", origin: { x: 0, y: 0, z: 0 }, size: { x: 1200, y: 600, z: 40 } },
+        solid: { kind: "box", origin: { x: 0, y: 0, z: 0 }, size: { x: "[Frame Width]", y: 600, z: 40 } },
       },
       {
         id: "base",
@@ -893,4 +909,3 @@ test("a section turn that returns a complete spec is still accepted", async () =
   assert.deepEqual(ids.sort(), ["base", "frame"]);
   assert.equal(result.analysis.ok, true);
 });
-

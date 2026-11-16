@@ -440,14 +440,8 @@
           "from": 0,
           "to": "[Ladder Height] - [Sheet Thickness]",
           "points": [
-            [
-              "-([Ladder Width 2] / 2 + [Miter Leg])",
-              "-[Ladder Width 1] / 2"
-            ],
-            [
-              "-[Ladder Width 2] / 2",
-              "-([Ladder Width 1] / 2 + [Miter Leg])"
-            ],
+            ["-([Ladder Width 2] / 2 + [Miter Leg])", "-[Ladder Width 1] / 2"],
+            ["-[Ladder Width 2] / 2", "-([Ladder Width 1] / 2 + [Miter Leg])"],
             [
               "-[Ladder Width 2] / 2 + [Sheet Thickness]",
               "-([Ladder Width 1] / 2 + [Miter Leg]) + [Sheet Thickness] * (sqrt(2) - 1)"
@@ -521,10 +515,7 @@
           "from": "[Ladder Height] - [Sheet Thickness]",
           "to": "[Ladder Height]",
           "points": [
-            [
-              "-[Total Length X] / 2",
-              "-[Ladder Width 1] / 2 + [Sheet Thickness]"
-            ],
+            ["-[Total Length X] / 2", "-[Ladder Width 1] / 2 + [Sheet Thickness]"],
             [
               "-([Ladder Width 2] / 2 + [Miter Leg]) + [Sheet Thickness] * (sqrt(2) - 1)",
               "-[Ladder Width 1] / 2 + [Sheet Thickness]"
@@ -533,14 +524,8 @@
               "-[Ladder Width 2] / 2 + [Sheet Thickness]",
               "-([Ladder Width 1] / 2 + [Miter Leg]) + [Sheet Thickness] * (sqrt(2) - 1)"
             ],
-            [
-              "-[Ladder Width 2] / 2 + [Sheet Thickness]",
-              "-[Total Branch Y]"
-            ],
-            [
-              "-[Ladder Width 2] / 2 + [Flange Inset]",
-              "-[Total Branch Y]"
-            ],
+            ["-[Ladder Width 2] / 2 + [Sheet Thickness]", "-[Total Branch Y]"],
+            ["-[Ladder Width 2] / 2 + [Flange Inset]", "-[Total Branch Y]"],
             [
               "-[Ladder Width 2] / 2 + [Flange Inset]",
               "-([Ladder Width 1] / 2 + [Miter Leg]) + [Flange Inset] * (sqrt(2) - 1)"
@@ -549,10 +534,7 @@
               "-([Ladder Width 2] / 2 + [Miter Leg]) + [Flange Inset] * (sqrt(2) - 1)",
               "-[Ladder Width 1] / 2 + [Flange Inset]"
             ],
-            [
-              "-[Total Length X] / 2",
-              "-[Ladder Width 1] / 2 + [Flange Inset]"
-            ]
+            ["-[Total Length X] / 2", "-[Ladder Width 1] / 2 + [Flange Inset]"]
           ]
         },
         "cuts": []
@@ -567,10 +549,7 @@
           "from": "[Ladder Height] - [Sheet Thickness] - [Safety Lip]",
           "to": "[Ladder Height] - [Sheet Thickness]",
           "points": [
-            [
-              "-[Total Length X] / 2",
-              "-[Ladder Width 1] / 2 + [Flange Inset]"
-            ],
+            ["-[Total Length X] / 2", "-[Ladder Width 1] / 2 + [Flange Inset]"],
             [
               "-([Ladder Width 2] / 2 + [Miter Leg]) + [Flange Inset] * (sqrt(2) - 1)",
               "-[Ladder Width 1] / 2 + [Flange Inset]"
@@ -579,14 +558,8 @@
               "-[Ladder Width 2] / 2 + [Flange Inset]",
               "-([Ladder Width 1] / 2 + [Miter Leg]) + [Flange Inset] * (sqrt(2) - 1)"
             ],
-            [
-              "-[Ladder Width 2] / 2 + [Flange Inset]",
-              "-[Total Branch Y]"
-            ],
-            [
-              "-[Ladder Width 2] / 2 + [Lip Inset]",
-              "-[Total Branch Y]"
-            ],
+            ["-[Ladder Width 2] / 2 + [Flange Inset]", "-[Total Branch Y]"],
+            ["-[Ladder Width 2] / 2 + [Lip Inset]", "-[Total Branch Y]"],
             [
               "-[Ladder Width 2] / 2 + [Lip Inset]",
               "-([Ladder Width 1] / 2 + [Miter Leg]) + [Lip Inset] * (sqrt(2) - 1)"
@@ -595,10 +568,7 @@
               "-([Ladder Width 2] / 2 + [Miter Leg]) + [Lip Inset] * (sqrt(2) - 1)",
               "-[Ladder Width 1] / 2 + [Lip Inset]"
             ],
-            [
-              "-[Total Length X] / 2",
-              "-[Ladder Width 1] / 2 + [Lip Inset]"
-            ]
+            ["-[Total Length X] / 2", "-[Ladder Width 1] / 2 + [Lip Inset]"]
           ]
         },
         "cuts": []
@@ -613,10 +583,7 @@
           "from": 0,
           "to": "[Sheet Thickness]",
           "points": [
-            [
-              "-[Total Length X] / 2",
-              "-[Ladder Width 1] / 2 + [Sheet Thickness]"
-            ],
+            ["-[Total Length X] / 2", "-[Ladder Width 1] / 2 + [Sheet Thickness]"],
             [
               "-([Ladder Width 2] / 2 + [Miter Leg]) + [Sheet Thickness] * (sqrt(2) - 1)",
               "-[Ladder Width 1] / 2 + [Sheet Thickness]"
@@ -625,14 +592,8 @@
               "-[Ladder Width 2] / 2 + [Sheet Thickness]",
               "-([Ladder Width 1] / 2 + [Miter Leg]) + [Sheet Thickness] * (sqrt(2) - 1)"
             ],
-            [
-              "-[Ladder Width 2] / 2 + [Sheet Thickness]",
-              "-[Total Branch Y]"
-            ],
-            [
-              "-[Ladder Width 2] / 2 + [Flange Inset]",
-              "-[Total Branch Y]"
-            ],
+            ["-[Ladder Width 2] / 2 + [Sheet Thickness]", "-[Total Branch Y]"],
+            ["-[Ladder Width 2] / 2 + [Flange Inset]", "-[Total Branch Y]"],
             [
               "-[Ladder Width 2] / 2 + [Flange Inset]",
               "-([Ladder Width 1] / 2 + [Miter Leg]) + [Flange Inset] * (sqrt(2) - 1)"
@@ -641,10 +602,7 @@
               "-([Ladder Width 2] / 2 + [Miter Leg]) + [Flange Inset] * (sqrt(2) - 1)",
               "-[Ladder Width 1] / 2 + [Flange Inset]"
             ],
-            [
-              "-[Total Length X] / 2",
-              "-[Ladder Width 1] / 2 + [Flange Inset]"
-            ]
+            ["-[Total Length X] / 2", "-[Ladder Width 1] / 2 + [Flange Inset]"]
           ]
         },
         "cuts": []
@@ -710,10 +668,7 @@
           "from": 0,
           "to": "[Ladder Height] - [Sheet Thickness]",
           "points": [
-            [
-              "([Ladder Width 2] / 2 + [Miter Leg])",
-              "-[Ladder Width 1] / 2"
-            ],
+            ["([Ladder Width 2] / 2 + [Miter Leg])", "-[Ladder Width 1] / 2"],
             [
               "([Ladder Width 2] / 2 + [Miter Leg]) - [Sheet Thickness] * (sqrt(2) - 1)",
               "-[Ladder Width 1] / 2 + [Sheet Thickness]"
@@ -722,10 +677,7 @@
               "[Ladder Width 2] / 2 - [Sheet Thickness]",
               "-([Ladder Width 1] / 2 + [Miter Leg]) + [Sheet Thickness] * (sqrt(2) - 1)"
             ],
-            [
-              "[Ladder Width 2] / 2",
-              "-([Ladder Width 1] / 2 + [Miter Leg])"
-            ]
+            ["[Ladder Width 2] / 2", "-([Ladder Width 1] / 2 + [Miter Leg])"]
           ]
         },
         "cuts": []
@@ -791,10 +743,7 @@
           "from": "[Ladder Height] - [Sheet Thickness]",
           "to": "[Ladder Height]",
           "points": [
-            [
-              "[Total Length X] / 2",
-              "-[Ladder Width 1] / 2 + [Sheet Thickness]"
-            ],
+            ["[Total Length X] / 2", "-[Ladder Width 1] / 2 + [Sheet Thickness]"],
             [
               "([Ladder Width 2] / 2 + [Miter Leg]) - [Sheet Thickness] * (sqrt(2) - 1)",
               "-[Ladder Width 1] / 2 + [Sheet Thickness]"
@@ -803,14 +752,8 @@
               "[Ladder Width 2] / 2 - [Sheet Thickness]",
               "-([Ladder Width 1] / 2 + [Miter Leg]) + [Sheet Thickness] * (sqrt(2) - 1)"
             ],
-            [
-              "[Ladder Width 2] / 2 - [Sheet Thickness]",
-              "-[Total Branch Y]"
-            ],
-            [
-              "[Ladder Width 2] / 2 - [Flange Inset]",
-              "-[Total Branch Y]"
-            ],
+            ["[Ladder Width 2] / 2 - [Sheet Thickness]", "-[Total Branch Y]"],
+            ["[Ladder Width 2] / 2 - [Flange Inset]", "-[Total Branch Y]"],
             [
               "[Ladder Width 2] / 2 - [Flange Inset]",
               "-([Ladder Width 1] / 2 + [Miter Leg]) + [Flange Inset] * (sqrt(2) - 1)"
@@ -819,10 +762,7 @@
               "([Ladder Width 2] / 2 + [Miter Leg]) - [Flange Inset] * (sqrt(2) - 1)",
               "-[Ladder Width 1] / 2 + [Flange Inset]"
             ],
-            [
-              "[Total Length X] / 2",
-              "-[Ladder Width 1] / 2 + [Flange Inset]"
-            ]
+            ["[Total Length X] / 2", "-[Ladder Width 1] / 2 + [Flange Inset]"]
           ]
         },
         "cuts": []
@@ -837,10 +777,7 @@
           "from": "[Ladder Height] - [Sheet Thickness] - [Safety Lip]",
           "to": "[Ladder Height] - [Sheet Thickness]",
           "points": [
-            [
-              "[Total Length X] / 2",
-              "-[Ladder Width 1] / 2 + [Flange Inset]"
-            ],
+            ["[Total Length X] / 2", "-[Ladder Width 1] / 2 + [Flange Inset]"],
             [
               "([Ladder Width 2] / 2 + [Miter Leg]) - [Flange Inset] * (sqrt(2) - 1)",
               "-[Ladder Width 1] / 2 + [Flange Inset]"
@@ -849,14 +786,8 @@
               "[Ladder Width 2] / 2 - [Flange Inset]",
               "-([Ladder Width 1] / 2 + [Miter Leg]) + [Flange Inset] * (sqrt(2) - 1)"
             ],
-            [
-              "[Ladder Width 2] / 2 - [Flange Inset]",
-              "-[Total Branch Y]"
-            ],
-            [
-              "[Ladder Width 2] / 2 - [Lip Inset]",
-              "-[Total Branch Y]"
-            ],
+            ["[Ladder Width 2] / 2 - [Flange Inset]", "-[Total Branch Y]"],
+            ["[Ladder Width 2] / 2 - [Lip Inset]", "-[Total Branch Y]"],
             [
               "[Ladder Width 2] / 2 - [Lip Inset]",
               "-([Ladder Width 1] / 2 + [Miter Leg]) + [Lip Inset] * (sqrt(2) - 1)"
@@ -865,10 +796,7 @@
               "([Ladder Width 2] / 2 + [Miter Leg]) - [Lip Inset] * (sqrt(2) - 1)",
               "-[Ladder Width 1] / 2 + [Lip Inset]"
             ],
-            [
-              "[Total Length X] / 2",
-              "-[Ladder Width 1] / 2 + [Lip Inset]"
-            ]
+            ["[Total Length X] / 2", "-[Ladder Width 1] / 2 + [Lip Inset]"]
           ]
         },
         "cuts": []
@@ -883,10 +811,7 @@
           "from": 0,
           "to": "[Sheet Thickness]",
           "points": [
-            [
-              "[Total Length X] / 2",
-              "-[Ladder Width 1] / 2 + [Sheet Thickness]"
-            ],
+            ["[Total Length X] / 2", "-[Ladder Width 1] / 2 + [Sheet Thickness]"],
             [
               "([Ladder Width 2] / 2 + [Miter Leg]) - [Sheet Thickness] * (sqrt(2) - 1)",
               "-[Ladder Width 1] / 2 + [Sheet Thickness]"
@@ -895,14 +820,8 @@
               "[Ladder Width 2] / 2 - [Sheet Thickness]",
               "-([Ladder Width 1] / 2 + [Miter Leg]) + [Sheet Thickness] * (sqrt(2) - 1)"
             ],
-            [
-              "[Ladder Width 2] / 2 - [Sheet Thickness]",
-              "-[Total Branch Y]"
-            ],
-            [
-              "[Ladder Width 2] / 2 - [Flange Inset]",
-              "-[Total Branch Y]"
-            ],
+            ["[Ladder Width 2] / 2 - [Sheet Thickness]", "-[Total Branch Y]"],
+            ["[Ladder Width 2] / 2 - [Flange Inset]", "-[Total Branch Y]"],
             [
               "[Ladder Width 2] / 2 - [Flange Inset]",
               "-([Ladder Width 1] / 2 + [Miter Leg]) + [Flange Inset] * (sqrt(2) - 1)"
@@ -911,10 +830,7 @@
               "([Ladder Width 2] / 2 + [Miter Leg]) - [Flange Inset] * (sqrt(2) - 1)",
               "-[Ladder Width 1] / 2 + [Flange Inset]"
             ],
-            [
-              "[Total Length X] / 2",
-              "-[Ladder Width 1] / 2 + [Flange Inset]"
-            ]
+            ["[Total Length X] / 2", "-[Ladder Width 1] / 2 + [Flange Inset]"]
           ]
         },
         "cuts": []
@@ -929,10 +845,7 @@
           "from": "[Rung Z Base] + [Rung Height] - [Rung Thickness]",
           "to": "[Rung Z Base] + [Rung Height]",
           "points": [
-            [
-              "-[Main Rung Offset] - [Rung Width] / 2",
-              "[Clear Width 1] / 2"
-            ],
+            ["-[Main Rung Offset] - [Rung Width] / 2", "[Clear Width 1] / 2"],
             [
               "-[Main Rung Offset] - [Rung Width] / 2",
               "[Main Rung Offset] + [Rung Width] / 2 - [Miter Inner Sum]"
@@ -941,10 +854,7 @@
               "-[Main Rung Offset] + [Rung Width] / 2",
               "[Main Rung Offset] - [Rung Width] / 2 - [Miter Inner Sum]"
             ],
-            [
-              "-[Main Rung Offset] + [Rung Width] / 2",
-              "[Clear Width 1] / 2"
-            ]
+            ["-[Main Rung Offset] + [Rung Width] / 2", "[Clear Width 1] / 2"]
           ]
         },
         "cuts": [
@@ -1134,10 +1044,7 @@
           "from": "[Rung Z Base] + [Rung Height] - [Rung Thickness]",
           "to": "[Rung Z Base] + [Rung Height]",
           "points": [
-            [
-              "[Main Rung Offset] + [Rung Width] / 2",
-              "[Clear Width 1] / 2"
-            ],
+            ["[Main Rung Offset] + [Rung Width] / 2", "[Clear Width 1] / 2"],
             [
               "[Main Rung Offset] + [Rung Width] / 2",
               "[Main Rung Offset] + [Rung Width] / 2 - [Miter Inner Sum]"
@@ -1146,10 +1053,7 @@
               "[Main Rung Offset] - [Rung Width] / 2",
               "[Main Rung Offset] - [Rung Width] / 2 - [Miter Inner Sum]"
             ],
-            [
-              "[Main Rung Offset] - [Rung Width] / 2",
-              "[Clear Width 1] / 2"
-            ]
+            ["[Main Rung Offset] - [Rung Width] / 2", "[Clear Width 1] / 2"]
           ]
         },
         "cuts": [
@@ -1599,42 +1503,42 @@
         {
           "severity": "warning",
           "path": "parts[5].solid.rotationZ",
-          "message": "A box rotated off the 90° axes builds, but Revit cannot lock its faces to the reference planes; use Rebuild from spec after changing parameters."
+          "message": "Khối hộp xoay lệch trục 90° vẫn dựng được, nhưng Revit không thể khoá mặt vào mặt phẳng tham chiếu; dùng Rebuild from spec sau khi đổi tham số."
         },
         {
           "severity": "warning",
           "path": "parts[8].solid.rotationZ",
-          "message": "A box rotated off the 90° axes builds, but Revit cannot lock its faces to the reference planes; use Rebuild from spec after changing parameters."
+          "message": "Khối hộp xoay lệch trục 90° vẫn dựng được, nhưng Revit không thể khoá mặt vào mặt phẳng tham chiếu; dùng Rebuild from spec sau khi đổi tham số."
         },
         {
           "severity": "warning",
           "path": "parts[11].solid.rotationZ",
-          "message": "A box rotated off the 90° axes builds, but Revit cannot lock its faces to the reference planes; use Rebuild from spec after changing parameters."
+          "message": "Khối hộp xoay lệch trục 90° vẫn dựng được, nhưng Revit không thể khoá mặt vào mặt phẳng tham chiếu; dùng Rebuild from spec sau khi đổi tham số."
         },
         {
           "severity": "warning",
           "path": "parts[14].solid.rotationZ",
-          "message": "A box rotated off the 90° axes builds, but Revit cannot lock its faces to the reference planes; use Rebuild from spec after changing parameters."
+          "message": "Khối hộp xoay lệch trục 90° vẫn dựng được, nhưng Revit không thể khoá mặt vào mặt phẳng tham chiếu; dùng Rebuild from spec sau khi đổi tham số."
         },
         {
           "severity": "warning",
           "path": "parts[17].solid.rotationZ",
-          "message": "A box rotated off the 90° axes builds, but Revit cannot lock its faces to the reference planes; use Rebuild from spec after changing parameters."
+          "message": "Khối hộp xoay lệch trục 90° vẫn dựng được, nhưng Revit không thể khoá mặt vào mặt phẳng tham chiếu; dùng Rebuild from spec sau khi đổi tham số."
         },
         {
           "severity": "warning",
           "path": "parts[20].solid.rotationZ",
-          "message": "A box rotated off the 90° axes builds, but Revit cannot lock its faces to the reference planes; use Rebuild from spec after changing parameters."
+          "message": "Khối hộp xoay lệch trục 90° vẫn dựng được, nhưng Revit không thể khoá mặt vào mặt phẳng tham chiếu; dùng Rebuild from spec sau khi đổi tham số."
         },
         {
           "severity": "warning",
           "path": "parts[23].solid.rotationZ",
-          "message": "A box rotated off the 90° axes builds, but Revit cannot lock its faces to the reference planes; use Rebuild from spec after changing parameters."
+          "message": "Khối hộp xoay lệch trục 90° vẫn dựng được, nhưng Revit không thể khoá mặt vào mặt phẳng tham chiếu; dùng Rebuild from spec sau khi đổi tham số."
         },
         {
           "severity": "warning",
           "path": "parts[26].solid.rotationZ",
-          "message": "A box rotated off the 90° axes builds, but Revit cannot lock its faces to the reference planes; use Rebuild from spec after changing parameters."
+          "message": "Khối hộp xoay lệch trục 90° vẫn dựng được, nhưng Revit không thể khoá mặt vào mặt phẳng tham chiếu; dùng Rebuild from spec sau khi đổi tham số."
         }
       ],
       "id": "3989f9ef-af75-4367-aa6e-f9f0d87cd19a"
@@ -1668,19 +1572,19 @@
       "role": "agent",
       "text": "Đã xuất Thinh Phat Cable Ladder Mitered Tee.rfa (Revit 2024).\n34 tham số dẫn động · 56 ràng buộc hình học · 38 reference plane · 34 form · QA 1 cảnh báo",
       "notes": [
-        "Reference dimensions were rolled back (RolledBack): Parameter \"Branch Rung 1 Y\" cannot be changed because it is defined by formula \"-Total Branch Y + Branch Rung Offset + Branch Rung Spacing\" [14d9912f-17ce-4385-80fa-0d8a24c78511] Parameter \"Branch Rung 2 Y\" cannot be changed because it is defined by formula \"-Total Branch Y + Branch Rung Offset\" [14d9912f-17ce-4385-80fa-0d8a24c78511]",
-        "Skipped overconstraining face dimension \"Branch Leg Length\"",
-        "Skipped overconstraining face dimension \"Rung Height\"",
-        "Skipped overconstraining face dimension \"Rung Z Base\"",
-        "Skipped overconstraining face dimension \"Rung Hole Pitch\"",
-        "Skipped overconstraining face dimension \"Bolt Hole Width\"",
-        "Skipped overconstraining face dimension \"Bolt Hole Low Z\"",
-        "Skipped overconstraining face dimension \"Bolt Hole High Offset\"",
-        "Skipped overconstraining face dimension \"Bolt Hole High Offset\"",
+        "Kích thước tham chiếu đã bị hoàn tác (RolledBack): Parameter \"Branch Rung 1 Y\" cannot be changed because it is defined by formula \"-Total Branch Y + Branch Rung Offset + Branch Rung Spacing\" [14d9912f-17ce-4385-80fa-0d8a24c78511] Parameter \"Branch Rung 2 Y\" cannot be changed because it is defined by formula \"-Total Branch Y + Branch Rung Offset\" [14d9912f-17ce-4385-80fa-0d8a24c78511]",
+        "Bỏ qua ràng buộc thừa cho kích thước mặt \"Branch Leg Length\"",
+        "Bỏ qua ràng buộc thừa cho kích thước mặt \"Rung Height\"",
+        "Bỏ qua ràng buộc thừa cho kích thước mặt \"Rung Z Base\"",
+        "Bỏ qua ràng buộc thừa cho kích thước mặt \"Rung Hole Pitch\"",
+        "Bỏ qua ràng buộc thừa cho kích thước mặt \"Bolt Hole Width\"",
+        "Bỏ qua ràng buộc thừa cho kích thước mặt \"Bolt Hole Low Z\"",
+        "Bỏ qua ràng buộc thừa cho kích thước mặt \"Bolt Hole High Offset\"",
+        "Bỏ qua ràng buộc thừa cho kích thước mặt \"Bolt Hole High Offset\"",
         "Flex check: Ladder Width 1: MOVE; Ladder Width 2: MOVE; Ladder Height: still; Sheet Thickness: MOVE; Flange Width: MOVE; Safety Lip: MOVE; Tangent Length: MOVE; Branch Throat Length: MOVE; Rung Width: MOVE; Rung Height: MOVE; Rung Thickness: MOVE; Rung Hole Pitch: MOVE; Rung Hole Length: still; Rung Hole Width: still; Branch Rung Offset: MOVE; Branch Rung Spacing: still; Bolt Hole Length: still; Bolt Hole Width: still; Bolt Hole Low Z: still; Bolt Hole High Offset: still; Bolt Hole Edge Offset: still; ",
-        "Connector \"main-in\" host is offset 49 mm from the spec origin",
-        "Connector \"main-out\" host is offset 399.1 mm from the spec origin",
-        "Connector \"branch\" host is offset 1.3 mm from the spec origin",
+        "Cổng \"main-in\" lệch 49 mm so với gốc spec",
+        "Cổng \"main-out\" lệch 399.1 mm so với gốc spec",
+        "Cổng \"branch\" lệch 1.3 mm so với gốc spec",
         "QA: 8 part đã thành FreeFormElement — đổi tham số sẽ cần Rebuild from spec."
       ],
       "meta": "C:\\OneDrive - Vilai Viet Construction JSC\\Documents\\FamilyAgent\\out\\thinh-phat-cable-ladder-mitered-tee.rfa",

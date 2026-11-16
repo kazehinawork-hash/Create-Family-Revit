@@ -5,12 +5,13 @@ export const ALL_GROUPS = "*";
 export const UNGROUPED = "";
 export const LIBRARY_STORAGE_KEY = "family.library.v1";
 
-export type LibrarySort = "recent" | "name" | "category";
+export type LibrarySort = "recent" | "name" | "category" | "adjustable";
 
 export const SORT_LABELS: Record<LibrarySort, string> = {
   recent: "Mới nhất",
   name: "Tên A–Z",
   category: "Category",
+  adjustable: "Dễ điều chỉnh nhất",
 };
 
 export interface LibraryGroupInfo {
@@ -64,6 +65,16 @@ export function sortModels(models: SavedModelMeta[], sort: LibrarySort): SavedMo
     out.sort(
       (a, b) =>
         collator.compare(a.category, b.category) || collator.compare(a.name, b.name),
+    );
+  } else if (sort === "adjustable") {
+    // Most driving parameters first; dead dimensions push a family down.
+    const score = (model: SavedModelMeta) =>
+      (model.usability?.driving ?? 0) - (model.usability?.dead ?? 0) * 2;
+    out.sort(
+      (a, b) =>
+        score(b) - score(a) ||
+        (b.usability?.driving ?? 0) - (a.usability?.driving ?? 0) ||
+        collator.compare(a.name, b.name),
     );
   } else {
     out.sort((a, b) => b.updatedAt - a.updatedAt);
@@ -198,7 +209,10 @@ export function readLibraryState(storage?: StorageLike | null): LibraryState {
       ? raw.collapsed.filter((entry: unknown): entry is string => typeof entry === "string")
       : [];
     const sort: LibrarySort =
-      raw?.sort === "name" || raw?.sort === "category" || raw?.sort === "recent"
+      raw?.sort === "name" ||
+      raw?.sort === "category" ||
+      raw?.sort === "adjustable" ||
+      raw?.sort === "recent"
         ? raw.sort
         : "recent";
     return { group, collapsed, sort };

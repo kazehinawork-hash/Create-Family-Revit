@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 
-import type { SavedModelMeta, SavedModelRevision } from "../lib/api";
+import type { SavedModelMeta, SavedModelRevision, TrashItem } from "../lib/api";
+import { t } from "../lib/strings";
 import {
   ALL_GROUPS,
   UNGROUPED,
@@ -38,9 +39,13 @@ export interface LibraryPanelProps {
   onRenameGroup: (from: string, to: string) => void | Promise<unknown>;
   onDeleteGroup: (name: string) => void;
   onMoveModel: (id: string, group: string) => void;
+  trashItems: TrashItem[];
+  onRestoreTrash: (key: string) => void;
+  onPurgeTrash: (key: string) => void;
+  onEmptyTrash: () => void;
 }
 
-const SORTS: LibrarySort[] = ["recent", "name", "category"];
+const SORTS: LibrarySort[] = ["recent", "name", "category", "adjustable"];
 
 function formatDate(value: number): string {
   try {
@@ -94,7 +99,12 @@ export function LibraryPanel({
   onRenameGroup,
   onDeleteGroup,
   onMoveModel,
+  trashItems,
+  onRestoreTrash,
+  onPurgeTrash,
+  onEmptyTrash,
 }: LibraryPanelProps) {
+  const [showTrash, setShowTrash] = useState(false);
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<LibrarySort>(() => readLibraryState().sort);
   const [collapsed, setCollapsed] = useState<string[]>(() => readLibraryState().collapsed);
@@ -154,6 +164,7 @@ export function LibraryPanel({
   }, [openMenu]);
 
   const selectGroup = (group: string) => {
+    setShowTrash(false);
     onActiveGroup(group);
     writeLibraryState({ group });
     setOpenMenu(null);
@@ -375,6 +386,13 @@ export function LibraryPanel({
         <span>·</span>
         <span>{formatDate(item.updatedAt)}</span>
       </div>
+
+      {item.usability && (
+        <div className="model-usability">
+          {item.usability.parameters} tham số · {item.usability.driving} điều khiển hình
+          {item.usability.dead > 0 ? ` · ${item.usability.dead} kích thước chết` : ""}
+        </div>
+      )}
     </div>
   );
 
@@ -554,13 +572,26 @@ export function LibraryPanel({
                 ))}
               </div>
 
+              <button
+                type="button"
+                className={`library-filter trash-filter ${showTrash ? "active" : ""}`}
+                onClick={() => {
+                  setShowTrash(true);
+                  setOpenMenu(null);
+                }}
+              >
+                <span>{t.trash}</span>
+                <span className="count">{trashItems.length}</span>
+              </button>
+
               <button type="button" className="library-new-group" onClick={startNewGroup}>
                 + Nhóm mới
               </button>
             </aside>
 
             <section className="library-main">
-              <div className="library-toolbar">
+              {!showTrash && (
+                <div className="library-toolbar">
                 <input
                   type="search"
                   className="library-search"
@@ -583,9 +614,76 @@ export function LibraryPanel({
                     ))}
                   </select>
                 </label>
-              </div>
+                </div>
+              )}
 
-              {loading ? (
+              {showTrash ? (
+                <div className="trash-view">
+                  <div className="trash-head">
+                    <strong>
+                      {t.trash} ({trashItems.length})
+                    </strong>
+                    <button
+                      type="button"
+                      className="btn-ghost danger"
+                      disabled={trashItems.length === 0}
+                      onClick={() => {
+                        if (window.confirm(t.confirmEmptyTrash)) onEmptyTrash();
+                      }}
+                    >
+                      {t.emptyTrash}
+                    </button>
+                  </div>
+                  <p className="sub">{t.trashHint}</p>
+                  {trashItems.length === 0 ? (
+                    <p className="sub library-empty">{t.trashEmpty}</p>
+                  ) : (
+                    <div className="saved-model-grid">
+                      {trashItems.map((item) => (
+                        <div key={item.key} className="saved-model-card trash-card">
+                          <div className="model-thumb">
+                            {item.thumbUrl ? (
+                              <img src={item.thumbUrl} alt="" loading="lazy" />
+                            ) : (
+                              <IconFolder />
+                            )}
+                          </div>
+                          <h4 className="model-name" title={item.name}>
+                            {item.name}
+                          </h4>
+                          <div className="model-meta">
+                            <span>{t.daysLeft(item.daysLeft)}</span>
+                            {item.group ? (
+                              <>
+                                <span>·</span>
+                                <span>{item.group}</span>
+                              </>
+                            ) : null}
+                          </div>
+                          <div className="trash-actions">
+                            <button
+                              type="button"
+                              className="btn-secondary"
+                              onClick={() => onRestoreTrash(item.key)}
+                            >
+                              {t.restore}
+                            </button>
+                            <button
+                              type="button"
+                              className="btn-ghost danger"
+                              onClick={() => {
+                                if (window.confirm(t.confirmPurge)) onPurgeTrash(item.key);
+                              }}
+                            >
+                              {t.deleteForever}
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : loading ? (
                 <p className="sub">Đang tải thư viện…</p>
               ) : models.length === 0 ? (
                 <div className="empty-library">

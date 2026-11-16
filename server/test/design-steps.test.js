@@ -3,9 +3,12 @@ process.env.AGENT_EXPERIMENTAL_PIPELINE = "1";
 
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
+
+import "./helpers/jobs-dir.js";
 
 import { condensePrompt, design, splitNewBrief } from "../src/designer.js";
 import { createDesignJob, finishDesignJob, getDesignJob, JOBS_DIR } from "../src/jobs.js";
@@ -21,16 +24,18 @@ function boxSpec(name, extra = {}) {
     name,
     category: "Generic Model",
     units: "mm",
-    parameters: [
-      { name: "Length", type: "Length", group: "Dimensions", value: 1000 },
-    ],
+    parameters: [{ name: "Length", type: "Length", group: "Dimensions", value: 1000 }],
     materials: [{ name: "Steel", color: "#8a9ba8", metalness: 0.8, roughness: 0.3 }],
     parts: [
       {
         id: "body",
         name: "Body",
         material: "Steel",
-        solid: { kind: "box", origin: { x: 0, y: 0, z: 0 }, size: { x: "[Length]", y: 400, z: 400 } },
+        solid: {
+          kind: "box",
+          origin: { x: 0, y: 0, z: 0 },
+          size: { x: "[Length]", y: 400, z: 400 },
+        },
       },
     ],
     connectors: [],
@@ -67,8 +72,14 @@ test("splitNewBrief splits a long brief into skeleton, connectors and materials"
     steps.map((step) => step.label),
     ["khung hình học", "connector", "vật liệu"],
   );
-  assert.ok(!steps[1].prompt.includes("RAL 7035"), "the connector step must not repeat the palette");
-  assert.ok(!steps[2].prompt.includes("cổng nhánh"), "the material step must not repeat connectors");
+  assert.ok(
+    !steps[1].prompt.includes("RAL 7035"),
+    "the connector step must not repeat the palette",
+  );
+  assert.ok(
+    !steps[2].prompt.includes("cổng nhánh"),
+    "the material step must not repeat connectors",
+  );
 });
 
 test("condensePrompt drops prose and keeps the numbers", () => {
@@ -104,7 +115,10 @@ test("a split create keeps the early spec when a later step fails", async () => 
   assert.equal(result.analysis.ok, true);
   assert.equal((result.analysis.spec.connectors ?? []).length, 0);
   // Two failed steps; a checklist "Chưa đầy đủ" note may follow since connectors are missing.
-  assert.equal(result.stats.warnings.filter((warning) => warning.includes("chưa áp dụng")).length, 2);
+  assert.equal(
+    result.stats.warnings.filter((warning) => warning.includes("chưa áp dụng")).length,
+    2,
+  );
   assert.ok(result.stats.warnings.some((warning) => warning.includes("connector")));
   assert.ok(result.stats.warnings.some((warning) => warning.includes("vật liệu")));
   assert.ok(result.stats.steps.some((step) => step.ok === false));
@@ -123,7 +137,17 @@ test("each step builds on the previous spec", async () => {
     if (call === 2) {
       return {
         json: boxSpec("Step B", {
-          connectors: [{ id: "supply", name: "Supply", systemType: "SupplyAir", shape: "rectangular", width: 600, height: 400, origin: { x: 0, y: 0, z: 0 } }],
+          connectors: [
+            {
+              id: "supply",
+              name: "Supply",
+              systemType: "SupplyAir",
+              shape: "rectangular",
+              width: 600,
+              height: 400,
+              origin: { x: 0, y: 0, z: 0 },
+            },
+          ],
         }),
         text: "",
         usage: null,
@@ -131,7 +155,17 @@ test("each step builds on the previous spec", async () => {
     }
     return {
       json: boxSpec("Step C", {
-        connectors: [{ id: "supply", name: "Supply", systemType: "SupplyAir", shape: "rectangular", width: 600, height: 400, origin: { x: 0, y: 0, z: 0 } }],
+        connectors: [
+          {
+            id: "supply",
+            name: "Supply",
+            systemType: "SupplyAir",
+            shape: "rectangular",
+            width: 600,
+            height: 400,
+            origin: { x: 0, y: 0, z: 0 },
+          },
+        ],
         materials: [{ name: "RAL 7035", color: "#d7d7d7", metalness: 0.2, roughness: 0.6 }],
       }),
       text: "",
@@ -162,7 +196,7 @@ test("a timed-out turn is retried once with a condensed prompt", async () => {
   const generate = async (messages) => {
     prompts.push(messages[messages.length - 1].content);
     call += 1;
-    if (call === 1) throw new LlmError("Agent run timed out after 3s");
+    if (call === 1) throw new LlmError("Agent chạy quá 3 giây");
     return { json: boxSpec("Recovered"), text: "", usage: null };
   };
 
@@ -214,7 +248,7 @@ test("design jobs survive a restart because they are written to disk", async (t)
 test("an edit that times out keeps the current spec instead of failing", async () => {
   const currentSpec = boxSpec("Current model");
   const generate = async () => {
-    throw new LlmError("Agent run timed out after 1s");
+    throw new LlmError("Agent chạy quá 1 giây");
   };
 
   const result = await design({
@@ -261,12 +295,18 @@ test("splitNewBrief splits a markdown brief on its headings, not on body words",
   );
   // "4 đầu kết nối" in sections 1-2 must not move them into the connector step.
   assert.ok(steps[0].prompt.includes("THÀNH GÓC VÁT"));
-  assert.ok(steps[0].prompt.includes("Tạo family Cable Tray Fitting"), "the preamble stays with the skeleton");
+  assert.ok(
+    steps[0].prompt.includes("Tạo family Cable Tray Fitting"),
+    "the preamble stays with the skeleton",
+  );
   assert.ok(!steps[2].prompt.includes("THÀNH GÓC VÁT"));
   assert.ok(steps[1].prompt.includes("BẬC THANG"));
   assert.ok(steps[1].prompt.includes("`array`"), "geometry steps carry the repeat rule");
   assert.ok(steps[3].prompt.includes("RAL 7035"));
-  assert.ok(!steps.some((step) => /^\s*---\s*$/m.test(step.prompt)), "horizontal rules are dropped");
+  assert.ok(
+    !steps.some((step) => /^\s*---\s*$/m.test(step.prompt)),
+    "horizontal rules are dropped",
+  );
 });
 
 test("a short sectioned brief with only geometry stays in one pass", () => {
@@ -275,7 +315,8 @@ test("a short sectioned brief with only geometry stays in one pass", () => {
 });
 
 test("an answer cut off by the output limit is not retried as-is but split into sections", async () => {
-  const brief = "## 1. KHỐI:\n- Hộp 500 x 300 x 200 mm.\n\n## 2. GÂN:\n- 4 gân dày 2 mm cách đều 100 mm.";
+  const brief =
+    "## 1. KHỐI:\n- Hộp 500 x 300 x 200 mm.\n\n## 2. GÂN:\n- 4 gân dày 2 mm cách đều 100 mm.";
   const prompts = [];
   const events = [];
   let call = 0;
@@ -300,7 +341,9 @@ test("an answer cut off by the output limit is not retried as-is but split into 
   assert.ok(prompts[1].includes("KHỐI") && !prompts[1].includes("GÂN:"));
   assert.ok(prompts[2].includes("GÂN"));
   assert.equal(result.analysis.spec.name, "Section 2");
-  assert.ok(events.some((event) => event.stage === "retrying" && /chia yêu cầu/.test(event.message)));
+  assert.ok(
+    events.some((event) => event.stage === "retrying" && /chia yêu cầu/.test(event.message)),
+  );
 });
 
 test("output-limit errors are recognised through wrapping and never treated as transient", () => {
@@ -308,23 +351,58 @@ test("output-limit errors are recognised through wrapping and never treated as t
   assert.equal(isOutputLimitError(error), true);
   assert.equal(isOutputLimitError(new Error("wrapped", { cause: error })), true);
   assert.equal(isTransientError(error), false);
-  assert.equal(isOutputLimitError(new LlmError("Agent run timed out after 240s")), false);
+  assert.equal(isOutputLimitError(new LlmError("Agent chạy quá 240 giây")), false);
 });
 
 test("isTruncatedFrame spots a CLI answer stopped by its limits", () => {
   assert.equal(isTruncatedFrame({ type: "result", stopReason: "max_tokens", finalText: "" }), true);
-  assert.equal(isTruncatedFrame({ type: "result", stopReason: "end_turn" }, "Warning: maximum output tokens reached"), true);
-  assert.equal(isTruncatedFrame({ type: "result", stopReason: "end_turn", finalText: "{}" }), false);
+  assert.equal(
+    isTruncatedFrame(
+      { type: "result", stopReason: "end_turn" },
+      "Warning: maximum output tokens reached",
+    ),
+    true,
+  );
+  assert.equal(
+    isTruncatedFrame({ type: "result", stopReason: "end_turn", finalText: "{}" }),
+    false,
+  );
   // A turn cap is not an output cap: it gets its own error and its own retry.
   assert.equal(isTruncatedFrame({ type: "result", stopReason: "max_turns", finalText: "" }), false);
   assert.equal(
-    isTruncatedFrame({ type: "result", stopReason: "end_turn" }, "Warning: Reached maximum conversation turns (1)."),
+    isTruncatedFrame(
+      { type: "result", stopReason: "end_turn" },
+      "Warning: Reached maximum conversation turns (1).",
+    ),
     false,
   );
 });
 
-test("the server root exists so JOBS_DIR stays inside it", () => {
-  assert.equal(JOBS_DIR, path.join(SERVER_ROOT, "..", ".jobs"));
+test("job files stay out of the repository while tests run", () => {
+  // node:test sets NODE_TEST_CONTEXT; jobs.js then uses a temp directory so the
+  // repository's .jobs is never filled by the suite.
+  assert.notEqual(path.resolve(JOBS_DIR), path.resolve(path.join(SERVER_ROOT, "..", ".jobs")));
+  assert.ok(
+    JOBS_DIR.startsWith(os.tmpdir()) || Boolean(process.env.FAMILY_JOBS_DIR),
+    `unexpected jobs directory: ${JOBS_DIR}`,
+  );
+});
+
+test("creating a job never writes into the repository's .jobs", () => {
+  const repositoryJobs = path.join(SERVER_ROOT, "..", ".jobs");
+  const countFiles = () =>
+    fs.existsSync(repositoryJobs) ? fs.readdirSync(repositoryJobs).length : 0;
+
+  const before = countFiles();
+  const job = createDesignJob({ prompt: "kiểm tra thư mục job" });
+  finishDesignJob(job.job_id, { status: "done" });
+
+  assert.equal(
+    fs.existsSync(path.join(JOBS_DIR, `${job.job_id}.json`)),
+    true,
+    "the job file goes to the test directory",
+  );
+  assert.equal(countFiles(), before, "the repository's .jobs must not change");
 });
 
 test("a model picked in the Agent panel is used for every tier, repair included", async () => {

@@ -19,6 +19,27 @@ export function isModelFile(name) {
 }
 
 /**
+ * File-system friendly id from a family name. Vietnamese diacritics are stripped
+ * first ("Ngã tư thang cáp Thịnh Phát" -> "nga-tu-thang-cap-thinh-phat") so the id
+ * stays readable instead of losing every accented letter.
+ */
+export function slugifyModelName(value) {
+  const normalized = String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D");
+
+  return (
+    normalized
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 60) || "family"
+  );
+}
+
+/**
  * Trim + validate a group name. `""` is allowed and means "Chưa nhóm"; it is never
  * stored as a group entry.
  */
@@ -194,9 +215,7 @@ export function readModelSummaries(savedDir) {
   } catch {
     return [];
   }
-  return files
-    .map((file) => readModelSummary(path.join(savedDir, file)))
-    .filter(Boolean);
+  return files.map((file) => readModelSummary(path.join(savedDir, file))).filter(Boolean);
 }
 
 /** Group list plus the counts the sidebar shows. */

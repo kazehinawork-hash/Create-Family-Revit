@@ -52,6 +52,10 @@ export const config = {
     cliSafeMode: process.env.AGENT_CLI_SAFE_MODE === "1",
     /** AGENT_CLI_NO_SKILLS=0 keeps skill discovery on for CLI design runs. */
     cliNoSkills: process.env.AGENT_CLI_NO_SKILLS !== "0",
+    /** Finished job files older than this are removed by the maintenance pass. */
+    jobTtlDays: Number(process.env.AGENT_JOB_TTL_DAYS || 7),
+    /** Deleted models stay recoverable in saved-models/.trash for this long. */
+    trashTtlDays: Number(process.env.TRASH_TTL_DAYS || 30),
     /** Per model call. Kept for older callers; the step values below are the real budget. */
     timeoutMs: Number(process.env.AGENT_TIMEOUT || 240000),
     /** Skeleton pass of a new family (geometry + parameters). */
@@ -135,7 +139,10 @@ export const config = {
     /** Direct-API vision model used to read photos/catalogue pages. */
     visionModel: process.env.AGENT_VISION_MODEL || "",
     /** Models this app treats as vision-capable direct APIs. */
-    visionModels: (process.env.VISION_MODELS || "gpt-4o,gpt-4.1,gpt-5,claude-3-7-sonnet,claude-4,gemini-2.5-flash,gemini-2.5-pro")
+    visionModels: (
+      process.env.VISION_MODELS ||
+      "gpt-4o,gpt-4.1,gpt-5,claude-3-7-sonnet,claude-4,gemini-2.5-flash,gemini-2.5-pro"
+    )
       .split(",")
       .map((value) => value.trim())
       .filter(Boolean),
@@ -167,6 +174,7 @@ export const config = {
     prompts: path.join(ROOT, "server", "prompts"),
     uploads: path.join(ROOT, ".uploads"),
     saved: process.env.FAMILY_SAVED_DIR || path.join(ROOT, "saved-models"),
+    jobs: process.env.FAMILY_JOBS_DIR || path.join(ROOT, ".jobs"),
     out: process.env.FAMILY_OUT_DIR || path.join(home, "Documents", "FamilyAgent", "out"),
     queue: process.env.FAMILY_QUEUE_DIR || path.join(home, "Documents", "FamilyAgent", "queue"),
     rules: process.env.FAMILY_RULES_DIR || path.join(ROOT, "server", "rules"),

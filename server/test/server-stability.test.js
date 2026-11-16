@@ -5,6 +5,8 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 
+import "./helpers/jobs-dir.js";
+
 const { applyServerTimeouts } = await import("../src/index.js");
 const { createDesignJob, designJobSeenSince, getDesignJob, touchDesignJob, JOBS_DIR } =
   await import("../src/jobs.js");

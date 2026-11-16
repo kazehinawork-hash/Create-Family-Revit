@@ -191,6 +191,8 @@ namespace FamilyAgent.Core
         public string TypeName { get; set; }
         public string Category { get; set; }
         public string Template { get; set; }
+        /// <summary>Elbow / Tee / Cross / Transition / Union / Other, for MEP fittings.</summary>
+        public string PartType { get; set; }
         public string Units { get; set; }
         public string RevitVersion { get; set; }
         public int? Lod { get; set; }

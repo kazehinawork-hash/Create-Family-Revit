@@ -9,7 +9,8 @@ const TRANSIENT_STATUS = new Set([429, 500, 502, 503, 504]);
 const PERMANENT_STATUS = new Set([400, 401, 403]);
 
 /** Our own per-step budget already has its own condensed retry — not a provider outage. */
-const LOCAL_TIMEOUT = /Agent run timed out after|whole request used its time budget/i;
+const LOCAL_TIMEOUT =
+  /Agent run timed out after|whole request used its time budget|Agent chạy quá/i;
 
 const TRANSIENT_TEXT =
   /(UNAVAILABLE|high demand|overloaded|rate.?limit|quota|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|socket hang up|fetch failed|network error|temporarily unavailable|deepseek api error \(5\d\d\))/i;
@@ -42,7 +43,10 @@ export function classifyDesignError(error) {
   if (error?.name === "ZodError") return "invalid-request";
   if (isOutputLimitError(error)) return "output-limit";
   if (status === 401 || status === 403) return "auth";
-  if (!status && /api key is missing|missing for|invalid api key|unauthorized|forbidden/i.test(text)) {
+  if (
+    !status &&
+    /api key is missing|missing for|invalid api key|unauthorized|forbidden/i.test(text)
+  ) {
     return "auth";
   }
   if (LOCAL_TIMEOUT.test(text) || /timed out/i.test(text)) return "timeout";
@@ -109,7 +113,10 @@ export function defaultSleep(ms, signal) {
  * not seconds. One model call already retries quickly; this layer waits longer and
  * runs the design again, so a 503 burst no longer throws away the user's brief.
  */
-export async function retryWholeRequest(run, { delays = [20000, 45000], signal, sleep = defaultSleep, onWait } = {}) {
+export async function retryWholeRequest(
+  run,
+  { delays = [20000, 45000], signal, sleep = defaultSleep, onWait } = {},
+) {
   let lastError = null;
 
   for (let attempt = 0; attempt <= delays.length; attempt += 1) {
@@ -179,9 +186,11 @@ export function isProviderError(error) {
   const text = String(error?.message ?? "");
   return Boolean(
     statusOf(error) ||
-      error?.models?.length ||
-      error?.transient ||
-      /unknown model|high demand|rate.?limit|fetch failed|ECONN|api key|model request failed/i.test(text),
+    error?.models?.length ||
+    error?.transient ||
+    /unknown model|high demand|rate.?limit|fetch failed|ECONN|api key|model request failed/i.test(
+      text,
+    ),
   );
 }
 
@@ -286,7 +295,9 @@ export async function runWithModelFallback({
           models: modelsTried,
         });
         const finalError = new LlmError(
-          modelsTried.length > 1 ? `${friendly} Model đã thử: ${modelsTried.join(" → ")}.` : friendly,
+          modelsTried.length > 1
+            ? `${friendly} Model đã thử: ${modelsTried.join(" → ")}.`
+            : friendly,
           statusOf(error) ?? undefined,
         );
         // A typed failure (OUTPUT_LIMIT, MAX_TURNS) must survive the wrapping: the

@@ -190,7 +190,14 @@ function cornerParts(quadrant) {
   const slug = `${sx > 0 ? "e" : "w"}${sy > 0 ? "n" : "s"}`;
 
   return [
-    prismPart(`corner-${slug}-web`, `Corner Rail ${label} Web`, BODY_MATERIAL, points, 0, "[Ladder Height]"),
+    prismPart(
+      `corner-${slug}-web`,
+      `Corner Rail ${label} Web`,
+      BODY_MATERIAL,
+      points,
+      0,
+      "[Ladder Height]",
+    ),
     prismPart(
       `corner-${slug}-top`,
       `Corner Rail ${label} Top Flange`,
@@ -250,17 +257,46 @@ export function crossSpec(input = {}) {
   ];
 
   const connectors = [
-    connector("main-in", "Main In (West)", "-[Total Length X] / 2", 0, { x: -1, y: 0, z: 0 }, "[Ladder Width 1]"),
-    connector("main-out", "Main Out (East)", "[Total Length X] / 2", 0, { x: 1, y: 0, z: 0 }, "[Ladder Width 1]"),
-    connector("branch-in", "Branch In (South)", 0, "-[Total Length Y] / 2", { x: 0, y: -1, z: 0 }, "[Ladder Width 2]"),
-    connector("branch-out", "Branch Out (North)", 0, "[Total Length Y] / 2", { x: 0, y: 1, z: 0 }, "[Ladder Width 2]"),
+    connector(
+      "main-in",
+      "Main In (West)",
+      "-[Total Length X] / 2",
+      0,
+      { x: -1, y: 0, z: 0 },
+      "[Ladder Width 1]",
+    ),
+    connector(
+      "main-out",
+      "Main Out (East)",
+      "[Total Length X] / 2",
+      0,
+      { x: 1, y: 0, z: 0 },
+      "[Ladder Width 1]",
+    ),
+    connector(
+      "branch-in",
+      "Branch In (South)",
+      0,
+      "-[Total Length Y] / 2",
+      { x: 0, y: -1, z: 0 },
+      "[Ladder Width 2]",
+    ),
+    connector(
+      "branch-out",
+      "Branch Out (North)",
+      0,
+      "[Total Length Y] / 2",
+      { x: 0, y: 1, z: 0 },
+      "[Ladder Width 2]",
+    ),
   ];
 
   return {
     schemaVersion: "1.0",
     name: "Cable Ladder Mitered Cross",
     typeName: `TP-CLT-MX ${options.ladderWidth1}x${options.ladderWidth2}x${options.ladderHeight}`,
-    category: "Electrical Equipment",
+    category: "Cable Tray Fitting",
+    partType: "Cross",
     units: "mm",
     description:
       "Ngã tư thang cáp vát góc (Mitered Cross): 4 cụm thành góc vát 45° chữ C, " +
@@ -289,7 +325,14 @@ function straightArm(sign) {
   const slug = sx > 0 ? "e" : "w";
 
   return [
-    prismPart(`corner-${slug}-web`, `Corner Rail ${label} Web`, BODY_MATERIAL, points, 0, "[Ladder Height]"),
+    prismPart(
+      `corner-${slug}-web`,
+      `Corner Rail ${label} Web`,
+      BODY_MATERIAL,
+      points,
+      0,
+      "[Ladder Height]",
+    ),
     prismPart(
       `corner-${slug}-top`,
       `Corner Rail ${label} Top Flange`,
@@ -320,15 +363,30 @@ export function elbowSpec(input = {}) {
   const parts = [...straightArm({ sx: 1, sy: 1 }), ...straightArm({ sx: 1, sy: -1 })];
 
   const connectors = [
-    connector("main-in", "Main In", "-[Total Length X]", 0, { x: -1, y: 0, z: 0 }, "[Ladder Width 1]"),
-    connector("branch-out", "Branch Out", 0, "[Total Length Y]", { x: 0, y: 1, z: 0 }, "[Ladder Width 2]"),
+    connector(
+      "main-in",
+      "Main In",
+      "-[Total Length X]",
+      0,
+      { x: -1, y: 0, z: 0 },
+      "[Ladder Width 1]",
+    ),
+    connector(
+      "branch-out",
+      "Branch Out",
+      0,
+      "[Total Length Y]",
+      { x: 0, y: 1, z: 0 },
+      "[Ladder Width 2]",
+    ),
   ];
 
   return {
     schemaVersion: "1.0",
     name: "Cable Ladder Mitered Elbow",
     typeName: `TP-CLT-EL ${options.ladderWidth1}x${options.ladderWidth2}x${options.ladderHeight}`,
-    category: "Electrical Equipment",
+    category: "Cable Tray Fitting",
+    partType: "Elbow",
     units: "mm",
     description: "Khuỷu thang cáp vát góc 90° (Mitered Elbow).",
     parameters,
@@ -369,16 +427,38 @@ export function teeSpec(input = {}) {
   ];
 
   const connectors = [
-    connector("main-in", "Main In", "-[Total Length X] / 2", 0, { x: -1, y: 0, z: 0 }, "[Ladder Width 1]"),
-    connector("main-out", "Main Out", "[Total Length X] / 2", 0, { x: 1, y: 0, z: 0 }, "[Ladder Width 1]"),
-    connector("branch", "Branch", 0, "[Total Branch Y] / 2", { x: 0, y: 1, z: 0 }, "[Ladder Width 2]"),
+    connector(
+      "main-in",
+      "Main In",
+      "-[Total Length X] / 2",
+      0,
+      { x: -1, y: 0, z: 0 },
+      "[Ladder Width 1]",
+    ),
+    connector(
+      "main-out",
+      "Main Out",
+      "[Total Length X] / 2",
+      0,
+      { x: 1, y: 0, z: 0 },
+      "[Ladder Width 1]",
+    ),
+    connector(
+      "branch",
+      "Branch",
+      0,
+      "[Total Branch Y] / 2",
+      { x: 0, y: 1, z: 0 },
+      "[Ladder Width 2]",
+    ),
   ];
 
   return {
     schemaVersion: "1.0",
     name: "Cable Ladder Mitered Tee",
     typeName: `TP-CLT-MT ${options.ladderWidth1}x${options.ladderWidth2}x${options.ladderHeight}`,
-    category: "Electrical Equipment",
+    category: "Cable Tray Fitting",
+    partType: "Tee",
     units: "mm",
     description: "Ngã ba thang cáp vát góc (Mitered Tee).",
     parameters,

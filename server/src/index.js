@@ -21,6 +21,16 @@ import {
 } from "./jobs.js";
 import { checkModel } from "./model-check.js";
 import { writeJsonAtomic } from "./files.js";
+import { CLEANUP_INTERVAL_MS, runCleanup } from "./cleanup.js";
+import {
+  isSafeModelId,
+  listTrash,
+  purgeAllTrash,
+  purgeTrash,
+  resolveTrashEntry,
+  restoreModel,
+  trashModel,
+} from "./trash.js";
 import {
   deleteGroup,
   ensureGroup,
@@ -30,6 +40,7 @@ import {
   readModelFile,
   renameGroup,
   setModelGroup,
+  slugifyModelName,
 } from "./library.js";
 import { retryWholeRequest, classifyDesignError } from "./retry.js";
 import {
@@ -49,6 +60,7 @@ import {
   groupRenameRequest,
   modelGroupRequest,
   modelSaveRequest,
+  modelThumbnailRequest,
   uploadRequest,
 } from "./schemas.js";
 import { v1Router } from "./routes/api-v1.js";
@@ -123,10 +135,7 @@ function normalizeAttachments(raw) {
       path: path.resolve(entry.path),
       name: path.basename(entry.path).replace(/^\d+-/, ""),
     }))
-    .filter(
-      (entry) =>
-        entry.path.startsWith(uploadsRoot + path.sep) && fs.existsSync(entry.path),
-    )
+    .filter((entry) => entry.path.startsWith(uploadsRoot + path.sep) && fs.existsSync(entry.path))
     .slice(0, 4);
 }
 
@@ -154,7 +163,11 @@ app.post("/api/upload", (req, res) => {
     }
 
     fs.mkdirSync(config.dirs.uploads, { recursive: true });
-    const safe = path.basename(name).replace(/[^\w.\- ]+/g, "_").slice(-80) || "document";
+    const safe =
+      path
+        .basename(name)
+        .replace(/[^\w.\- ]+/g, "_")
+        .slice(-80) || "document";
     const storedName = `${Date.now()}-${safe}`;
     const stored = path.join(config.dirs.uploads, storedName);
     fs.writeFileSync(stored, buffer);
@@ -185,7 +198,10 @@ app.get("/api/uploads/:name", (req, res) => {
   // Images and PDFs may render inline; everything else is a download so the browser
   // never executes an uploaded file inside the studio origin.
   if (!INLINE_EXTENSIONS.has(extension)) {
-    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(path.basename(target))}"`);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="${encodeURIComponent(path.basename(target))}"`,
+    );
   }
   res.type(extension);
   const stream = fs.createReadStream(target);
@@ -201,7 +217,6 @@ app.get("/api/uploads/:name", (req, res) => {
 app.get("/api/ping", (_req, res) => {
   res.json({ ok: true, agent: agentStatus(), time: Date.now() });
 });
-
 
 app.post("/api/verify-api", async (req, res) => {
   const { baseUrl, apiKey, model } = req.body || {};
@@ -300,7 +315,11 @@ app.post("/api/verify-api", async (req, res) => {
     });
 
     if (testRes.status === 401 || testRes.status === 403) {
-      return res.json({ ok: false, status: testRes.status, error: "API Key không hợp lệ hoặc sai endpoint." });
+      return res.json({
+        ok: false,
+        status: testRes.status,
+        error: "API Key không hợp lệ hoặc sai endpoint.",
+      });
     }
     if (!testRes.ok) {
       // Some proxies expose chat/completions but no model catalog. Keep the key
@@ -428,13 +447,20 @@ export async function buildHealthPayload() {
     bridgeAlive(),
   ]);
 
-  const models = modelsResult.status === "fulfilled" && Array.isArray(modelsResult.value)
-    ? modelsResult.value
-    : [];
+  const models =
+    modelsResult.status === "fulfilled" && Array.isArray(modelsResult.value)
+      ? modelsResult.value
+      : [];
   const backends =
     backendsResult.status === "fulfilled" && backendsResult.value
       ? backendsResult.value
-      : { commandcode: false, agy: false, codex: false, claude: false, openai: Boolean(config.llm.apiKey) };
+      : {
+          commandcode: false,
+          agy: false,
+          codex: false,
+          claude: false,
+          openai: Boolean(config.llm.apiKey),
+        };
   const connected = bridgeResult.status === "fulfilled" ? Boolean(bridgeResult.value) : false;
 
   let status;
@@ -517,7 +543,8 @@ export function designOutcome(analysis, stats) {
   return "ok";
 }
 
-app.post("/api/design", async (req, res) => {  const limit = designLimiter(req.ip);
+app.post("/api/design", async (req, res) => {
+  const limit = designLimiter(req.ip);
   if (!limit.allowed) {
     res.setHeader("Retry-After", String(limit.retryAfter));
     res.status(429).json({
@@ -547,7 +574,11 @@ app.post("/api/design", async (req, res) => {  const limit = designLimiter(req.i
   } catch (error) {
     // The client can disappear between the body parse and writeHead.
     console.error("design stream open failed:", error);
-    try { res.destroy(); } catch { /* already gone */ }
+    try {
+      res.destroy();
+    } catch {
+      /* already gone */
+    }
     return;
   }
 
@@ -638,6 +669,7 @@ app.post("/api/design", async (req, res) => {  const limit = designLimiter(req.i
           lod: body.lod,
           model: body.model,
           lockModel: body.lockModel,
+          fresh: body.fresh,
           customApiConfig: body.customApiConfig,
           commandCodeApiKey: body.commandCodeApiKey,
           attachments: normalizeAttachments(body.attachments),
@@ -832,7 +864,9 @@ app.post("/api/export-portable", async (req, res) => {
     });
   } catch (err) {
     console.error("Portable package creation error:", err);
-    res.status(500).json({ ok: false, error: err.message || "Failed to generate portable package" });
+    res
+      .status(500)
+      .json({ ok: false, error: err.message || "Failed to generate portable package" });
   }
 });
 
@@ -851,10 +885,7 @@ app.get("/api/download-rfa", (req, res) => {
     res.status(400).send("Path is required");
     return;
   }
-  const resolved = safeDownloadPath(filePath, [
-    ...DOWNLOAD_ROOTS,
-    ...getBuildOutputRoots(),
-  ]);
+  const resolved = safeDownloadPath(filePath, [...DOWNLOAD_ROOTS, ...getBuildOutputRoots()]);
   if (!resolved) {
     res.status(403).send("File is outside the allowed folders");
     return;
@@ -898,6 +929,17 @@ function thumbPath(modelId) {
   return path.join(config.dirs.saved, `${safeModelId(modelId)}.thumb.jpg`);
 }
 
+function hasUsableThumbnail(modelId) {
+  const file = thumbPath(modelId);
+  try {
+    // A flat/blank preview compresses to a few hundred bytes; only real renders are
+    // worth showing, otherwise the card keeps its category icon.
+    return fs.existsSync(file) && fs.statSync(file).size >= 2048;
+  } catch {
+    return false;
+  }
+}
+
 function saveThumbnail(modelId, dataUrl) {
   const match = /^data:image\/(?:jpeg|jpg|webp|png);base64,(.+)$/i.exec(String(dataUrl ?? ""));
   if (!match) return false;
@@ -917,6 +959,45 @@ function archiveModel(modelId, filePath) {
   fs.mkdirSync(dir, { recursive: true });
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   fs.copyFileSync(filePath, path.join(dir, `${stamp}.json`));
+}
+
+const usabilityCache = new Map();
+
+/**
+ * "Easy to adjust" numbers for a library card. `analyzeSpec` is not free, so the
+ * result is kept until the model file's mtime changes.
+ */
+function modelUsability(id, filePath, spec) {
+  try {
+    const mtime = fs.statSync(filePath).mtimeMs;
+    const cached = usabilityCache.get(id);
+    if (cached?.mtime === mtime) return cached.value;
+
+    const parameters = Array.isArray(spec?.parameters) ? spec.parameters : [];
+    const adjustable = parameters.filter(
+      (parameter) => parameter?.type === "Length" || parameter?.type === "Angle",
+    ).length;
+    let dead = 0;
+    try {
+      const analysis = analyzeSpec(spec);
+      dead = analysis.issues.filter(
+        (issue) =>
+          issue.path?.startsWith("parameters.") && /không điều khiển hình/.test(issue.message),
+      ).length;
+    } catch {
+      /* a broken spec still lists its parameter count */
+    }
+
+    const value = {
+      parameters: parameters.length,
+      driving: Math.max(0, adjustable - dead),
+      dead,
+    };
+    usabilityCache.set(id, { mtime, value });
+    return value;
+  } catch {
+    return { parameters: 0, driving: 0, dead: 0 };
+  }
 }
 
 app.get("/api/models", (_req, res) => {
@@ -941,7 +1022,8 @@ app.get("/api/models", (_req, res) => {
             updatedAt: stats.mtimeMs,
             partsCount: data.spec?.parts?.length || data.parts?.length || 0,
             paramsCount: data.spec?.parameters?.length || data.parameters?.length || 0,
-            thumbUrl: fs.existsSync(thumbPath(id)) ? `/api/models/${encodeURIComponent(id)}/thumb` : null,
+            usability: modelUsability(id, filePath, data.spec ?? data),
+            thumbUrl: hasUsableThumbnail(id) ? `/api/models/${encodeURIComponent(id)}/thumb` : null,
           };
         } catch {
           return null;
@@ -981,7 +1063,9 @@ app.post("/api/library/groups", (req, res) => {
     }
 
     const snapshot = librarySnapshot(config.dirs.saved);
-    if (snapshot.groups.some((group) => group.name.toLowerCase() === normalized.name.toLowerCase())) {
+    if (
+      snapshot.groups.some((group) => group.name.toLowerCase() === normalized.name.toLowerCase())
+    ) {
       res.status(400).json({ error: "Nhóm đã tồn tại." });
       return;
     }
@@ -1083,6 +1167,41 @@ app.get("/api/models/:id/thumb", (req, res) => {
   }
 });
 
+app.post("/api/models/:id/thumb", (req, res) => {
+  try {
+    ensureSavedDir();
+    const id = String(req.params.id ?? "");
+    if (!isSafeModelId(id)) {
+      res.status(400).json({ error: "ID mô hình không hợp lệ." });
+      return;
+    }
+    const modelFile = path.join(config.dirs.saved, `${id}.json`);
+    if (!fs.existsSync(modelFile)) {
+      res.status(404).json({ error: "Model not found" });
+      return;
+    }
+
+    const parsed = modelThumbnailRequest.safeParse(req.body || {});
+    if (!parsed.success) {
+      res.status(400).json({ error: firstIssue(parsed) });
+      return;
+    }
+    if (!saveThumbnail(id, parsed.data.thumbnail)) {
+      res.status(400).json({ error: "Ảnh thu nhỏ không hợp lệ." });
+      return;
+    }
+
+    // Only the .thumb.jpg is written: the model JSON and its savedAt never change.
+    res.json({
+      ok: true,
+      id,
+      thumbUrl: `/api/models/${encodeURIComponent(id)}/thumb`,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error?.message || String(error) });
+  }
+});
+
 app.get("/api/models/:id/history", (req, res) => {
   try {
     const id = safeModelId(req.params.id);
@@ -1147,7 +1266,8 @@ app.post("/api/models", (req, res) => {
     const { id, name, spec, entries, group, thumbnail } = parsed.data;
     const modelId = id
       ? path.basename(id).replace(/[^\w.\- ]+/g, "_")
-      : `${Date.now()}-${(name || spec.name).toLowerCase().replace(/[^\w]+/g, "-").slice(0, 50)}`;
+      : // New ids keep the Vietnamese name as plain ASCII; existing files are never renamed.
+        `${Date.now()}-${slugifyModelName(name || spec.name)}`;
 
     const filePath = path.join(config.dirs.saved, `${modelId}.json`);
     let previousGroup = "";
@@ -1237,18 +1357,106 @@ app.patch("/api/models/:id", (req, res) => {
 app.delete("/api/models/:id", (req, res) => {
   try {
     ensureSavedDir();
-    const safeId = path.basename(req.params.id).replace(/[^\w.\- ]+/g, "_");
-    const filePath = path.join(config.dirs.saved, `${safeId}.json`);
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
+    const id = String(req.params.id ?? "");
+    if (!isSafeModelId(id)) {
+      res.status(400).json({ error: "ID mô hình không hợp lệ." });
+      return;
     }
-    // The preview belongs to the model: remove it with the model.
+
+    const filePath = path.join(config.dirs.saved, `${id}.json`);
+    if (!fs.existsSync(filePath)) {
+      res.status(404).json({ error: "Model not found" });
+      return;
+    }
+
+    // Deleting is reversible: the model, thumbnail and history move to .trash.
+    let group = "";
     try {
-      if (fs.existsSync(thumbPath(safeId))) fs.unlinkSync(thumbPath(safeId));
+      const data = JSON.parse(fs.readFileSync(filePath, "utf8"));
+      group = typeof data.group === "string" ? data.group : "";
     } catch {
-      /* a locked thumbnail must not fail the delete */
+      /* the meta falls back to no group */
     }
-    res.json({ ok: true, id: safeId });
+
+    const result = trashModel(config.dirs.saved, id, { group });
+    if (result.error) {
+      res.status(result.status ?? 400).json({ error: result.error });
+      return;
+    }
+    res.json({ ok: true, id, key: result.key, trashed: true, group: result.group });
+  } catch (error) {
+    res.status(500).json({ error: error?.message || String(error) });
+  }
+});
+
+app.get("/api/trash", (_req, res) => {
+  try {
+    ensureSavedDir();
+    res.json({
+      items: listTrash(config.dirs.saved, { ttlDays: config.agent.trashTtlDays }),
+      ttlDays: config.agent.trashTtlDays,
+    });
+  } catch (error) {
+    res.status(500).json({ error: error?.message || String(error) });
+  }
+});
+
+app.get("/api/trash/:key/thumb", (req, res) => {
+  try {
+    const entry = resolveTrashEntry(config.dirs.saved, String(req.params.key ?? ""));
+    if (!entry) {
+      res.status(404).json({ error: "Thumbnail not found" });
+      return;
+    }
+    const candidates = [
+      path.join(entry.dir, `${entry.id}.thumb.jpg`),
+      path.join(entry.dir, `${entry.key}.thumb.jpg`),
+    ];
+    const file = candidates.find((candidate) => fs.existsSync(candidate));
+    if (!file) {
+      res.status(404).json({ error: "Thumbnail not found" });
+      return;
+    }
+    res.setHeader("Cache-Control", "no-cache");
+    res.type("image/jpeg");
+    res.send(fs.readFileSync(file));
+  } catch (error) {
+    res.status(500).json({ error: error?.message || String(error) });
+  }
+});
+
+app.post("/api/trash/:key/restore", (req, res) => {
+  try {
+    ensureSavedDir();
+    const result = restoreModel(config.dirs.saved, String(req.params.key ?? ""));
+    if (result.error) {
+      res.status(result.status ?? 400).json({ error: result.error });
+      return;
+    }
+    res.json({ ok: true, id: result.id, key: result.key, group: result.group });
+  } catch (error) {
+    res.status(500).json({ error: error?.message || String(error) });
+  }
+});
+
+app.delete("/api/trash/:key", (req, res) => {
+  try {
+    ensureSavedDir();
+    const result = purgeTrash(config.dirs.saved, String(req.params.key ?? ""));
+    if (result.error) {
+      res.status(result.status ?? 400).json({ error: result.error });
+      return;
+    }
+    res.json({ ok: true, id: result.id, key: result.key });
+  } catch (error) {
+    res.status(500).json({ error: error?.message || String(error) });
+  }
+});
+
+app.delete("/api/trash", (_req, res) => {
+  try {
+    ensureSavedDir();
+    res.json(purgeAllTrash(config.dirs.saved));
   } catch (error) {
     res.status(500).json({ error: error?.message || String(error) });
   }
@@ -1271,7 +1479,11 @@ app.use((error, req, res, next) => {
   void next;
   console.error("request failed:", error);
   if (res.headersSent) {
-    try { res.destroy(); } catch { /* already closed */ }
+    try {
+      res.destroy();
+    } catch {
+      /* already closed */
+    }
     return;
   }
   res.status(500).json({ error: error?.message || String(error) });
@@ -1325,6 +1537,11 @@ function startListening() {
     console.log(`  revit     ${config.bridge.url}`);
     console.log(`  output    ${config.dirs.out}`);
 
+    // Startup + six-hourly housekeeping: old finished jobs, stuck jobs, stale uploads.
+    runCleanup();
+    const cleanupTimer = setInterval(runCleanup, CLEANUP_INTERVAL_MS);
+    cleanupTimer.unref?.();
+
     // Warm the caches in the background so the first studio health call does not
     // pay for spawning the CLI model listings.
     void getCmdcModels().catch(() => {});
@@ -1335,10 +1552,18 @@ function startListening() {
 
   server.on("clientError", (error, socket) => {
     if (error?.code === "ECONNRESET" || !socket.writable) {
-      try { socket.destroy(); } catch { /* already gone */ }
+      try {
+        socket.destroy();
+      } catch {
+        /* already gone */
+      }
       return;
     }
-    try { socket.end("HTTP/1.1 400 Bad Request\r\n\r\n"); } catch { /* already gone */ }
+    try {
+      socket.end("HTTP/1.1 400 Bad Request\r\n\r\n");
+    } catch {
+      /* already gone */
+    }
   });
 
   server.on("error", (error) => {

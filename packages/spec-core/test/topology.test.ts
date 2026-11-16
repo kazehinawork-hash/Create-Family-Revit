@@ -16,11 +16,13 @@ function prism(
   id: string,
   points: [number, number][],
   holes: [number, number][][] = [],
+  from = 0,
+  to = 10,
 ): ResolvedPart {
   return {
     id,
     name: id,
-    solid: { kind: "prism", plane: "xy", points, holes, from: 0, to: 10 },
+    solid: { kind: "prism", plane: "xy", points, holes, from, to },
     cuts: [],
     array: { count: 1, axis: "x", spacing: 0 },
   };
@@ -84,7 +86,7 @@ describe("topology checks", () => {
   });
 
   it("warns when a thin-prism cut crosses or nearly touches the outer profile", () => {
-    const part = prism("web", square);
+    const part = prism("web", square, [], 0, 2);
     part.cuts = [
       {
         kind: "box",
@@ -95,7 +97,37 @@ describe("topology checks", () => {
       },
     ];
     const issues = checkTopology(model([part]));
-    expect(issues.some((issue) => /Revit boolean on a thin prism/.test(issue.message))).toBe(true);
+    expect(issues.some((issue) => /quá mỏng để boolean/.test(issue.message))).toBe(true);
+  });
+
+  it("a blind cut in a thick 94 mm prism does not warn (boolean fallback)", () => {
+    const part = prism("block", square, [], 0, 94);
+    part.cuts = [
+      {
+        kind: "box",
+        origin: { x: 50, y: 50, z: 0 },
+        size: { x: 10, y: 10, z: 10 },
+        rotationZ: 0,
+        cornerRadius: 0,
+      },
+    ];
+    const issues = checkTopology(model([part]));
+    expect(issues.filter((issue) => /\.cuts\[/.test(issue.path))).toHaveLength(0);
+  });
+
+  it("warns when a 2 mm plate is left with less than 0.8 mm under a blind cut", () => {
+    const part = prism("sheet", square, [], 0, 2);
+    part.cuts = [
+      {
+        kind: "box",
+        origin: { x: 50, y: 50, z: 0 },
+        size: { x: 10, y: 10, z: 1.5 },
+        rotationZ: 0,
+        cornerRadius: 0,
+      },
+    ];
+    const issues = checkTopology(model([part]));
+    expect(issues.some((issue) => /\.cuts\[/.test(issue.path))).toBe(true);
   });
 
   it("does not warn for a cut fully inside a thin prism", () => {
@@ -110,7 +142,7 @@ describe("topology checks", () => {
       },
     ];
     const issues = checkTopology(model([part]));
-    expect(issues.some((issue) => /Revit boolean on a thin prism/.test(issue.message))).toBe(false);
+    expect(issues.some((issue) => /quá mỏng để boolean/.test(issue.message))).toBe(false);
   });
 
   it("adds an info advisory for a large part buried inside another", () => {

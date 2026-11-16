@@ -405,6 +405,64 @@ namespace FamilyAgent.SelfTest
                 }
             });
 
+            Check("cable tray and pipe fittings map to their BuiltInCategory", () =>
+            {
+                Expect(
+                    CategoryCatalog.BuiltInCategoryName("Cable Tray Fitting") == "OST_CableTrayFitting",
+                    "Cable Tray Fitting should map to OST_CableTrayFitting");
+                Expect(
+                    CategoryCatalog.BuiltInCategoryName("cable tray fitting") == "OST_CableTrayFitting",
+                    "the mapping is case-insensitive");
+                Expect(
+                    CategoryCatalog.BuiltInCategoryName("Pipe Fitting") == "OST_PipeFitting",
+                    "Pipe Fitting should map to OST_PipeFitting");
+                Expect(
+                    CategoryCatalog.BuiltInCategoryName("Unknown Category") == null,
+                    "unknown categories must not be mapped");
+            });
+
+            Check("fitting categories expose a part type", () =>
+            {
+                Expect(CategoryCatalog.IsFittingCategory("Cable Tray Fitting"), "cable tray is a fitting");
+                Expect(CategoryCatalog.IsFittingCategory("Duct Fitting"), "duct is a fitting");
+                Expect(!CategoryCatalog.IsFittingCategory("Electrical Equipment"), "equipment is not a fitting");
+                Expect(CategoryCatalog.PartTypeName("tee") == "Tee", "part type is normalized");
+                Expect(CategoryCatalog.PartTypeName("Banana") == null, "an unknown part type is rejected");
+            });
+
+            Check("a cable tray fitting spec keeps category and part type", () =>
+            {
+                var spec = SpecLoader.Load(
+                    "{\"schemaVersion\":\"1.0\",\"name\":\"Cable Tray Tee\",\"category\":\"Cable Tray Fitting\"," +
+                    "\"partType\":\"Tee\",\"units\":\"mm\",\"parameters\":[],\"parts\":[{\"id\":\"body\"," +
+                    "\"name\":\"Body\",\"solid\":{\"kind\":\"box\",\"origin\":{\"x\":0,\"y\":0,\"z\":0}," +
+                    "\"size\":{\"x\":600,\"y\":300,\"z\":100}}}]}");
+
+                Expect(spec.Category == "Cable Tray Fitting", "category survives loading");
+                Expect(spec.PartType == "Tee", "partType survives loading");
+                Expect(
+                    CategoryCatalog.BuiltInCategoryName(spec.Category) == "OST_CableTrayFitting",
+                    "category maps to the Revit category");
+            });
+
+            Check("blind cut policy matches the spec-core rule", () =>
+            {
+                // A 94 mm prism with a blind cut uses the boolean path (no skip).
+                var thickRemaining = PrismCutPolicy.RemainingForBlindCut(0, 94, 0, 10);
+                Expect(!PrismCutPolicy.IsTooThinForBoolean(94, thickRemaining), "94 mm prism must not skip");
+                Expect(thickRemaining > 80, "most of the 94 mm block remains");
+
+                // A 2 mm sheet with 1.5 mm cut leaves 0.5 mm: too fragile for a boolean.
+                var thinRemaining = PrismCutPolicy.RemainingForBlindCut(0, 2, 0, 1.5);
+                Expect(thickRemaining > 80 && thinRemaining < 0.8, "0.5 mm remains under the cut");
+                Expect(PrismCutPolicy.IsTooThinForBoolean(2, thinRemaining), "2 mm sheet must keep native");
+
+                // A through cut leaves nothing to protect.
+                Expect(
+                    double.IsPositiveInfinity(PrismCutPolicy.RemainingForBlindCut(0, 2, -1, 3)),
+                    "a through cut reports infinite remaining material");
+            });
+
             Console.WriteLine();
             Console.WriteLine(_failures == 0 ? "All core checks passed." : $"{_failures} check(s) failed.");
             return _failures == 0 ? 0 : 1;

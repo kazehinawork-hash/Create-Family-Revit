@@ -936,6 +936,18 @@ namespace FamilyAgent.Addin
                     $"Prism \"{part.Id}\": cut {index + 1} {reason}; kept the part native and skipped this cut.");
             }
 
+            // A cut that cannot be an inner loop is not lost: the part falls back to the
+            // generic boolean path unless the prism is too thin for booleans to be safe.
+            bool FallbackToBoolean(int index, string reason, double remainingMm = double.PositiveInfinity)
+            {
+                if (PrismCutPolicy.IsTooThinForBoolean(high - low, remainingMm))
+                {
+                    Skip(index, reason + " and the plate is too thin for a boolean");
+                    return false;
+                }
+                return true;
+            }
+
             for (var index = 0; index < part.Cuts.Count; index += 1)
             {
                 var cut = part.Cuts[index];
@@ -943,7 +955,7 @@ namespace FamilyAgent.Addin
                 {
                     if (cut.Axis != normalAxis || cut.Radius <= 0)
                     {
-                        Skip(index, "is not a perpendicular circular hole");
+                        if (FallbackToBoolean(index, "is not a perpendicular circular hole")) return false;
                         continue;
                     }
 
@@ -951,9 +963,11 @@ namespace FamilyAgent.Addin
                     var normalEnd = normal + cut.Height;
                     var cutLow = Math.Min(normal, normalEnd);
                     var cutHigh = Math.Max(normal, normalEnd);
-                    if (cutLow > low + 0.5 || cutHigh < high - 0.5)
+                    if (cutLow > low + 0.01 || cutHigh < high - 0.01)
                     {
-                        Skip(index, "does not pass through the prism thickness");
+                        var remaining = PrismCutPolicy.RemainingForBlindCut(low, high, cutLow, cutHigh);
+                        if (FallbackToBoolean(index, "does not pass through the prism thickness", remaining))
+                            return false;
                         continue;
                     }
 
@@ -961,7 +975,7 @@ namespace FamilyAgent.Addin
                     var b = PlaneB(plane, cut.Base);
                     if (!PointInPolygon(a, b, points))
                     {
-                        Skip(index, "is outside the outer profile");
+                        if (FallbackToBoolean(index, "is outside the outer profile")) return false;
                         continue;
                     }
 
@@ -978,7 +992,8 @@ namespace FamilyAgent.Addin
                     }
                     if (tooClose)
                     {
-                        Skip(index, "is closer than 0.8 mm to the outer profile");
+                        if (FallbackToBoolean(index, "is closer than 0.8 mm to the outer profile"))
+                            return false;
                         continue;
                     }
 
@@ -995,7 +1010,7 @@ namespace FamilyAgent.Addin
                     }
                     if (overlaps)
                     {
-                        Skip(index, "overlaps another hole");
+                        if (FallbackToBoolean(index, "overlaps another hole")) return false;
                         continue;
                     }
 
@@ -1006,7 +1021,7 @@ namespace FamilyAgent.Addin
                 if (cut.Kind != "box") return false;
                 if (Math.Abs(cut.RotationZ) > 1e-6)
                 {
-                    Skip(index, "is rotated");
+                    if (FallbackToBoolean(index, "is rotated")) return false;
                     continue;
                 }
 
@@ -1044,10 +1059,13 @@ namespace FamilyAgent.Addin
                         break;
                 }
 
-                if (Math.Min(normalLow, normalHigh) > low + 0.5 ||
-                    Math.Max(normalLow, normalHigh) < high - 0.5)
+                if (Math.Min(normalLow, normalHigh) > low + 0.01 ||
+                    Math.Max(normalLow, normalHigh) < high - 0.01)
                 {
-                    Skip(index, "does not pass through the prism thickness");
+                    var remaining = PrismCutPolicy.RemainingForBlindCut(
+                        low, high, normalLow, normalHigh);
+                    if (FallbackToBoolean(index, "does not pass through the prism thickness", remaining))
+                        return false;
                     continue;
                 }
 
@@ -1111,7 +1129,10 @@ namespace FamilyAgent.Addin
                         continue;
                     }
 
-                    Skip(index, "crosses the outer profile and could not be baked into the prism");
+                    if (FallbackToBoolean(
+                            index,
+                            "crosses the outer profile and could not be baked into the prism"))
+                        return false;
                     continue;
                 }
 
@@ -1127,7 +1148,7 @@ namespace FamilyAgent.Addin
                 }
                 if (overlapsRectangle)
                 {
-                    Skip(index, "overlaps another hole");
+                    if (FallbackToBoolean(index, "overlaps another hole")) return false;
                     continue;
                 }
 
@@ -2985,8 +3006,8 @@ namespace FamilyAgent.Addin
                         if (bestOffset > 1.0 / MmPerFoot)
                         {
                             warnings.Add(
-                                $"Connector \"{connector.Id ?? connector.Name}\" host is offset " +
-                                $"{Math.Round(bestOffset * MmPerFoot, 1)} mm from the spec origin " +
+                                $"Cổng \"{connector.Id ?? connector.Name}\" lệch " +
+                                $"{Math.Round(bestOffset * MmPerFoot, 1)} mm so với gốc spec " +
                                 $"(reading={anchorKind}, " +
                                 $"correction={Math.Round(correction, 1)}mm, " +
                                 $"spec=({FormatPoint(origin)}), " +
@@ -3041,7 +3062,7 @@ namespace FamilyAgent.Addin
                 var status = transaction.Commit();
                 if (status != TransactionStatus.Committed)
                 {
-                    warnings.Add($"MEP connectors were rolled back ({status})");
+                    warnings.Add($"Connector MEP đã bị hoàn tác ({status})");
                     return 0;
                 }
             }

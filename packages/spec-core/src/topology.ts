@@ -108,42 +108,68 @@ function checkPrismCuts(
   const normalAxis = plane === "xy" ? "z" : plane === "xz" ? "y" : "x";
   const low = Math.min(solid.from, solid.to);
   const high = Math.max(solid.from, solid.to);
+  const thickness = high - low;
 
-  const warn = (index: number, reason: string) => {
+  // Mirrors PrismCutPolicy in the add-in: a thick prism falls back to the boolean
+  // path, so only a thin plate (or a blind cut leaving < 0.8 mm) loses the cut.
+  const MIN_REMAINING_MM = 0.8;
+  const THIN_PRISM_MM = 3;
+
+  const warnIfFragile = (
+    index: number,
+    reason: string,
+    remainingMm: number = Number.POSITIVE_INFINITY,
+  ) => {
+    if (thickness >= THIN_PRISM_MM && remainingMm >= MIN_REMAINING_MM) return;
     issues.push({
       severity: "warning",
       path: `logic.geometry.${part.id}.cuts[${index}]`,
       message:
-        `Cut ${index + 1} on "${part.name}" ${reason}; Revit boolean on a thin prism may fail, ` +
-        "so the builder keeps the part native and skips this cut. Bake the notch into the prism " +
-        "points or move the cut inward by at least 0.8 mm.",
+        `Cắt ${index + 1} trên "${part.name}" ${reason}; tấm này quá mỏng để boolean an toàn ` +
+        "nên bản dựng Revit giữ khối native và bỏ qua cut. Tăng độ sâu cho xuyên hết hoặc " +
+        "giảm độ sâu để còn ≥ 0,8 mm, hoặc đưa notch vào points.",
     });
+  };
+
+  const remainingForBlindCut = (cutLow: number, cutHigh: number): number => {
+    const clampLow = Math.min(cutLow, cutHigh);
+    const clampHigh = Math.max(cutLow, cutHigh);
+    const reachesLow = clampLow <= low + 0.01;
+    const reachesHigh = clampHigh >= high - 0.01;
+    if (reachesLow && reachesHigh) return Number.POSITIVE_INFINITY;
+    if (reachesLow) return Math.max(0, high - clampHigh);
+    if (reachesHigh) return Math.max(0, clampLow - low);
+    return Math.max(0, Math.min(clampLow - low, high - clampHigh));
   };
 
   part.cuts.forEach((cut, index) => {
     if (cut.kind === "cylinder") {
       if (cut.axis !== normalAxis) {
-        warn(index, "is not perpendicular to the extrusion");
+        warnIfFragile(index, "không vuông góc với hướng đùn");
         return;
       }
       const normal = plane === "xy" ? cut.base.z : plane === "xz" ? cut.base.y : cut.base.x;
       const cutLow = Math.min(normal, normal + cut.height);
       const cutHigh = Math.max(normal, normal + cut.height);
-      if (cutLow > low + 0.5 || cutHigh < high - 0.5) {
-        warn(index, "does not pass through the prism thickness");
+      if (cutLow > low + 0.01 || cutHigh < high - 0.01) {
+        warnIfFragile(
+          index,
+          "không xuyên hết độ dày prism",
+          remainingForBlindCut(cutLow, cutHigh),
+        );
         return;
       }
       const a = plane === "xy" || plane === "xz" ? cut.base.x : cut.base.y;
       const b = plane === "xy" ? cut.base.y : cut.base.z;
       if (!pointInPolygon([a, b], solid.points)) {
-        warn(index, "is outside the outer profile");
+        warnIfFragile(index, "nằm ngoài biên dạng ngoài");
         return;
       }
       for (let edge = 0; edge < solid.points.length; edge += 1) {
         const start = solid.points[edge];
         const end = solid.points[(edge + 1) % solid.points.length];
         if (distanceToSegment(a, b, start, end) < cut.radius + 0.8) {
-          warn(index, "is closer than 0.8 mm to the outer profile");
+          warnIfFragile(index, "cách biên dạng ngoài dưới 0,8 mm");
           return;
         }
       }
@@ -152,7 +178,7 @@ function checkPrismCuts(
 
     if (cut.kind !== "box") return;
     if (Math.abs(cut.rotationZ) > 1e-6) {
-      warn(index, "is rotated and cannot be baked as an axis-aligned notch");
+      warnIfFragile(index, "bị xoay nên không thể bake thành notch vuông góc");
       return;
     }
 
@@ -185,9 +211,13 @@ function checkPrismCuts(
       bMax = cut.origin.z + cut.size.z;
     }
 
-    if (Math.min(normalLow, normalHigh) > low + 0.5 ||
-        Math.max(normalLow, normalHigh) < high - 0.5) {
-      warn(index, "does not pass through the prism thickness");
+    if (Math.min(normalLow, normalHigh) > low + 0.01 ||
+        Math.max(normalLow, normalHigh) < high - 0.01) {
+      warnIfFragile(
+        index,
+        "không xuyên hết độ dày prism",
+        remainingForBlindCut(normalLow, normalHigh),
+      );
       return;
     }
     if (bMax < bMin) {
@@ -201,7 +231,7 @@ function checkPrismCuts(
       [aMin, bMax],
     ];
     if (!pointInPolygon(corners[0], solid.points)) {
-      warn(index, "crosses the outer profile");
+      warnIfFragile(index, "cắt qua biên dạng ngoài");
       return;
     }
     for (let edge = 0; edge < solid.points.length; edge += 1) {
@@ -209,11 +239,11 @@ function checkPrismCuts(
       const end = solid.points[(edge + 1) % solid.points.length];
       for (let corner = 0; corner < 4; corner += 1) {
         if (distanceToSegment(corners[corner][0], corners[corner][1], start, end) < 0.8) {
-          warn(index, "is closer than 0.8 mm to the outer profile");
+          warnIfFragile(index, "cách biên dạng ngoài dưới 0,8 mm");
           return;
         }
         if (segmentsIntersect(corners[corner], corners[(corner + 1) % 4], start, end)) {
-          warn(index, "crosses the outer profile");
+          warnIfFragile(index, "cắt qua biên dạng ngoài");
           return;
         }
       }

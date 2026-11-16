@@ -185,7 +185,7 @@ namespace FamilyAgent.Addin
                             var faceKey = ConstraintGraph.FaceKey(document, candidate.Face.Reference);
                             if (skeleton.Constraints.WouldOverconstrain(planeKey, faceKey))
                             {
-                                warnings.Add($"Skipped overconstraining lock \"{form.Name}\" ({axis})");
+                                warnings.Add($"Bỏ qua ràng buộc thừa cho Lock \"{form.Name}\" ({axis})");
                                 continue;
                             }
 
@@ -211,7 +211,7 @@ namespace FamilyAgent.Addin
                 if (status != TransactionStatus.Committed)
                 {
                     warnings.Add(
-                        $"Geometry locks were rolled back ({status}): {string.Join(" ", failures.Messages.Take(3))}");
+                        $"Khoá hình học đã bị hoàn tác ({status}): {string.Join(" ", failures.Messages.Take(3))}");
                     return 0;
                 }
             }
@@ -773,7 +773,7 @@ namespace FamilyAgent.Addin
             if (graph.WouldOverconstrain(fromKey, toKey))
             {
                 warnings.Add(
-                    $"Skipped overconstraining face dimension \"{label.Definition?.Name}\"");
+                    $"Bỏ qua ràng buộc thừa cho kích thước mặt \"{label.Definition?.Name}\"");
                 return false;
             }
 

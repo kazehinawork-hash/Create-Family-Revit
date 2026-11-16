@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
+  CATEGORY_BUILTIN,
+  CATEGORY_TEMPLATES,
   ExpressionError,
   analyzeSpec,
   evaluateExpression,
@@ -131,7 +133,13 @@ describe("geometry resolution and the example spec", () => {
   it("reports invalid solids as issues instead of throwing", () => {
     const broken = {
       ...raw,
-      parts: [{ id: "bad", name: "Bad", solid: { kind: "box", origin: { x: 0, y: 0, z: 0 }, size: { x: "nope(", y: 1, z: 1 } } }],
+      parts: [
+        {
+          id: "bad",
+          name: "Bad",
+          solid: { kind: "box", origin: { x: 0, y: 0, z: 0 }, size: { x: "nope(", y: 1, z: 1 } },
+        },
+      ],
     };
     const analysis = analyzeSpec(broken);
     expect(analysis.ok).toBe(false);
@@ -468,24 +476,39 @@ describe("unused parameters", () => {
     ],
   });
 
-  it("warns about a numeric parameter that nothing references", () => {
+  it("warns in Vietnamese about a Length that nothing references", () => {
     const analysis = analyzeSpec(spec([{ name: "Forgotten", type: "Length", value: 50 }], 100));
     expect(analysis.ok).toBe(true);
-    expect(
-      analysis.issues.some(
-        (issue) => issue.path === "parameters.Forgotten" && /never used/.test(issue.message),
+    const issue = analysis.issues.find((entry) => entry.path === "parameters.Forgotten");
+    expect(issue?.severity).toBe("warning");
+    expect(issue?.message).toContain("không điều khiển hình nào");
+    expect(issue?.message).toContain("Nối vào hình hoặc bỏ đi");
+  });
+
+  it("does not warn about unused Number or Integer metadata", () => {
+    const analysis = analyzeSpec(
+      spec(
+        [
+          { name: "Air Flow", type: "Number", value: 1200 },
+          { name: "Motor Poles", type: "Integer", value: 4 },
+        ],
+        100,
       ),
-    ).toBe(true);
+    );
+    expect(analysis.ok).toBe(true);
+    expect(analysis.issues.some((issue) => issue.path.startsWith("parameters."))).toBe(false);
   });
 
   it("accepts a parameter that drives geometry", () => {
     const analysis = analyzeSpec(spec([{ name: "Width", type: "Length", value: 100 }], "[Width]"));
-    expect(analysis.issues.some((issue) => /never used/.test(issue.message))).toBe(false);
+    expect(analysis.issues.some((issue) => issue.path === "parameters.Width")).toBe(false);
   });
 
   it("accepts text metadata without geometry references", () => {
-    const analysis = analyzeSpec(spec([{ name: "Manufacturer", type: "Text", value: "ACME" }], 100));
-    expect(analysis.issues.some((issue) => /never used/.test(issue.message))).toBe(false);
+    const analysis = analyzeSpec(
+      spec([{ name: "Manufacturer", type: "Text", value: "ACME" }], 100),
+    );
+    expect(analysis.issues.some((issue) => issue.path === "parameters.Manufacturer")).toBe(false);
   });
 });
 
@@ -597,6 +620,52 @@ describe("layout logic checks", () => {
       ],
     };
     const analysis = analyzeSpec(moved);
-    expect(analysis.issues.some((issue) => issue.path === "logic.inside-casing.cooling-coil")).toBe(true);
+    expect(analysis.issues.some((issue) => issue.path === "logic.inside-casing.cooling-coil")).toBe(
+      true,
+    );
+  });
+});
+
+describe("MEP fitting categories and part type", () => {
+  const base = (overrides: Record<string, unknown>) => ({
+    schemaVersion: "1.0",
+    name: "Cable Tray Tee",
+    category: "Cable Tray Fitting",
+    units: "mm",
+    parameters: [],
+    materials: [],
+    connectors: [],
+    parts: [
+      {
+        id: "body",
+        name: "Thân",
+        solid: { kind: "box", origin: { x: 0, y: 0, z: 0 }, size: { x: 600, y: 300, z: 100 } },
+      },
+    ],
+    notes: [],
+    ...overrides,
+  });
+
+  it("accepts Cable Tray Fitting and maps it to a template and BuiltInCategory", () => {
+    const { spec, issues } = validateSpec(base({}));
+
+    expect(spec.category).toBe("Cable Tray Fitting");
+    expect(issues.filter((issue) => issue.path === "category")).toHaveLength(0);
+    expect(CATEGORY_TEMPLATES["Cable Tray Fitting"]).toBe("Metric Generic Model.rft");
+    expect(CATEGORY_BUILTIN["Cable Tray Fitting"]).toBe("OST_CableTrayFitting");
+    expect(CATEGORY_BUILTIN["Pipe Fitting"]).toBe("OST_PipeFitting");
+  });
+
+  it("normalises a valid partType", () => {
+    const { spec } = validateSpec(base({ partType: "tee" }));
+    expect(spec.partType).toBe("Tee");
+  });
+
+  it("reports an invalid partType as an error and drops it", () => {
+    const { spec, issues } = validateSpec(base({ partType: "Banana" }));
+    expect(spec.partType).toBeUndefined();
+    const issue = issues.find((entry) => entry.path === "partType");
+    expect(issue?.severity).toBe("error");
+    expect(issue?.message).toContain("Banana");
   });
 });
