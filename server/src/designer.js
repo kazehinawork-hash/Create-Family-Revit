@@ -1048,6 +1048,29 @@ function imagePartsFor(attachments, customApiConfig) {
     }));
 }
 
+const DESIGN_LANGUAGES = new Set(["vi", "en", "zh"]);
+
+/** Tell the agent which language to answer in; the system prompt itself stays English. */
+function replyLanguageInstruction(language) {
+  const target = DESIGN_LANGUAGES.has(language) ? language : "vi";
+  if (target === "en") {
+    return (
+      "Write every user-facing explanation, assumption and note in English. Keep JSON keys, " +
+      "spec fields, part/parameter names and Revit terms (Family, Type, LOD, Connector, RFA) unchanged."
+    );
+  }
+  if (target === "zh") {
+    return (
+      "所有面向用户的说明、假设和备注都用简体中文书写。JSON 键、spec 字段、零件/参数名称以及 " +
+      "Revit 术语（Family、Type、LOD、Connector、RFA）保持原样。"
+    );
+  }
+  return (
+    "Viết mọi giải thích, giả định và ghi chú dành cho người dùng bằng tiếng Việt. Giữ nguyên khoá JSON, " +
+    "trường spec, tên part/tham số và thuật ngữ Revit (Family, Type, LOD, Connector, RFA)."
+  );
+}
+
 /** Documents become one <document> message, exactly like c709e4c. */
 async function documentMessages(attachments, emit) {
   if (!attachments?.length) return [];
@@ -1135,6 +1158,7 @@ async function designStable(options) {
     attachments,
     signal,
     fresh,
+    language,
   } = options;
   const send = typeof emit === "function" ? emit : () => {};
   const generate = options.generate ?? generateJson;
@@ -1409,7 +1433,7 @@ async function designStable(options) {
       });
     }
 
-    const request = `${instruction}\n\n---\n${JSON_OUTPUT_CONTRACT}${patch ? `\n\n${SPEC_PATCH_CONTRACT}` : ""}`;
+    const request = `${instruction}\n\n${replyLanguageInstruction(language)}\n\n---\n${JSON_OUTPUT_CONTRACT}${patch ? `\n\n${SPEC_PATCH_CONTRACT}` : ""}`;
     out.push({
       role: "user",
       content: imageParts.length > 0 ? [{ type: "text", text: request }, ...imageParts] : request,
@@ -1944,8 +1968,17 @@ async function designStable(options) {
 
 async function designExperimental(options) {
   const startedAt = Date.now();
-  const { prompt, currentSpec, lod, emit, model, customApiConfig, attachments, allowUpgrade, fresh } =
-    options;
+  const {
+    prompt,
+    currentSpec,
+    lod,
+    emit,
+    model,
+    customApiConfig,
+    attachments,
+    allowUpgrade,
+    fresh,
+  } = options;
   const level = LOD_LEVELS.includes(Number(lod)) ? Number(lod) : DEFAULT_LOD;
 
   // AGENT_ROUTER=0 replays the old behaviour (one tier, full spec, no cache) so the
@@ -2852,6 +2885,7 @@ async function designSingle({
   requirements = "",
   family = null,
   evidence = "",
+  language,
   generate = generateJson,
 }) {
   const startedAt = Date.now();
@@ -2936,7 +2970,7 @@ async function designSingle({
     role: "user",
     content: `${[evidence, requirements, limitForTier(prompt, tier)]
       .filter(Boolean)
-      .join("\n\n")}\n\n---\n${JSON_OUTPUT_CONTRACT}`,
+      .join("\n\n")}\n\n${replyLanguageInstruction(language)}\n\n---\n${JSON_OUTPUT_CONTRACT}`,
   });
 
   const promptChars = messages.reduce((size, message) => size + message.content.length, 0);

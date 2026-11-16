@@ -1,8 +1,21 @@
 /**
  * Every user-facing label lives here so the studio speaks one language.
- * Revit terms (LOD, Family, Type, Connector) stay in English on purpose.
+ * Revit terms (LOD, Family, Type, Connector, RFA, category and parameter names)
+ * stay in English on purpose. `en` and `zh` are typed against `vi`: a missing key
+ * is a TypeScript error, including keys contributed by the per-pane modules.
  */
-export const t = {
+import * as appStrings from "./strings/app";
+import * as chatStrings from "./strings/chat";
+import * as chromeStrings from "./strings/chrome";
+import * as libraryStrings from "./strings/library";
+import * as paramStrings from "./strings/params";
+import * as typeStrings from "./strings/types";
+import * as viewerStrings from "./strings/viewer";
+
+export const LANGUAGES = ["vi", "en", "zh"] as const;
+export type Language = (typeof LANGUAGES)[number];
+
+const coreVi = {
   // Top bar
   newFamily: "Family mới",
   newFamilyHint: "Bắt đầu một family mới (xoá màn hình hiện tại)",
@@ -31,6 +44,8 @@ export const t = {
   themeSystem: "Theo hệ thống",
   themeLight: "Sáng",
   themeDark: "Tối",
+  language: "Ngôn ngữ",
+  languageHint: "Chọn ngôn ngữ giao diện",
   draft: "Nháp",
   reviewed: "Đã kiểm tra",
   nativeFamily: "Family Native",
@@ -108,6 +123,7 @@ export const t = {
   sortRecent: "Mới nhất",
   sortName: "Tên A–Z",
   sortCategory: "Category",
+  sortAdjustable: "Dễ điều chỉnh nhất",
   moveToGroup: "Chuyển vào nhóm",
   renameGroup: "Đổi tên nhóm",
   deleteGroup: "Xoá nhóm",
@@ -127,8 +143,7 @@ export const t = {
   deleteForever: "Xoá vĩnh viễn",
   emptyTrash: "Dọn sạch",
   confirmTrash: "Chuyển vào thùng rác?",
-  confirmPurge:
-    "Xoá vĩnh viễn mô hình này? Thao tác này không thể hoàn tác.",
+  confirmPurge: "Xoá vĩnh viễn mô hình này? Thao tác này không thể hoàn tác.",
   confirmEmptyTrash:
     "Dọn sạch thùng rác? Tất cả mô hình trong thùng rác sẽ bị xoá vĩnh viễn.",
   trashEmpty: "Thùng rác trống.",
@@ -139,20 +154,344 @@ export const t = {
   trashEmptied: "Đã dọn sạch thùng rác",
   cachedResult: (time: string) => `Kết quả lặp lại từ lần chạy trước (${time})`,
   runFresh: "Chạy mới",
+  historyKeep: (count: number) =>
+    count > 0 ? `Giữ tối đa ${count} bản gần nhất` : "Không giới hạn số bản lưu",
+  connectorOffset: (name: string, mm: number) =>
+    `Cổng "${name}" lệch ${mm} mm so với gốc spec`,
+};
+
+const coreEn: typeof coreVi = {
+  newFamily: "New family",
+  newFamilyHint: "Start a new family (clears the current screen)",
+  library: "Library",
+  libraryHint: "Open the saved family library",
+  save: "Save",
+  saveHint: "Save this family to the library",
+  saveAs: "Save as",
+  saveAsHint: "Save as a new copy, keeping the current one",
+  exportRfa: "Export RFA",
+  exportRfaHint: "Download the 1-click native family package (no add-in needed)",
+  exportingRfa: "Packing…",
+  buildRevit: "Build in Revit",
+  buildRevitHint: "Push straight into the open Revit session through the add-in bridge",
+  building: "Building…",
+  more: "More",
+  moreActions: "More actions",
+  demoPresets: "Demo presets (offline)",
+  demoPresetsHint: "Load a sample model instantly, no tokens used",
+  demoHeader: "Demo preset · 0 token",
+  units: "Units",
+  revitVersion: "Revit version",
+  undo: "Undo (Ctrl+Z)",
+  redo: "Redo (Ctrl+Shift+Z)",
+  theme: "Theme",
+  themeSystem: "System",
+  themeLight: "Light",
+  themeDark: "Dark",
+  language: "Language",
+  languageHint: "Choose the interface language",
+  draft: "Draft",
+  reviewed: "Reviewed",
+  nativeFamily: "Native family",
+  stageRead: "Reading the brief",
+  stageDesign: "Designing the family",
+  stageCheck: "Checking the model",
+  noFamily: "New family",
+  noFamilyHint: "Describe the equipment to start",
+
+  chatEmptyTitle: "Describe the family you need",
+  chatEmptyBody:
+    "Dimensions, layout, connectors, materials. The first sketch appears in seconds; detail follows.",
+  chatPlaceholder: "Type a request, or paste an image (Ctrl+V)…",
+  chatPlaceholderUploading: "Uploading documents…",
+  chatPlaceholderWaiting: "Waiting for the agent…",
+  chatSend: "Send",
+  chatStop: "Stop agent",
+  chatAttach: "Attach drawings or datasheets (PDF, image, Word, Excel)",
+  chatSuggestion1: "Cable ladder tee 400×100, 6 rungs, LOD 400",
+  chatSuggestion2: "Rectangular duct elbow 90° 600×300, LOD 350",
+  chatSuggestion3: "Centrifugal pump DN80, PN16 flange",
+
+  chatTab: "Chat",
+  viewerTab: "3D",
+  paramsTab: "Parameters",
+  parameters: "Parameters",
+  parts: "Parts",
+  connectors: "Connectors",
+  types: "Types",
+  addParameter: "+ Add parameter",
+  formulaHint: "A formula-driven value is controlled by another parameter — edit the source parameter.",
+  alignView: "Click a face to align the view",
+  resizePanel: "Drag to resize · double-click to reset",
+  rotatedBoxWarning:
+    "A box rotated off the 90° axes still builds, but Revit cannot lock its faces to reference planes; use Rebuild from spec after changing parameters.",
+  parametersEmpty: "Parameters appear after the family is created.",
+  filterParameters: "Filter parameters",
+  filterParts: "Filter parts",
+  openParams: "Open parameters",
+  closeParams: "Close parameters",
+
+  viewerEmptyTitle: "No model yet",
+  viewerEmptyBody: "Describe the equipment in chat and the 3D model appears here.",
+  viewerTryPrefix: "Try:",
+  fitView: "Fit view",
+  grid: "Grid",
+  shadows: "Shadows",
+  refPlanes: "Reference planes",
+  connectorsTooltip: "MEP connectors",
+  section: "Section",
+  measure: "Measure",
+  coarse: "Coarse",
+  fine: "Fine",
+  turnaround: "Spin 360°",
+  dimOthers: "Dim other parts",
+  sectionFill: "Section fill",
+  explode: "Explode",
+  dimensions: "Dimensions",
+  saveImage: "Save PNG",
+  moreViewerTools: "More tools",
+  part: "Part",
+  unhideAll: "Show all again",
+  assembling: "Assembling",
+
+  libraryTitle: "Family library",
+  allGroups: "All",
+  ungrouped: "Ungrouped",
+  newGroup: "+ New group",
+  searchModels: "Search by name or category…",
+  sort: "Sort",
+  sortRecent: "Newest",
+  sortName: "Name A–Z",
+  sortCategory: "Category",
+  sortAdjustable: "Easiest to adjust",
+  moveToGroup: "Move to group",
+  renameGroup: "Rename group",
+  deleteGroup: "Delete group",
+  newGroupOption: "+ New group…",
+  libraryEmpty: "No saved families yet.",
+  libraryEmptyHint: "Press Save in the top bar to add the open family to the library.",
+  noMatches: "No family in this section matches the search.",
+  history: "History",
+  restore: "Restore",
+  close: "Close",
+  moveGroup: "Move group",
+  renameModel: "Rename family",
+  deleteModel: "Delete family",
+  trash: "Trash",
+  trashMoved: "Moved to the trash",
+  undoTrash: "Undo",
+  deleteForever: "Delete permanently",
+  emptyTrash: "Empty trash",
+  confirmTrash: "Move to the trash?",
+  confirmPurge: "Delete this model permanently? This cannot be undone.",
+  confirmEmptyTrash: "Empty the trash? Every model in it will be deleted permanently.",
+  trashEmpty: "The trash is empty.",
+  trashHint: "Deleted models stay here for 30 days and can be restored.",
+  daysLeft: (days: number) => `${days} day${days === 1 ? "" : "s"} left`,
+  trashRestored: "Model restored",
+  trashPurged: "Deleted permanently",
+  trashEmptied: "Trash emptied",
+  cachedResult: (time: string) => `Repeated result from the previous run (${time})`,
+  runFresh: "Run fresh",
+  historyKeep: (count: number) =>
+    count > 0 ? `Keeps the latest ${count} revisions` : "Unlimited revisions",
+  connectorOffset: (name: string, mm: number) =>
+    `Connector "${name}" host is offset ${mm} mm from the spec origin`,
+};
+
+const coreZh: typeof coreVi = {
+  newFamily: "新建 Family",
+  newFamilyHint: "开始新的 family（清除当前画面）",
+  library: "图库",
+  libraryHint: "打开已保存的 family 图库",
+  save: "保存",
+  saveHint: "将此 family 保存到图库",
+  saveAs: "另存为新文件",
+  saveAsHint: "另存为新副本，保留当前文件",
+  exportRfa: "导出 RFA",
+  exportRfaHint: "下载一键原生 Family 包（无需插件）",
+  exportingRfa: "正在打包…",
+  buildRevit: "在 Revit 中构建",
+  buildRevitHint: "通过 Add-in Bridge 直接推送到当前 Revit 会话",
+  building: "正在构建…",
+  more: "更多",
+  moreActions: "更多操作",
+  demoPresets: "示例（离线）",
+  demoPresetsHint: "快速载入示例模型，不消耗 token",
+  demoHeader: "示例 · 0 token",
+  units: "单位",
+  revitVersion: "Revit 版本",
+  undo: "撤销（Ctrl+Z）",
+  redo: "重做（Ctrl+Shift+Z）",
+  theme: "主题",
+  themeSystem: "跟随系统",
+  themeLight: "浅色",
+  themeDark: "深色",
+  language: "语言",
+  languageHint: "选择界面语言",
+  draft: "草稿",
+  reviewed: "已检查",
+  nativeFamily: "原生 Family",
+  stageRead: "读取需求",
+  stageDesign: "设计 family",
+  stageCheck: "检查模型",
+  noFamily: "新建 Family",
+  noFamilyHint: "描述设备以开始",
+
+  chatEmptyTitle: "描述你需要的 family",
+  chatEmptyBody: "尺寸、布置、连接口、材质。几秒内出现草图，细节随后完善。",
+  chatPlaceholder: "输入需求，或粘贴图片（Ctrl+V）…",
+  chatPlaceholderUploading: "正在上传文档…",
+  chatPlaceholderWaiting: "等待 agent…",
+  chatSend: "发送",
+  chatStop: "停止 agent",
+  chatAttach: "附加图纸或数据表（PDF、图片、Word、Excel）",
+  chatSuggestion1: "电缆桥架三通 400×100，6 级踏步，LOD 400",
+  chatSuggestion2: "矩形风管 90° 弯头 600×300，LOD 350",
+  chatSuggestion3: "离心泵 DN80，PN16 法兰",
+
+  chatTab: "Chat",
+  viewerTab: "3D",
+  paramsTab: "参数",
+  parameters: "参数",
+  parts: "零件",
+  connectors: "连接口",
+  types: "类型",
+  addParameter: "+ 添加参数",
+  formulaHint: "公式值由其他参数控制——请修改源参数。",
+  alignView: "点击一个面以对齐视图",
+  resizePanel: "拖动调整宽度 · 双击重置",
+  rotatedBoxWarning:
+    "偏离 90° 轴线的旋转盒体仍可构建，但 Revit 无法将面锁定到参照平面；修改参数后请使用 Rebuild from spec。",
+  parametersEmpty: "创建 family 后将显示参数。",
+  filterParameters: "筛选参数",
+  filterParts: "筛选零件",
+  openParams: "打开参数面板",
+  closeParams: "关闭参数面板",
+
+  viewerEmptyTitle: "还没有模型",
+  viewerEmptyBody: "在聊天中描述设备，3D 模型将显示在这里。",
+  viewerTryPrefix: "试试：",
+  fitView: "适应窗口",
+  grid: "网格",
+  shadows: "阴影",
+  refPlanes: "参照平面",
+  connectorsTooltip: "MEP 连接口",
+  section: "剖切",
+  measure: "测量",
+  coarse: "简单",
+  fine: "精细",
+  turnaround: "360° 旋转",
+  dimOthers: "淡化其他零件",
+  sectionFill: "填充截面",
+  explode: "拆解",
+  dimensions: "尺寸",
+  saveImage: "保存 PNG",
+  moreViewerTools: "更多工具",
+  part: "零件",
+  unhideAll: "全部显示",
+  assembling: "正在装配",
+
+  libraryTitle: "Family 图库",
+  allGroups: "全部",
+  ungrouped: "未分组",
+  newGroup: "+ 新建分组",
+  searchModels: "按名称或 category 搜索…",
+  sort: "排序",
+  sortRecent: "最新",
+  sortName: "名称 A–Z",
+  sortCategory: "Category",
+  sortAdjustable: "最易调整",
+  moveToGroup: "移动到分组",
+  renameGroup: "重命名分组",
+  deleteGroup: "删除分组",
+  newGroupOption: "+ 新建分组…",
+  libraryEmpty: "还没有保存的 family。",
+  libraryEmptyHint: "点击顶栏的 Save 将当前 family 保存到图库。",
+  noMatches: "此分类中没有匹配搜索的 family。",
+  history: "历史",
+  restore: "恢复",
+  close: "关闭",
+  moveGroup: "移动分组",
+  renameModel: "重命名 family",
+  deleteModel: "删除 family",
+  trash: "回收站",
+  trashMoved: "已移到回收站",
+  undoTrash: "撤销",
+  deleteForever: "永久删除",
+  emptyTrash: "清空回收站",
+  confirmTrash: "移到回收站？",
+  confirmPurge: "永久删除此模型？此操作无法撤销。",
+  confirmEmptyTrash: "清空回收站？其中的所有模型将被永久删除。",
+  trashEmpty: "回收站为空。",
+  trashHint: "已删除的模型会保留 30 天，可随时恢复。",
+  daysLeft: (days: number) => `还剩 ${days} 天`,
+  trashRestored: "模型已恢复",
+  trashPurged: "已永久删除",
+  trashEmptied: "回收站已清空",
+  cachedResult: (time: string) => `重复使用上次运行的结果（${time}）`,
+  runFresh: "重新运行",
+  historyKeep: (count: number) =>
+    count > 0 ? `保留最近 ${count} 个版本` : "版本数量不限",
+  connectorOffset: (name: string, mm: number) =>
+    `连接口 "${name}" 相对 spec 原点偏移 ${mm} mm`,
+};
+
+type Widen<T> = {
+  [K in keyof T]: T[K] extends (...args: infer A) => string ? (...args: A) => string : string;
+};
+
+const viDictionary = {
+  ...coreVi,
+  ...chatStrings.vi,
+  ...paramStrings.vi,
+  ...libraryStrings.vi,
+  ...typeStrings.vi,
+  ...viewerStrings.vi,
+  ...appStrings.vi,
+  ...chromeStrings.vi,
 } as const;
+
+export const vi: Widen<typeof viDictionary> = viDictionary;
+export type Strings = typeof vi;
+
+export const en: Strings = {
+  ...coreEn,
+  ...chatStrings.en,
+  ...paramStrings.en,
+  ...libraryStrings.en,
+  ...typeStrings.en,
+  ...viewerStrings.en,
+  ...appStrings.en,
+  ...chromeStrings.en,
+};
+export const zh: Strings = {
+  ...coreZh,
+  ...chatStrings.zh,
+  ...paramStrings.zh,
+  ...libraryStrings.zh,
+  ...typeStrings.zh,
+  ...viewerStrings.zh,
+  ...appStrings.zh,
+  ...chromeStrings.zh,
+};
+
+export const dictionaries: Record<Language, Strings> = { vi, en, zh };
+
+/** Legacy default export for non-React helpers; components use `useI18n`. */
+export const t = vi;
 
 /**
  * Validation messages can arrive from an older server build or a cached job.
- * Known English wording is swapped for the Vietnamese copy here, where the UI
- * already keeps every other label.
+ * Known wording is mapped to the active language; anything else is shown as-is.
  */
-export function localizeIssueMessage(message: string): string {
+export function localizeIssueMessage(message: string, strings: Strings = vi): string {
   const text = String(message ?? "");
-  if (/rotated off the 90° axes/i.test(text)) return t.rotatedBoxWarning;
-  if (/host is offset .* from the spec origin/i.test(text)) {
-    return text
-      .replace(/Connector ("[^"]*") host is offset /i, "Cổng $1 lệch ")
-      .replace(/ mm from the spec origin/i, " mm so với gốc spec");
+  if (/rotated off the 90° axes/i.test(text)) return strings.rotatedBoxWarning;
+  const offset = /host is offset (\d+(?:\.\d+)?) mm from the spec origin/i.exec(text);
+  if (offset) {
+    const name = /Connector "([^"]*)"/i.exec(text)?.[1] ?? "";
+    return strings.connectorOffset(name, Number(offset[1]));
   }
   return text;
 }

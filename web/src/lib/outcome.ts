@@ -1,7 +1,28 @@
 /**
  * How a finished design run is worded, and what a failure advises. Pure functions so
- * every branch is testable without React.
+ * every branch is testable without React; the caller passes the active dictionary.
  */
+import { vi, type Strings } from "./strings";
+
+type OutcomeCopy = Pick<
+  Strings,
+  | "appOutcomeUnchanged"
+  | "appOutcomeBuiltErrors"
+  | "appOutcomeIncomplete"
+  | "appOutcomeCreated"
+  | "appOutcomeUpdated"
+>;
+
+type AdviceCopy = Pick<
+  Strings,
+  | "appAdviceAuth"
+  | "appAdviceOverloaded"
+  | "appAdviceNetwork"
+  | "appAdviceTimeout"
+  | "appAdviceOutputLimit"
+  | "appAdviceInvalidRequest"
+  | "appAdviceUnknown"
+>;
 
 export type DesignOutcome = "ok" | "incomplete" | "has-errors" | "unchanged";
 
@@ -38,6 +59,7 @@ export function designOutcomeOf({ stats, analysis }: OutcomeSource): DesignOutco
 export function describeOutcome(
   { stats, analysis }: OutcomeSource,
   { updated = false }: { updated?: boolean } = {},
+  strings: OutcomeCopy = vi,
 ): OutcomeMessage {
   const outcome = designOutcomeOf({ stats, analysis });
   const name = analysis?.spec?.name || stats?.name || "family";
@@ -46,8 +68,8 @@ export function describeOutcome(
     return {
       outcome,
       tone: "error",
-      title: "⚠ Chưa áp dụng được thay đổi — giữ nguyên mô hình",
-      // The reason is listed once, in the "Cảnh báo" box.
+      title: strings.appOutcomeUnchanged,
+      // The reason is listed once, in the warnings box.
       items: [],
     };
   }
@@ -57,7 +79,7 @@ export function describeOutcome(
     return {
       outcome,
       tone: "error",
-      title: `⚠ Đã dựng ${name} nhưng còn ${errors.length} lỗi`,
+      title: strings.appOutcomeBuiltErrors(name, errors.length),
       // The clickable issue list is rendered from `issues`, not repeated here.
       items: [],
     };
@@ -67,7 +89,7 @@ export function describeOutcome(
     return {
       outcome,
       tone: "warning",
-      title: `⚠ Chưa đầy đủ — ${name}`,
+      title: strings.appOutcomeIncomplete(name),
       items: stats?.missing ?? [],
     };
   }
@@ -75,7 +97,7 @@ export function describeOutcome(
   return {
     outcome,
     tone: "normal",
-    title: `${updated ? "Đã cập nhật" : "Đã tạo"} ${name}.`,
+    title: updated ? strings.appOutcomeUpdated(name) : strings.appOutcomeCreated(name),
     items: [],
   };
 }
@@ -96,28 +118,22 @@ export interface ErrorAdvice {
   action: "retry" | "open-api" | null;
 }
 
-export function errorAdvice(kind?: ErrorKind | null): ErrorAdvice {
+export function errorAdvice(kind?: ErrorKind | null, strings: AdviceCopy = vi): ErrorAdvice {
   switch (kind) {
     case "auth":
-      return { hint: "Kiểm tra lại API key.", action: "open-api" };
+      return { hint: strings.appAdviceAuth, action: "open-api" };
     case "overloaded":
-      return { hint: "Nhà cung cấp đang quá tải — đợi vài giây rồi thử lại.", action: "retry" };
+      return { hint: strings.appAdviceOverloaded, action: "retry" };
     case "network":
-      return { hint: "Mất kết nối tới model — kiểm tra mạng rồi thử lại.", action: "retry" };
+      return { hint: strings.appAdviceNetwork, action: "retry" };
     case "timeout":
-      return {
-        hint: "Model chạy quá lâu — thử chọn model nhanh hơn hoặc chia nhỏ yêu cầu.",
-        action: "retry",
-      };
+      return { hint: strings.appAdviceTimeout, action: "retry" };
     case "output-limit":
-      return {
-        hint: "Câu trả lời dài quá giới hạn — chia nhỏ yêu cầu rồi thử lại.",
-        action: "retry",
-      };
+      return { hint: strings.appAdviceOutputLimit, action: "retry" };
     case "invalid-request":
-      return { hint: "Yêu cầu không hợp lệ — kiểm tra lại nội dung đã gửi.", action: null };
+      return { hint: strings.appAdviceInvalidRequest, action: null };
     default:
-      return { hint: "Chưa rõ nguyên nhân — bấm Gửi lại để thử.", action: "retry" };
+      return { hint: strings.appAdviceUnknown, action: "retry" };
   }
 }
 

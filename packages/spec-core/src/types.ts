@@ -274,6 +274,9 @@ export interface Issue {
   severity: "error" | "warning" | "info";
   path: string;
   message: string;
+  /** Machine-readable message + params added by the server for client-side translation. */
+  code?: string;
+  params?: Record<string, unknown>;
 }
 
 export const PARAMETER_TYPES: ParameterType[] = [

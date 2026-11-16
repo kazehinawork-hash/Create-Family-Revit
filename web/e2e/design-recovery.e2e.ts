@@ -13,7 +13,7 @@ async function sendBrief(page: import("@playwright/test").Page, text: string) {
   await page.goto("/");
   const composer = page.locator("textarea").first();
   await composer.fill(text);
-  await page.getByRole("button", { name: "Send" }).click();
+  await page.getByTestId("chat-send").click();
 }
 
 test("a dropped design stream is recovered from the job", async ({ page }) => {

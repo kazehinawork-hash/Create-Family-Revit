@@ -68,10 +68,12 @@ import {
   type DesignStats,
 } from "./lib/api";
 import { ALL_GROUPS, UNGROUPED, readLibraryState } from "./lib/library";
-import { formatDuration, type Units } from "./lib/format";
+import type { Units } from "./lib/format";
 import { isModelId } from "./lib/api-key";
 import { describeOutcome, errorAdvice, splitErrorMessage } from "./lib/outcome";
-import { t } from "./lib/strings";
+import { useI18n } from "./lib/i18n";
+import type { Strings } from "./lib/strings";
+import { translateServerMessage } from "./lib/server-messages";
 import {
   applyTheme,
   readTheme,
@@ -84,6 +86,19 @@ import {
 function newId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+/**
+ * Run durations carry unit labels ("12 s", "3 min 04 s"), so they follow the active
+ * language. Numbers leave the formatter as strings: dictionaries never format.
+ */
+function durationText(ms: number, t: Strings): string {
+  if (!Number.isFinite(ms) || ms < 0) return t.appDurationUnknown;
+  const totalSeconds = Math.round(ms / 1000);
+  if (totalSeconds < 60) return t.appDurationSeconds(String(totalSeconds));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return t.appDurationMinutes(String(minutes), String(seconds).padStart(2, "0"));
 }
 
 /**
@@ -186,12 +201,13 @@ function readStoredModel(): string {
 }
 
 export function App() {
+  const { t, formatDate, formatDateTime, formatNumber, language } = useI18n();
   const [spec, setSpec] = useState<FamilySpec | null>(null);
   const [entries, setEntries] = useState<ChatEntry[]>([
     {
       id: "seed",
       role: "agent",
-      text: "Xin chào! Hãy mô tả thiết bị bạn cần dựng hoặc kéo thả tài liệu/bản vẽ (PDF, ảnh) vào đây để tôi bắt đầu thiết kế từ đầu.",
+      text: t.appChatGreeting,
     },
   ]);
   const [stage, setStage] = useState<StageState | null>(null);
@@ -266,6 +282,7 @@ export function App() {
     }
   }, []);
   const [revisions, setRevisions] = useState<SavedModelRevision[]>([]);
+  const [historyKeep, setHistoryKeep] = useState(20);
   const [revisionsLoading, setRevisionsLoading] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   /** Last brief, so the chat's "Gửi lại" button can resend it. */
@@ -539,6 +556,10 @@ export function App() {
 
   // Real-time synchronization with MCP / External Agents
   const lastExternalHashRef = useRef<string>("");
+  // The stream lives across renders, so it reads the active language through a ref
+  // instead of being torn down and re-subscribed on every language switch.
+  const liveStringsRef = useRef({ t, formatNumber });
+  liveStringsRef.current = { t, formatNumber };
 
   useEffect(() => {
     let alive = true;
@@ -547,6 +568,7 @@ export function App() {
       if (!alive || !data || !data.spec || !data.spec_hash) return;
       if (data.spec_hash === lastExternalHashRef.current) return;
 
+      const { t, formatNumber } = liveStringsRef.current;
       lastExternalHashRef.current = data.spec_hash;
       applySpec(data.spec);
       setNative(false);
@@ -555,11 +577,14 @@ export function App() {
       const paramsCount =
         data.geometry_summary?.parameters_count ?? (data.spec.parameters?.length || 0);
       const bounds = data.geometry_summary?.bounds;
-      const dims = bounds ? ` · ${bounds.x} × ${bounds.y} × ${bounds.z} mm` : "";
+      const dims = bounds
+        ? ` · ${formatNumber(bounds.x)} × ${formatNumber(bounds.y)} × ${formatNumber(bounds.z)} mm`
+        : "";
+      const summary = t.appPartsParams(formatNumber(partsCount), formatNumber(paramsCount));
 
       pushEntry({
         role: "agent",
-        text: `Đã nhận Family Spec từ MCP: ${data.spec.name || "Family"}.\n${partsCount} chi tiết · ${paramsCount} tham số${dims}`,
+        text: t.appMcpSpecReceived(data.spec.name || "Family", `${summary}${dims}`),
         notes: data.spec.notes,
         meta: "⚡ MCP Real-time Sync",
         issues: (data.warnings || []).map((w) => ({
@@ -570,8 +595,8 @@ export function App() {
       });
 
       setToast({
-        text: `Đã nạp 3D Family từ MCP: ${data.spec.name || "Family"}`,
-        sub: `${partsCount} chi tiết · ${paramsCount} tham số. Hiển thị trực tiếp trên 3D Viewport.`,
+        text: t.appMcpLoadedTitle(data.spec.name || "Family"),
+        sub: t.appMcpLoadedSub(summary),
         tone: "ok",
       });
     };
@@ -640,7 +665,7 @@ export function App() {
     } catch (error) {
       pushEntry({
         role: "agent",
-        text: `Could not attach file: ${error instanceof Error ? error.message : String(error)}`,
+        text: t.appAttachFailed(error instanceof Error ? error.message : String(error)),
         tone: "error",
       });
     } finally {
@@ -673,8 +698,8 @@ export function App() {
 
     if (spec) {
       setToast({
-        text: `Đã chọn LOD ${value}`,
-        sub: "Yêu cầu chỉnh sửa tiếp theo sẽ dựng lại mô hình ở mức chi tiết này.",
+        text: t.appLodSelected(formatNumber(value)),
+        sub: t.appLodSelectedSub,
         tone: "ok",
       });
     }
@@ -696,7 +721,7 @@ export function App() {
     setNow(Date.now());
     setStage({
       stage: "thinking",
-      message: docs.length > 0 ? "Đang đọc tài liệu đính kèm…" : "Đang đọc yêu cầu…",
+      message: docs.length > 0 ? t.appStageReadingAttachments : t.appStageReadingRequest,
     });
 
     let failed = false;
@@ -725,8 +750,11 @@ export function App() {
       outcome: "ok" | "incomplete" | "has-errors" | "unchanged" | null = null,
       errors: Array<{ message?: string } | string> = [],
     ) => {
+      // k-values keep one decimal, using the active locale's decimal separator.
+      const kilo = (value: number) =>
+        formatNumber(value / 1000, { maximumFractionDigits: 1, minimumFractionDigits: 1 });
       const dims = stats.bounds
-        ? `${stats.bounds.x} × ${stats.bounds.y} × ${stats.bounds.z} mm`
+        ? `${formatNumber(stats.bounds.x)} × ${formatNumber(stats.bounds.y)} × ${formatNumber(stats.bounds.z)} mm`
         : "";
       const fast = stats.fastEdit;
       const fastUnit = fast?.type === "Length" ? " mm" : fast?.type === "Angle" ? "°" : "";
@@ -738,18 +766,20 @@ export function App() {
           ? `\n${stats.steps
               .map(
                 (step: { label: string; ms: number; ok: boolean; error?: string }) =>
-                  `${step.ok ? "✓" : "⚠"} ${step.label}: ${formatDuration(step.ms)}${step.error ? ` (${step.error})` : ""}`,
+                  `${step.ok ? "✓" : "⚠"} ${step.label}: ${durationText(step.ms, t)}${step.error ? ` (${step.error})` : ""}`,
               )
               .join(" · ")}`
           : "";
 
       const tierLine =
         stats.tier != null
-          ? ` · tầng ${stats.tier}${stats.tierLabel ? ` (${stats.tierLabel})` : ""}` +
-            ` · ${stats.model ?? "không gọi model"} · ${stats.modelCalls ?? 0} lượt` +
-            ` · prompt ${((stats.promptChars ?? 0) / 1000).toFixed(1)}k`
+          ? ` · ${t.appTier(formatNumber(stats.tier), stats.tierLabel ?? "")}` +
+            ` · ${stats.model ?? t.appNoModel} · ${t.appCalls(formatNumber(stats.modelCalls ?? 0))}` +
+            ` · ${t.appPromptChars(kilo(stats.promptChars ?? 0))}`
           : "";
-      const savedLine = stats.savedCalls ? ` · tiết kiệm ${stats.savedCalls} lượt` : "";
+      const savedLine = stats.savedCalls
+        ? ` · ${t.appSavedCalls(formatNumber(stats.savedCalls))}`
+        : "";
       const inChars = (stats.calls ?? []).reduce(
         (total, call) => total + (call.inChars ?? call.promptChars ?? 0),
         0,
@@ -757,12 +787,12 @@ export function App() {
       const outChars = (stats.calls ?? []).reduce((total, call) => total + (call.outChars ?? 0), 0);
       const callLine =
         (stats.calls?.length ?? 0) > 0
-          ? ` · ${stats.calls!.length} lượt` +
-            (inChars ? ` · vào ${(inChars / 1000).toFixed(1)}k` : "") +
-            (outChars ? ` / ra ${(outChars / 1000).toFixed(1)}k ký tự` : "")
+          ? ` · ${t.appCalls(formatNumber(stats.calls!.length))}` +
+            (inChars ? ` · ${t.appInChars(kilo(inChars))}` : "") +
+            (outChars ? ` / ${t.appOutChars(kilo(outChars))}` : "")
           : "";
       const isIncomplete = stats.complete === false || outcome === "incomplete";
-      setIncomplete(isIncomplete ? (stats.missing ?? ["Không rõ hạng mục thiếu"]) : null);
+      setIncomplete(isIncomplete ? (stats.missing ?? [t.appMissingUnknown]) : null);
 
       const copy = describeOutcome(
         {
@@ -774,13 +804,14 @@ export function App() {
           },
         },
         { updated: hadSpec },
+        t,
       );
       const bullets = copy.items
         .slice(0, 12)
         .map((item) => `• ${item}`)
         .join("\n");
       const summary =
-        `${stats.parts} chi tiết · ${stats.parameters} tham số${stats.lod ? ` · LOD ${stats.lod}` : ""}` +
+        `${t.appPartsParams(formatNumber(stats.parts), formatNumber(stats.parameters))}${stats.lod ? ` · LOD ${stats.lod}` : ""}` +
         `${dims ? ` · ${dims}` : ""}${fastLine}${stepLine}${callLine}`;
 
       setSessionUsage((current) => {
@@ -810,7 +841,7 @@ export function App() {
         action: stats.cached
           ? { label: t.runFresh, kind: "fresh" as const }
           : copy.outcome === "unchanged"
-            ? { label: "Gửi lại" }
+            ? { label: t.appResend }
             : undefined,
         resolution: Array.isArray(stats.resolution)
           ? (stats.resolution as {
@@ -821,18 +852,15 @@ export function App() {
             }[])
           : undefined,
         meta: fast
-          ? `⚡ local · ${formatDuration(stats.elapsedMs)}${savedLine}`
+          ? `⚡ local · ${durationText(stats.elapsedMs, t)}${savedLine}`
           : stats.cached
             ? (() => {
                 const time = stats.cachedAt
-                  ? new Date(stats.cachedAt).toLocaleTimeString("vi-VN", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })
+                  ? formatDate(stats.cachedAt, { hour: "2-digit", minute: "2-digit" })
                   : "--:--";
                 return `${t.cachedResult(time)} · 0 token${savedLine}`;
               })()
-            : `${formatDuration(stats.elapsedMs)}${tierLine}${savedLine}`,
+            : `${durationText(stats.elapsedMs, t)}${tierLine}${savedLine}`,
       });
     };
 
@@ -844,6 +872,7 @@ export function App() {
           lod,
           model: model || undefined,
           fresh: sendOptions?.fresh || undefined,
+          language,
           customApiConfig:
             model === "custom:api"
               ? (() => {
@@ -878,11 +907,12 @@ export function App() {
           if (event.type === "suggestion") {
             pushEntry({
               role: "agent",
-              text: `Có family đã lưu gần giống: ${event.sample.name} (khớp ${Math.round(
-                event.sample.score * 100,
-              )}%).\nBắt đầu từ mẫu này sẽ rẻ hơn tạo mới — chỉ cần sửa lại theo yêu cầu.`,
+              text: t.appSimilarSaved(
+                event.sample.name,
+                formatNumber(Math.round(event.sample.score * 100)),
+              ),
               action: {
-                label: "Bắt đầu từ mẫu gần nhất",
+                label: t.appSimilarSavedAction,
                 kind: "use-sample",
                 sampleId: event.sample.id,
               },
@@ -891,25 +921,33 @@ export function App() {
           }
 
           if (event.type === "stage") {
-            setStage({ stage: event.stage, message: event.message, issues: event.issues });
+            setStage({
+              stage: event.stage,
+              message: translateServerMessage(language, event.code, event.params, event.message),
+              issues: event.issues,
+            });
             return;
           }
 
           if (event.type === "error") {
             failed = true;
             setStage(null);
-            const advice = errorAdvice(event.kind);
-            const { text, details } = splitErrorMessage(event.message);
+            const advice = errorAdvice(event.kind, t);
+            const shown = translateServerMessage(language, event.code, event.params, event.message);
+            const { text, details } = splitErrorMessage(shown);
             pushEntry({
               role: "agent",
               tone: "error",
               text: `⛔ ${text}\n${advice.hint}`,
-              details: [event.details, details].filter(Boolean).join("\n\n") || undefined,
+              details:
+                [event.details, event.message !== shown ? event.message : details]
+                  .filter(Boolean)
+                  .join("\n\n") || undefined,
               action:
                 advice.action === "retry"
-                  ? { label: "Gửi lại" }
+                  ? { label: t.appResend }
                   : advice.action === "open-api"
-                    ? { label: "Mở cấu hình API", kind: "open-api" }
+                    ? { label: t.appOpenApiConfig, kind: "open-api" }
                     : undefined,
             });
             return;
@@ -923,7 +961,11 @@ export function App() {
           if (stats.step?.partial) {
             setStage({
               stage: "step",
-              message: `${stats.step.label} xong — đang làm bước ${stats.step.index + 1}/${stats.step.total}`,
+              message: t.appStepProgress(
+                stats.step.label,
+                formatNumber(stats.step.index + 1),
+                formatNumber(stats.step.total),
+              ),
             });
             return;
           }
@@ -940,7 +982,7 @@ export function App() {
 
       if (!receivedSpec && !stalled && jobId && !failed) {
         // The socket died but the server kept working: fetch the stored result.
-        setStage({ stage: "recovering", message: "Mất kết nối, đang lấy lại kết quả…" });
+        setStage({ stage: "recovering", message: t.appStageRecovering });
 
         const recovered = await waitForDesignJob(jobId, controller.signal);
         if (recovered === "missing") {
@@ -948,20 +990,16 @@ export function App() {
           pushEntry({
             role: "agent",
             tone: "error",
-            text:
-              "⛔ Server đã restart và không còn job này, nên kết quả bị mất.\n" +
-              "Gửi lại yêu cầu — nếu prompt rất dài, hãy tách phần connector và bảng màu ra, hoặc chọn model nhanh hơn.",
-            action: { label: "Gửi lại" },
+            text: t.appErrorJobLost,
+            action: { label: t.appResend },
           });
         } else if (recovered === "timeout") {
           setStage(null);
           pushEntry({
             role: "agent",
             tone: "error",
-            text:
-              "⛔ Đã chờ 10 phút nhưng job vẫn chưa xong, nên tạm dừng lấy kết quả.\n" +
-              "Bấm Gửi lại (job cũ vẫn có thể xong sau), hoặc tách yêu cầu thành phần khung → connector → vật liệu.",
-            action: { label: "Gửi lại" },
+            text: t.appErrorJobTimeout,
+            action: { label: t.appResend },
           });
         } else if (recovered.spec) {
           receivedSpec = true;
@@ -979,26 +1017,32 @@ export function App() {
               attempts: 0,
               elapsedMs: 0,
             },
-            "Đã lấy lại kết quả sau khi mất kết nối.\n",
+            t.appRecoveredPrefix,
           );
         } else {
           setStage(null);
-          const { text, details } = splitErrorMessage(recovered.error ?? "không rõ nguyên nhân");
+          const stored = translateServerMessage(
+            language,
+            recovered.code ?? undefined,
+            {},
+            recovered.error ?? t.appUnknownReason,
+          );
+          const { text, details } = splitErrorMessage(stored);
           pushEntry({
             role: "agent",
             tone: "error",
-            text: `⛔ Job kết thúc với lỗi: ${text}\n${errorAdvice("unknown").hint}`,
+            text: t.appErrorJobFailed(text, errorAdvice("unknown", t).hint),
             details,
-            action: { label: "Gửi lại" },
+            action: { label: t.appResend },
           });
         }
       } else if (!receivedSpec && !stalled && !failed) {
         failed = true;
         pushEntry({
           role: "agent",
-          text: "⛔ Server đóng kết nối mà chưa trả về spec — có thể API vừa restart. Bấm gửi lại yêu cầu.",
+          text: t.appErrorClosedNoSpec,
           tone: "error",
-          action: { label: "Gửi lại" },
+          action: { label: t.appResend },
         });
       }
     } catch (error) {
@@ -1006,23 +1050,21 @@ export function App() {
         failed = true;
         pushEntry({
           role: "agent",
-          text:
-            "⛔ Không nhận được phản hồi từ server quá 15 phút nên đã dừng.\n" +
-            "Thường là do API vừa restart (`npm run dev` reload khi có file thay đổi) — kiểm tra pill trạng thái rồi gửi lại.",
+          text: t.appErrorNoResponse,
           tone: "error",
-          action: { label: "Gửi lại" },
+          action: { label: t.appResend },
         });
       } else if (error instanceof Error && error.name === "AbortError") {
-        pushEntry({ role: "agent", text: "Đã dừng." });
+        pushEntry({ role: "agent", text: t.appStopped });
       } else {
         const message = error instanceof Error ? error.message : String(error);
         const { text, details } = splitErrorMessage(message);
         pushEntry({
           role: "agent",
           tone: "error",
-          text: `⛔ ${text}\n${errorAdvice(null).hint}`,
+          text: `⛔ ${text}\n${errorAdvice(null, t).hint}`,
           details,
-          action: { label: "Gửi lại" },
+          action: { label: t.appResend },
         });
         // Find out right away whether the API itself is down.
         void pingServer().then((ping) => setServerOnline(Boolean(ping?.ok)));
@@ -1091,21 +1133,21 @@ export function App() {
 
     setExportingTypes(true);
     setToast({
-      text: `Đang xuất ${types.length} type trong một file RFA…`,
-      sub: "Revit dựng family rồi tạo từng Family Type từ danh sách.",
+      text: t.appExportTypesTitle(formatNumber(types.length)),
+      sub: t.appExportTypesSub,
       tone: "ok",
     });
 
     try {
       const result = await exportMultiType({ ...current, revitVersion });
       setToast({
-        text: `Đã xuất ${types.length} type trong một file .rfa`,
+        text: t.appExportTypesDone(formatNumber(types.length)),
         sub: result.path ? `${result.path} · ${result.types ?? types.length} type` : undefined,
         tone: "ok",
       });
     } catch (error) {
       setToast({
-        text: "Xuất nhiều type thất bại",
+        text: t.appExportTypesFailed,
         sub: error instanceof Error ? error.message : String(error),
         tone: "error",
       });
@@ -1167,21 +1209,21 @@ export function App() {
     if (!spec || !analysis?.ok || exportingPortable) return;
     setExportingPortable(true);
     setToast({
-      text: "Đang tạo gói 1-Click RFA Portable...",
-      sub: "Đang đóng gói file spec, runner và kịch bản tự động dựng Native Family cho Revit...",
+      text: t.appPortableStarted,
+      sub: t.appPortableStartedSub,
       tone: "ok",
     });
 
     try {
       await downloadPortablePackage({ ...spec, revitVersion });
       setToast({
-        text: "Tải gói 1-Click RFA thành công!",
-        sub: "Giải nén file zip và click đúp '1-Click-Build.bat' trên máy có Revit để sinh file .rfa.",
+        text: t.appPortableDone,
+        sub: t.appPortableDoneSub,
         tone: "ok",
       });
     } catch (err: any) {
       setToast({
-        text: "Không thể tạo gói Portable",
+        text: t.appPortableFailed,
         sub: err?.message || String(err),
         tone: "error",
       });
@@ -1194,8 +1236,8 @@ export function App() {
     if (!spec || !analysis?.ok || building) return;
     setBuilding(true);
     setToast({
-      text: "Đang build family trong Revit…",
-      sub: "Nếu Revit chưa mở, hệ thống sẽ tự khởi động (khoảng 1 phút). File .rfa sẽ tự tải về khi xong.",
+      text: t.appBuildStarted,
+      sub: t.appBuildStartedSub,
       tone: "ok",
     });
     try {
@@ -1213,38 +1255,24 @@ export function App() {
         const rebuildMode = buildMode === "planes" || buildMode === "rebuild";
         const notes = [
           ...(result.warnings ?? []),
-          ...(buildMode === "planes"
-            ? [
-                "Revit giữ được dimension theo reference plane nhưng không giữ được ràng buộc mặt: hình cập nhật bằng rebuild.",
-              ]
-            : []),
-          ...(buildMode === "rebuild"
-            ? [
-                "Family chạy chế độ rebuild: đổi tham số sẽ giải lại spec, dimension chỉ để tham chiếu.",
-              ]
-            : []),
-          ...(missingForms > 0
-            ? [`Thiếu ${missingForms} part/copy khi build — xem danh sách bên dưới.`]
-            : []),
-          ...failedParts.slice(0, 5).map((item) => `Part không dựng được: ${item}`),
-          ...(qa?.rebuildRequired
-            ? [
-                "Build QA: có part cần Rebuild from spec khi đổi tham số (FreeFormElement hoặc ràng buộc chưa compile).",
-              ]
-            : []),
-          ...unlabelled.map((item) => `Chưa dẫn động: ${item}`),
-          ...inert.map((name) => `Có nhãn nhưng chưa kéo được hình: ${name}`),
+          ...(buildMode === "planes" ? [t.appBuildNotePlanes] : []),
+          ...(buildMode === "rebuild" ? [t.appBuildNoteRebuild] : []),
+          ...(missingForms > 0 ? [t.appBuildMissingForms(formatNumber(missingForms))] : []),
+          ...failedParts.slice(0, 5).map((item) => t.appBuildFailedPart(item)),
+          ...(qa?.rebuildRequired ? [t.appBuildNoteQa] : []),
+          ...unlabelled.map((item) => t.appBuildUnlabelled(item)),
+          ...inert.map((name) => t.appBuildInert(name)),
         ].slice(0, 14);
 
         pushEntry({
           role: "agent",
           text:
-            `Đã xuất ${spec.name}.rfa (Revit ${result.revitVersion ?? revitVersion}).\n` +
-            `${driving.length} tham số dẫn động · ${result.stats?.locks ?? 0} ràng buộc hình học` +
-            `${result.stats?.refPlanes ? ` · ${result.stats.refPlanes} reference plane` : ""}` +
-            `${result.stats?.joins ? ` · ${result.stats.joins} join` : ""}` +
-            `${result.stats?.totalForms !== undefined ? ` · ${result.stats.totalForms} form` : ""}` +
-            `${qa ? ` · QA ${qa.ok ? "pass" : `${qa.warnings.length} cảnh báo`}` : ""}`,
+            `${t.appBuildResultTitle(spec.name, result.revitVersion ?? revitVersion)}\n` +
+            `${t.appBuildDriving(formatNumber(driving.length), formatNumber(result.stats?.locks ?? 0))}` +
+            `${result.stats?.refPlanes ? ` · ${formatNumber(result.stats.refPlanes)} reference plane` : ""}` +
+            `${result.stats?.joins ? ` · ${formatNumber(result.stats.joins)} join` : ""}` +
+            `${result.stats?.totalForms !== undefined ? ` · ${formatNumber(result.stats.totalForms)} form` : ""}` +
+            `${qa ? ` · QA ${qa.ok ? "pass" : t.appBuildQaWarnings(formatNumber(qa.warnings.length))}` : ""}`,
           notes: notes.length > 0 ? notes : undefined,
           meta: result.path,
           tone: (driving.length === 0 && !rebuildMode) || missingForms > 0 ? "error" : undefined,
@@ -1253,20 +1281,20 @@ export function App() {
         setToast({
           text:
             missingForms > 0
-              ? `Build xong nhưng thiếu ${missingForms} part/copy`
+              ? t.appBuildDoneMissing(formatNumber(missingForms))
               : rebuildMode
-                ? "Revit family built — rebuild-from-spec"
+                ? t.appBuildDoneRebuild
                 : qa?.rebuildRequired
-                  ? "Build xong — cần Rebuild from spec khi đổi tham số"
-                  : "Revit family built successfully!",
+                  ? t.appBuildDoneNeedsRebuild
+                  : t.appBuildDoneSuccess,
           sub:
             missingForms > 0
-              ? "Xem notes hoặc Documents\\FamilyAgent\\logs\\autosync.log để biết part nào lỗi."
+              ? t.appBuildMissingHint
               : rebuildMode
-                ? "Đổi tham số trong Revit sẽ tự giải lại spec, ra đúng hình như localhost."
+                ? t.appBuildRebuildSub
                 : driving.length === 0
-                  ? "Cảnh báo: chưa có tham số nào được gắn nhãn dimension — đổi thông số sẽ không đổi hình."
-                  : `${driving.length} tham số dẫn động hình học · ${result.path}`,
+                  ? t.appBuildNoDrivingWarning
+                  : t.appBuildDrivingSub(formatNumber(driving.length), result.path),
           tone:
             missingForms > 0 || (driving.length === 0 && !rebuildMode)
               ? "error"
@@ -1285,8 +1313,8 @@ export function App() {
         document.body.removeChild(link);
       } else if (result.mode === "queue") {
         setToast({
-          text: "Chưa bật Studio Bridge trong Revit",
-          sub: "Vào tab 'Family Agent' trên Revit và bấm nút 'Studio bridge' (hoặc 'Build pending')",
+          text: t.appBridgeOffTitle,
+          sub: t.appBridgeOffSub,
           tone: "warn",
         });
         // Provide direct download of JSON spec
@@ -1299,7 +1327,7 @@ export function App() {
           document.body.removeChild(link);
         }
       } else {
-        setToast({ text: result.error ?? "The build failed", tone: "error" });
+        setToast({ text: result.error ?? t.appBuildFailed, tone: "error" });
       }
     } catch (error) {
       setToast({ text: error instanceof Error ? error.message : String(error), tone: "error" });
@@ -1346,7 +1374,7 @@ export function App() {
       if (res.ok && res.id) {
         setCurrentModelId(res.id);
         setToast({
-          text: "Đã lưu mô hình thành công!",
+          text: t.appSaveDone,
           sub: `ID: ${res.id}`,
           tone: "ok",
         });
@@ -1354,7 +1382,7 @@ export function App() {
       }
     } catch (error) {
       setToast({
-        text: `Lưu thất bại: ${error instanceof Error ? error.message : String(error)}`,
+        text: t.appSaveFailed(error instanceof Error ? error.message : String(error)),
         tone: "error",
       });
     }
@@ -1362,7 +1390,7 @@ export function App() {
 
   const handleSaveModelAs = async () => {
     if (!spec) return;
-    const entered = window.prompt("Tên bản mới:", `${spec.name} copy`);
+    const entered = window.prompt(t.appSaveAsPrompt, `${spec.name} copy`);
     const name = entered?.trim();
     if (!name) return;
 
@@ -1380,15 +1408,15 @@ export function App() {
         applySpec(copySpec);
         setCurrentModelId(res.id);
         setToast({
-          text: "Đã lưu thành bản mới!",
-          sub: `Tên: ${name}`,
+          text: t.appSaveAsDone,
+          sub: t.appSaveAsSub(name),
           tone: "ok",
         });
         if (libraryOpen) void refreshLibrary();
       }
     } catch (error) {
       setToast({
-        text: `Lưu thất bại: ${error instanceof Error ? error.message : String(error)}`,
+        text: t.appSaveFailed(error instanceof Error ? error.message : String(error)),
         tone: "error",
       });
     }
@@ -1520,10 +1548,10 @@ export function App() {
       const result = await createLibraryGroup(name);
       setLibraryGroups(result.groups ?? []);
       setLibraryGroup(result.name);
-      setToast({ text: `Đã tạo nhóm "${result.name}"`, tone: "ok" });
+      setToast({ text: t.appGroupCreated(result.name), tone: "ok" });
     } catch (error) {
       setToast({
-        text: `Không tạo được nhóm: ${error instanceof Error ? error.message : String(error)}`,
+        text: t.appGroupCreateFailed(error instanceof Error ? error.message : String(error)),
         tone: "error",
       });
     }
@@ -1534,10 +1562,10 @@ export function App() {
       await renameLibraryGroup(from, to);
       if (libraryGroup === from) setLibraryGroup(to);
       await refreshLibrary();
-      setToast({ text: `Đã đổi tên nhóm thành "${to}"`, tone: "ok" });
+      setToast({ text: t.appGroupRenamed(to), tone: "ok" });
     } catch (error) {
       setToast({
-        text: `Không đổi được tên nhóm: ${error instanceof Error ? error.message : String(error)}`,
+        text: t.appGroupRenameFailed(error instanceof Error ? error.message : String(error)),
         tone: "error",
       });
     }
@@ -1549,13 +1577,13 @@ export function App() {
       if (libraryGroup === name) setLibraryGroup(ALL_GROUPS);
       await refreshLibrary();
       setToast({
-        text: `Đã xoá nhóm "${name}"`,
-        sub: "Các family trong nhóm đã chuyển về Chưa nhóm.",
+        text: t.appGroupDeleted(name),
+        sub: t.appGroupDeletedSub,
         tone: "ok",
       });
     } catch (error) {
       setToast({
-        text: `Không xoá được nhóm: ${error instanceof Error ? error.message : String(error)}`,
+        text: t.appGroupDeleteFailed(error instanceof Error ? error.message : String(error)),
         tone: "error",
       });
     }
@@ -1570,12 +1598,12 @@ export function App() {
       const snapshot = await fetchLibraryGroups();
       setLibraryGroups(snapshot.groups);
       setToast({
-        text: group ? `Đã chuyển vào nhóm "${group}"` : "Đã chuyển về Chưa nhóm",
+        text: group ? t.appMovedToGroup(group) : t.appMovedToUngrouped,
         tone: "ok",
       });
     } catch (error) {
       setToast({
-        text: `Không chuyển được nhóm: ${error instanceof Error ? error.message : String(error)}`,
+        text: t.appMoveFailed(error instanceof Error ? error.message : String(error)),
         tone: "error",
       });
     }
@@ -1584,7 +1612,9 @@ export function App() {
   const handleOpenHistory = async (id: string) => {
     setHistoryModelId(id);
     setRevisionsLoading(true);
-    setRevisions(await fetchModelHistory(id));
+    const history = await fetchModelHistory(id);
+    setRevisions(history.revisions);
+    setHistoryKeep(history.keep);
     setRevisionsLoading(false);
   };
 
@@ -1592,7 +1622,7 @@ export function App() {
     if (!historyModelId) return;
     const revision = await fetchModelRevision(historyModelId, stamp);
     if (!revision?.spec) {
-      setToast({ text: "Không đọc được bản lưu này", tone: "error" });
+      setToast({ text: t.appRevisionUnreadable, tone: "error" });
       return;
     }
     applySpec(revision.spec, { reset: true });
@@ -1600,8 +1630,8 @@ export function App() {
     setHistoryModelId(null);
     setLibraryOpen(false);
     setToast({
-      text: "Đã khôi phục bản lưu",
-      sub: new Date(revision.savedAt).toLocaleString(),
+      text: t.appRevisionRestored,
+      sub: formatDateTime(revision.savedAt),
       tone: "ok",
     });
   };
@@ -1620,19 +1650,19 @@ export function App() {
             {
               id: newId(),
               role: "agent",
-              text: `Đã nạp lại mô hình đã lưu: ${detail.spec.name}.\nBạn có thể tiếp tục trò chuyện để yêu cầu chỉnh sửa hoặc thay đổi thông số.`,
+              text: t.appModelReloaded(detail.spec.name),
             },
           ]);
         }
         setLibraryOpen(false);
         setToast({
-          text: `Đã mở mô hình: ${detail.name}`,
+          text: t.appModelOpened(detail.name),
           tone: "ok",
         });
       }
     } catch (error) {
       setToast({
-        text: `Không thể mở mô hình: ${error instanceof Error ? error.message : String(error)}`,
+        text: t.appModelOpenFailed(error instanceof Error ? error.message : String(error)),
         tone: "error",
       });
     }
@@ -1662,10 +1692,10 @@ export function App() {
         });
       }
 
-      setToast({ text: "Đã đổi tên mô hình", tone: "ok" });
+      setToast({ text: t.appModelRenamed, tone: "ok" });
     } catch (error) {
       setToast({
-        text: `Đổi tên thất bại: ${error instanceof Error ? error.message : String(error)}`,
+        text: t.appModelRenameFailed(error instanceof Error ? error.message : String(error)),
         tone: "error",
       });
     }
@@ -1697,7 +1727,7 @@ export function App() {
       });
     } catch (error) {
       setToast({
-        text: `Xoá thất bại: ${error instanceof Error ? error.message : String(error)}`,
+        text: t.appDeleteFailed(error instanceof Error ? error.message : String(error)),
         tone: "error",
       });
     }
@@ -1710,7 +1740,7 @@ export function App() {
       setToast({ text: t.trashRestored, tone: "ok" });
     } catch (error) {
       setToast({
-        text: `Khôi phục thất bại: ${error instanceof Error ? error.message : String(error)}`,
+        text: t.appRestoreFailed(error instanceof Error ? error.message : String(error)),
         tone: "error",
       });
     }
@@ -1723,7 +1753,7 @@ export function App() {
       setToast({ text: t.trashPurged, tone: "ok" });
     } catch (error) {
       setToast({
-        text: `Xoá vĩnh viễn thất bại: ${error instanceof Error ? error.message : String(error)}`,
+        text: t.appPurgeFailed(error instanceof Error ? error.message : String(error)),
         tone: "error",
       });
     }
@@ -1736,19 +1766,14 @@ export function App() {
       setToast({ text: t.trashEmptied, tone: "ok" });
     } catch (error) {
       setToast({
-        text: `Dọn thùng rác thất bại: ${error instanceof Error ? error.message : String(error)}`,
+        text: t.appEmptyTrashFailed(error instanceof Error ? error.message : String(error)),
         tone: "error",
       });
     }
   };
 
   const handleNewModel = () => {
-    if (
-      spec &&
-      !window.confirm(
-        "Bắt đầu mô hình mới? Hãy chắc chắn bạn đã bấm Save nếu muốn lưu mô hình hiện tại.",
-      )
-    ) {
+    if (spec && !window.confirm(t.appConfirmNewModel)) {
       return;
     }
     applySpec(null, { reset: true });
@@ -1757,7 +1782,7 @@ export function App() {
       {
         id: "seed",
         role: "agent",
-        text: "Xin chào! Hãy mô tả thiết bị bạn cần dựng hoặc kéo thả tài liệu/bản vẽ (PDF, ảnh) vào đây để tôi bắt đầu thiết kế từ đầu.",
+        text: t.appChatGreeting,
       },
     ]);
   };
@@ -1767,19 +1792,18 @@ export function App() {
     let userPromptText = "";
     if (key === "fcu") {
       demoRaw = fcuExampleRaw;
-      userPromptText = "Dựng FCU âm trần nối ống gió Daikin FXDQ-SPV1 (Demo Preset)";
+      userPromptText = t.appDemoPromptFcu;
     } else if (key === "pump") {
       demoRaw = pumpExampleRaw;
-      userPromptText = "Dựng bơm ly tâm trục ngang Grundfos NB 50-200 (Demo Preset)";
+      userPromptText = t.appDemoPromptPump;
     } else if (key === "ystrainer") {
       demoRaw = ystrainerExampleRaw;
-      userPromptText = "Dựng Y lọc DN80 PN16 bích 8 bulong, nhánh 45 độ, nắp bulong (Demo Preset)";
+      userPromptText = t.appDemoPromptYStrainer;
     } else if (key === "ystrainer-tube") {
       demoRaw = ystrainerTubeExampleRaw;
-      userPromptText =
-        "Dựng Y lọc DN80 nhánh tube 45°, bích và nắp vuông góc trục nhánh (Demo Preset)";
+      userPromptText = t.appDemoPromptYStrainerTube;
     } else if (key === "elbow") {
-      userPromptText = "Dựng cút gió 90 độ nối ren DN50 (Demo Preset)";
+      userPromptText = t.appDemoPromptElbow;
       demoRaw = {
         schemaVersion: "1.0",
         name: "Threaded 90 Deg Duct Elbow DN50",
@@ -1882,13 +1906,13 @@ export function App() {
     });
 
     // Step 1: Reading (t=0)
-    setStage({ stage: "reading", message: "Đang đọc bản vẽ và tài liệu kỹ thuật..." });
+    setStage({ stage: "reading", message: t.appDemoStageReading });
 
     // Step 2: Thinking / Analyzing (t=700ms)
     setTimeout(() => {
       setStage({
         stage: "thinking",
-        message: "Phân tích đầu nối MEP, kích thước & mặt phẳng làm việc...",
+        message: t.appDemoStageThinking,
       });
     }, 700);
 
@@ -1901,7 +1925,11 @@ export function App() {
     setTimeout(() => {
       setStage({
         stage: "generating",
-        message: `Đang dựng: ${allParts[0]?.name || "Khung chính"} (1/${allParts.length})`,
+        message: t.appDemoBuildStep(
+          allParts[0]?.name || t.appDemoMainFrame,
+          formatNumber(1),
+          formatNumber(allParts.length),
+        ),
       });
       applySpec(
         {
@@ -1919,7 +1947,11 @@ export function App() {
         () => {
           setStage({
             stage: "generating",
-            message: `Đang dựng: ${allParts[i - 1]?.name || `Part ${i}`} (${i}/${allParts.length})`,
+            message: t.appDemoBuildStep(
+              allParts[i - 1]?.name || t.appDemoPartFallback(formatNumber(i)),
+              formatNumber(i),
+              formatNumber(allParts.length),
+            ),
           });
           applySpec(
             {
@@ -1938,7 +1970,7 @@ export function App() {
 
     // Step 4: Checking & validation
     setTimeout(() => {
-      setStage({ stage: "checking", message: "Kiểm tra ràng buộc công thức & MEP connector..." });
+      setStage({ stage: "checking", message: t.appDemoStageChecking });
     }, totalBuildTime + 200);
 
     // Step 5: Finish
@@ -1952,25 +1984,20 @@ export function App() {
       const paramCount = parsed.parameters?.length ?? 0;
       pushEntry({
         role: "agent",
-        text: `⚡ [Giả lập Agent - 0 token] Đã hoàn thành thiết kế ${parsed.name}.\n${partCount} parts · ${paramCount} parameters`,
-        notes: Array.isArray(parsed.notes)
-          ? parsed.notes
-          : [
-              parsed.notes ||
-                "Chạy giả lập kiểm thử giao diện & hiệu ứng dựng tuần tự từng part thời gian thực thành công.",
-            ],
+        text: t.appDemoDone(parsed.name, formatNumber(partCount), formatNumber(paramCount)),
+        notes: Array.isArray(parsed.notes) ? parsed.notes : [parsed.notes || t.appDemoNote],
         meta: `${((totalBuildTime + 600) / 1000).toFixed(1)}s · Simulated pass`,
       });
 
       setToast({
-        text: `Đã hoàn thành dựng mô hình: ${parsed.name}`,
+        text: t.appDemoToastDone(parsed.name),
         tone: "ok",
       });
     }, totalBuildTime + 600);
   };
 
   return (
-    <div className="app">
+    <div className="app" lang={language}>
       <TopBar
         name={spec?.name ?? t.noFamily}
         category={spec?.category ?? t.noFamilyHint}
@@ -2004,7 +2031,7 @@ export function App() {
         onTheme={setThemeMode}
       />
 
-      <nav className="mobile-tabs" role="tablist" aria-label="Khu vực làm việc">
+      <nav className="mobile-tabs" role="tablist" aria-label={t.appWorkspaceTabs}>
         {(
           [
             ["chat", t.chatTab],
@@ -2091,7 +2118,7 @@ export function App() {
           className="resizer"
           role="separator"
           aria-orientation="vertical"
-          aria-label="Resize the agent panel"
+          aria-label={t.appResizeAgentPanel}
           tabIndex={0}
           title={t.resizePanel}
           onPointerDown={(event) => beginResize("left", event)}
@@ -2112,7 +2139,7 @@ export function App() {
           }}
           onLoadSample={() => {
             if (running) return;
-            void handleSend("Thang cáp ngã ba 400×100, 6 bậc, LOD 400");
+            void handleSend(t.chatSuggestion1);
           }}
           parameters={deferredParameters}
           materials={spec?.materials ?? []}
@@ -2143,7 +2170,7 @@ export function App() {
           className="resizer"
           role="separator"
           aria-orientation="vertical"
-          aria-label="Resize the parameter panel"
+          aria-label={t.appResizeParamPanel}
           tabIndex={0}
           title={t.resizePanel}
           onPointerDown={(event) => beginResize("right", event)}
@@ -2249,6 +2276,7 @@ export function App() {
           historyModelId={historyModelId}
           revisions={revisions}
           revisionsLoading={revisionsLoading}
+          historyKeep={historyKeep}
           onClose={() => {
             setLibraryOpen(false);
             setHistoryModelId(null);

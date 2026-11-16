@@ -8,7 +8,7 @@ import {
 } from "../lib/api";
 import { ApiKeyPanel, type ApiKeyStatus } from "./ApiKeyPanel";
 import { isApiReady } from "../lib/api-key";
-import { t, localizeIssueMessage } from "../lib/strings";
+import { useI18n } from "../lib/i18n";
 
 export interface ResolutionRow {
   name: string;
@@ -23,23 +23,6 @@ function levelClass(level?: number): string {
   if (level <= 2) return "lvl-exact";
   if (level === 3) return "lvl-measured";
   return "lvl-assumed";
-}
-
-function downloadResolutionCsv(rows: ResolutionRow[]) {
-  const cell = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
-  const csv = [
-    ["Tham số", "Giá trị", "Mức", "Nguồn"].map(cell).join(","),
-    ...rows.map((row) =>
-      [row.name, row.value, row.level ?? "", row.source ?? ""].map(cell).join(","),
-    ),
-  ].join("\n");
-
-  const url = URL.createObjectURL(new Blob([`\ufeff${csv}`], { type: "text/csv;charset=utf-8" }));
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "thong-so-da-dung.csv";
-  link.click();
-  URL.revokeObjectURL(url);
 }
 
 export interface ChatEntry {
@@ -97,18 +80,6 @@ interface Props {
 
 const EMPTY_MODELS: CmdcModel[] = [];
 
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-const SUGGESTIONS = [
-  "Bơm ly tâm trục ngang DN80 xả DN65, động cơ 15 kW, bệ đỡ thép hình U",
-  "FCU giấu trần nối ống gió 800 CFM, 3 hàng coil, hộp hồi kèm lưới lọc G4",
-  "Quạt thông gió gắn tường cánh 350 mm, chớp lật trọng lực, động cơ 1 pha",
-];
-
 export function ChatPanel({
   entries,
   running,
@@ -134,6 +105,8 @@ export function ChatPanel({
   incomplete,
   serverOnline,
 }: Props) {
+  const { t, formatDate, formatDateTime, formatNumber, localizeIssue } = useI18n();
+
   const [draft, setDraft] = useState("");
   const [preview, setPreview] = useState<UploadedDocument | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -219,53 +192,88 @@ export function ChatPanel({
 
   // Calculate real-time status for the selected model
   let isCurrentModelReady = modelBackendReady === true;
-  let statusText = modelBackendReady ? "Sẵn sàng" : "Đang kết nối...";
+  let statusText = modelBackendReady ? t.chatStatusReady : t.chatStatusConnecting;
   let statusTone: "ok" | "warn" | "error" = modelBackendReady ? "ok" : "warn";
-  let statusHint = agentDetail || "Agent đang hoạt động sẵn sàng nhận yêu cầu";
+  let statusHint = agentDetail || t.chatStatusReadyHint;
 
   if (serverOnline === false) {
     // The API itself is unreachable: no model can run, whatever is selected.
     isCurrentModelReady = false;
-    statusText = "Mất kết nối server";
+    statusText = t.chatStatusServerOffline;
     statusTone = "error";
-    statusHint = "API 127.0.0.1:8787 không phản hồi — đang thử lại…";
+    statusHint = t.chatStatusServerOfflineHint;
   } else if (isCustomApi) {
     // A machine without any CLI can still work through Direct API, so this status
     // comes from the panel instead of the CLI readiness probe.
     if (isApiReady(apiStatus)) {
       isCurrentModelReady = true;
-      statusText = "Sẵn sàng";
+      statusText = t.chatStatusReady;
       statusTone = "ok";
+      const apiProvider = apiStatus?.provider ?? "Direct API";
+      const apiCount = formatNumber(apiStatus?.count ?? 0);
       statusHint =
-        `${apiStatus?.provider ?? "Direct API"} · ${apiStatus?.count ?? 0} model` +
-        (apiStatus?.revalidating ? " · đang làm mới" : "");
+        t.chatStatusApiReadyHint(apiProvider, apiCount) +
+        (apiStatus?.revalidating ? ` · ${t.chatStatusApiRefreshing}` : "");
     } else if (!apiStatus || apiStatus.state === "idle") {
       isCurrentModelReady = false;
-      statusText = "Chưa có key";
+      statusText = t.chatStatusNoKey;
       statusTone = "warn";
-      statusHint = "Dán API key trong khung Cấu hình API";
+      statusHint = t.chatStatusNoKeyHint;
     } else if (apiStatus.state === "checking") {
       isCurrentModelReady = false;
-      statusText = "Đang kiểm tra...";
+      statusText = t.chatStatusChecking;
       statusTone = "warn";
-      statusHint = "Đang kiểm tra API key và quét model";
+      statusHint = t.chatStatusCheckingHint;
     } else if (apiStatus.state === "error") {
       isCurrentModelReady = false;
-      statusText = "Không kết nối";
+      statusText = t.chatStatusDisconnected;
       statusTone = "error";
-      statusHint = apiStatus.error || "API Key không hợp lệ";
+      statusHint = apiStatus.error || t.chatStatusBadKey;
     } else {
       isCurrentModelReady = true;
-      statusText = "Sẵn sàng";
+      statusText = t.chatStatusReady;
       statusTone = "ok";
-      statusHint = `${apiStatus.provider} · ${apiStatus.count} model`;
+      statusHint = t.chatStatusApiReadyHint(apiStatus.provider, formatNumber(apiStatus.count));
     }
   } else if (modelBackendReady === false) {
     isCurrentModelReady = false;
-    statusText = "Không kết nối";
+    statusText = t.chatStatusDisconnected;
     statusTone = "error";
-    statusHint = `Không tìm thấy CLI cho model "${modelValue || backendKey}" trên máy — chọn model từ CLI đang cài hoặc Direct API`;
+    statusHint = t.chatStatusCliMissing(modelValue || backendKey);
   }
+
+  const suggestions = [t.chatSuggestionPump, t.chatSuggestionFcu, t.chatSuggestionFan];
+
+  const formatSize = (bytes: number): string => {
+    if (bytes < 1024) return `${formatNumber(bytes)} B`;
+    if (bytes < 1024 * 1024) return `${formatNumber(Math.round(bytes / 1024))} KB`;
+    return `${formatNumber(bytes / (1024 * 1024), { maximumFractionDigits: 1 })} MB`;
+  };
+
+  /** Locale-aware `2025-9-20-10-30` stamp used in the exported file name. */
+  const exportStamp = (): string => {
+    const now = new Date();
+    const day = formatDate(now);
+    const clock = formatDateTime(now).replace(day, "").trim();
+    return `${day} ${clock}`.replace(/[^\d]+/g, "-").replace(/^-+|-+$/g, "");
+  };
+
+  const downloadResolutionCsv = (rows: ResolutionRow[]) => {
+    const cell = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+    const csv = [
+      [t.parameters, t.chatColumnValue, t.chatColumnLevel, t.chatColumnSource].map(cell).join(","),
+      ...rows.map((row) =>
+        [row.name, row.value, row.level ?? "", row.source ?? ""].map(cell).join(","),
+      ),
+    ].join("\n");
+
+    const url = URL.createObjectURL(new Blob([`\ufeff${csv}`], { type: "text/csv;charset=utf-8" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${t.chatCsvFileName}-${exportStamp()}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <section className="pane left">
@@ -296,11 +304,11 @@ export function ChatPanel({
             value={modelValue}
             onChange={(event) => onModel(event.target.value)}
             disabled={!hasModels}
-            title="Chọn CLI hoặc Direct API"
+            title={t.chatModelSelectTitle}
             aria-label="Agent model"
             style={{ maxWidth: 150, flexShrink: 1, minWidth: 0 }}
           >
-            {!hasModels && <option value="">Agent chưa sẵn sàng</option>}
+            {!hasModels && <option value="">{t.chatAgentNotReady}</option>}
             {Object.entries(groupedModels).map(([group, items]) => (
               <optgroup key={group} label={group}>
                 {items.map((entry) => (
@@ -317,9 +325,9 @@ export function ChatPanel({
               type="button"
               className="model-api-button"
               onClick={() => setApiPanelOpen(true)}
-              aria-label="Dùng API key trực tiếp"
+              aria-label={t.chatUseApiKeyAria}
             >
-              Dùng API key
+              {t.chatUseApiKey}
             </button>
           )}
 
@@ -329,7 +337,7 @@ export function ChatPanel({
               title={incomplete.join("\n")}
               data-testid="incomplete-pill"
             >
-              ⚠ Chưa đầy đủ
+              ⚠ {t.chatIncomplete}
             </span>
           )}
 
@@ -346,12 +354,16 @@ export function ChatPanel({
 
       {sessionUsage && Object.keys(sessionUsage).length > 0 && (
         <div className="session-usage" data-testid="session-usage">
-          <span className="session-usage-title">Phiên này</span>
+          <span className="session-usage-title">{t.chatSessionUsage}</span>
           {Object.entries(sessionUsage)
             .sort((a, b) => b[1] - a[1])
             .map(([modelId, count]) => (
-              <span key={modelId} className="session-usage-item" title={`${count} lượt gọi model`}>
-                {modelId} ×{count}
+              <span
+                key={modelId}
+                className="session-usage-item"
+                title={t.chatSessionCalls(formatNumber(count))}
+              >
+                {modelId} ×{formatNumber(count)}
               </span>
             ))}
         </div>
@@ -384,8 +396,8 @@ export function ChatPanel({
             <h2>{t.chatEmptyTitle}</h2>
             <p>{t.chatEmptyBody}</p>
             <div className="suggestions">
-              <span className="suggestions-label">Thử:</span>
-              {SUGGESTIONS.map((suggestion) => (
+              <span className="suggestions-label">{t.chatTrySuggestions}</span>
+              {suggestions.map((suggestion) => (
                 <button
                   key={suggestion}
                   type="button"
@@ -415,7 +427,7 @@ export function ChatPanel({
                         className="msg-user-thumb"
                         onClick={() => setPreview(doc)}
                         title={doc.name}
-                        aria-label={`Xem ${doc.name}`}
+                        aria-label={t.chatViewImage(doc.name)}
                       >
                         <img src={doc.url} alt={doc.name} draggable={false} />
                       </button>
@@ -450,7 +462,7 @@ export function ChatPanel({
               <div className="body">{entry.text}</div>
               {entry.details && (
                 <details className="msg-details" data-testid="chat-details">
-                  <summary>Chi tiết lỗi</summary>
+                  <summary>{t.chatErrorDetails}</summary>
                   <pre>{entry.details}</pre>
                 </details>
               )}
@@ -473,21 +485,21 @@ export function ChatPanel({
               {entry.resolution && entry.resolution.length > 0 && (
                 <div className="agent-assumptions">
                   <div className="assumptions-head">
-                    <div className="assumptions-title">Thông số đã dùng</div>
+                    <div className="assumptions-title">{t.chatResolutionTitle}</div>
                     <button
                       type="button"
                       className="assumptions-csv"
                       onClick={() => downloadResolutionCsv(entry.resolution!)}
                     >
-                      Tải CSV
+                      {t.chatDownloadCsv}
                     </button>
                   </div>
                   <table className="resolution-table" data-testid="resolution-table">
                     <thead>
                       <tr>
-                        <th>Tham số</th>
-                        <th>Giá trị</th>
-                        <th>Nguồn</th>
+                        <th>{t.parameters}</th>
+                        <th>{t.chatColumnValue}</th>
+                        <th>{t.chatColumnSource}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -504,7 +516,7 @@ export function ChatPanel({
               )}
               {entry.warnings && entry.warnings.length > 0 && (
                 <div className="agent-warnings">
-                  <div className="warnings-title">Cảnh báo</div>
+                  <div className="warnings-title">{t.chatWarningsTitle}</div>
                   <ul className="warnings-list">
                     {entry.warnings.map((warning, idx) => (
                       <li key={idx}>{warning}</li>
@@ -514,7 +526,7 @@ export function ChatPanel({
               )}
               {entry.notes && entry.notes.length > 0 && (
                 <div className="agent-assumptions">
-                  <div className="assumptions-title">Giả định Agent đã dùng</div>
+                  <div className="assumptions-title">{t.chatAssumptionsTitle}</div>
                   <ul className="assumptions-list">
                     {entry.notes.map((note, idx) => (
                       <li key={idx}>{note}</li>
@@ -525,7 +537,7 @@ export function ChatPanel({
               {entry.meta && <div className="meta">{entry.meta}</div>}
               {entry.issues && entry.issues.length > 0 && (
                 <details className="issues">
-                  <summary>Chi tiết · {entry.issues.length} mục</summary>
+                  <summary>{t.chatIssueCount(entry.issues.length)}</summary>
                   {entry.issues.map((issue, index) => {
                     const partId = issue.path.startsWith("logic.")
                       ? (issue.path.split(".").pop() ?? null)
@@ -535,12 +547,12 @@ export function ChatPanel({
                         key={`${issue.path}-${index}`}
                         className={`issue ${issue.severity}${partId ? " clickable" : ""}`}
                         onClick={partId ? () => onFocusPart?.(partId) : undefined}
-                        title={partId ? "Chọn và zoom tới part này trong 3D" : undefined}
+                        title={partId ? t.chatFocusPartHint : undefined}
                       >
                         <span className="tag">{issue.severity}</span>
                         <span>
                           <span className="where">{issue.path}</span>
-                          {localizeIssueMessage(issue.message)}
+                          {localizeIssue(issue.message, issue.code, issue.params)}
                         </span>
                       </div>
                     );
@@ -555,10 +567,14 @@ export function ChatPanel({
           <div className="live">
             <span className="spinner" />
             <div>
-              <div>{stageMessage || "Working"}</div>
+              <div>{stageMessage || t.chatWorking}</div>
               {stageIssues && stageIssues.length > 0 && (
                 <div className="meta" style={{ fontSize: 11, color: "#8c8e91", marginTop: 3 }}>
-                  {stageIssues[0].message}
+                  {localizeIssue(
+                    stageIssues[0].message,
+                    stageIssues[0].code,
+                    stageIssues[0].params,
+                  )}
                 </div>
               )}
             </div>
@@ -566,7 +582,7 @@ export function ChatPanel({
         )}
 
         {!isCurrentModelReady && !running && (
-          <div className="banner warn">Agent chưa sẵn sàng. {statusHint}</div>
+          <div className="banner warn">{t.chatNotReadyBanner(statusHint)}</div>
         )}
       </div>
 
@@ -586,7 +602,7 @@ export function ChatPanel({
                       className="attachment-thumb"
                       onClick={() => setPreview(doc)}
                       title={doc.name}
-                      aria-label={`View ${doc.name}`}
+                      aria-label={t.chatViewImage(doc.name)}
                     >
                       <img src={doc.url} alt={doc.name} draggable={false} />
                     </button>
@@ -612,7 +628,7 @@ export function ChatPanel({
                     type="button"
                     className="remove"
                     onClick={() => onRemoveAttachment(idx)}
-                    aria-label="Remove attachment"
+                    aria-label={t.chatRemoveAttachment}
                   >
                     ×
                   </button>
@@ -681,8 +697,8 @@ export function ChatPanel({
           className="attach"
           onClick={() => fileRef.current?.click()}
           disabled={disabled}
-          title="Attach a datasheet, drawing or schedule (PDF, image, Word, Excel)"
-          aria-label="Attach a document"
+          title={t.chatAttach}
+          aria-label={t.chatAttach}
         >
           <svg
             width="14"
@@ -701,8 +717,8 @@ export function ChatPanel({
             type="button"
             className="send stop"
             onClick={onStop}
-            title="Stop the agent"
-            aria-label="Stop"
+            title={t.chatStop}
+            aria-label={t.chatStop}
           >
             <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor">
               <rect x="1" y="1" width="8" height="8" rx="1.5" />
@@ -712,9 +728,10 @@ export function ChatPanel({
           <button
             type="button"
             className="send"
+            data-testid="chat-send"
             onClick={submit}
             disabled={disabled || !draft.trim()}
-            aria-label="Send"
+            aria-label={t.chatSend}
           >
             <svg
               width="14"
@@ -748,7 +765,7 @@ export function ChatPanel({
           className="attachment-preview"
           role="dialog"
           aria-modal="true"
-          aria-label={`Xem ${preview.name}`}
+          aria-label={t.chatViewImage(preview.name)}
           onClick={() => setPreview(null)}
         >
           <div className="attachment-preview-panel" onClick={(event) => event.stopPropagation()}>
@@ -760,8 +777,8 @@ export function ChatPanel({
                 type="button"
                 className="attachment-preview-close"
                 onClick={() => setPreview(null)}
-                aria-label="Đóng ảnh"
-                title="Đóng"
+                aria-label={t.chatClosePreview}
+                title={t.close}
               >
                 ×
               </button>
@@ -769,7 +786,7 @@ export function ChatPanel({
             {preview.url ? (
               <img className="attachment-preview-image" src={preview.url} alt={preview.name} />
             ) : (
-              <div className="attachment-preview-empty">Ảnh không có URL để hiển thị.</div>
+              <div className="attachment-preview-empty">{t.chatPreviewEmpty}</div>
             )}
           </div>
         </div>

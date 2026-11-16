@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { FamilySpec, FamilyTypeEntry, ResolvedParameter } from "@family/spec-core";
 import type { Units } from "../lib/format";
+import { useI18n } from "../lib/i18n";
+import { localizeTypesIssue } from "../lib/strings/types";
 import {
   combinations,
   driverParameters,
@@ -24,6 +26,8 @@ interface Props {
 }
 
 const BIG_FAMILY_TYPES = 30;
+/** Above this many combinations the RFA gets heavy; the panel only warns. */
+const COMBO_WARNING_TYPES = 60;
 
 /** "TP-CLT-MT 400x300x100" -> "TP-CLT-MT"; anything else keeps its own name. */
 function derivePrefix(typeName?: string): string {
@@ -93,6 +97,17 @@ export function TypesPanel({
   exporting = false,
   previewActive = false,
 }: Props) {
+  // The pane shows no timestamps, so the date helpers are not destructured:
+  // `noUnusedLocals` rejects bindings this pane never reads.
+  const { t, formatNumber, localizeIssue } = useI18n();
+
+  /**
+   * Text that arrives from outside the pane: the importer raises Vietnamese
+   * messages and older builds may carry old wording. Both passes only rewrite
+   * known sentences — parameter names and values stay exactly as imported.
+   */
+  const localizeMessage = (message: string) => localizeTypesIssue(localizeIssue(message), t);
+
   const drivers = useMemo(() => driverParameters(spec.parameters), [spec.parameters]);
   const lengthParameters = useMemo(() => new Set(drivers), [drivers]);
 
@@ -125,8 +140,8 @@ export function TypesPanel({
 
   /**
    * The table starts with no data columns: a column exists only when the user picked it
-   * with "+ Cột", or when a row already carries a value for that driver (reopened spec,
-   * pasted list, imported file, combinations, catalogue).
+   * with the "+ Column" button, or when a row already carries a value for that driver
+   * (reopened spec, pasted list, imported file, combinations, catalogue).
    */
   const columns = useMemo(() => {
     const extras: string[] = [];
@@ -171,30 +186,35 @@ export function TypesPanel({
 
     for (const type of types) {
       const key = type.name.trim().toLowerCase();
-      if (!key) issues.push("Tên type không được để trống.");
+      if (!key) issues.push(t.typesProblemEmptyName);
       byName.set(key, (byName.get(key) ?? 0) + 1);
 
       for (const [name, value] of Object.entries(type.values ?? {})) {
-        if (!Number.isFinite(value) || value <= 0) issues.push(`${type.name}: ${name} ≤ 0.`);
+        if (!Number.isFinite(value) || value <= 0) {
+          issues.push(t.typesProblemNonPositive(type.name, name));
+        }
       }
     }
 
     for (const [name, count] of byName) {
-      if (count > 1) issues.push(`Trùng tên type: ${name}.`);
+      if (count > 1) issues.push(t.typesProblemDuplicate(name));
     }
 
     return [...new Set(issues)];
-  }, [types]);
+  }, [types, t]);
 
   /** Yellow, informational: the export still runs. */
   const warnings = useMemo(() => {
     const list: string[] = [];
+    // Measurements keep one decimal and follow the locale's separators.
+    const dimension = (value: number | undefined) =>
+      formatNumber(Number(value ?? 0), { maximumFractionDigits: 1 });
 
     if (columns.length > 0) {
       for (let i = 0; i < types.length; i += 1) {
         for (let j = i + 1; j < types.length; j += 1) {
           if (sameValues(types[i].values ?? {}, types[j].values ?? {}, columns)) {
-            list.push(`"${types[i].name}" và "${types[j].name}" trùng toàn bộ giá trị.`);
+            list.push(t.typesWarningDuplicateValues(types[i].name, types[j].name));
           }
         }
       }
@@ -206,13 +226,13 @@ export function TypesPanel({
         const w1 = type.values?.["Ladder Width 1"];
         const w2 = type.values?.["Ladder Width 2"];
         if (Number.isFinite(w1) && Number.isFinite(w2) && w2 > w1) {
-          list.push(`"${type.name}": Ladder Width 2 (${formatValue(w2)}) lớn hơn Ladder Width 1 (${formatValue(w1)}).`);
+          list.push(t.typesWarningLadderOrder(type.name, dimension(w2), dimension(w1)));
         }
       }
     }
 
     return list;
-  }, [types, columns, lengthParameters]);
+  }, [types, columns, lengthParameters, t, formatNumber]);
 
   const estimate = estimateSizeMb(types.length, spec.parts.length);
 
@@ -471,7 +491,7 @@ export function TypesPanel({
 
   const pasteRow = () => {
     if (columns.length === 0) {
-      setPasteError("Chưa có cột nào. Bấm “+ Cột” để chọn tham số kích thước trước khi dán.");
+      setPasteError(t.typesPasteNoColumns);
       return;
     }
 
@@ -480,7 +500,7 @@ export function TypesPanel({
       .map((line) => line.trim())
       .filter(Boolean);
     if (lines.length === 0) {
-      setPasteError("Chưa có dòng nào.");
+      setPasteError(t.typesPasteNoLines);
       return;
     }
 
@@ -489,7 +509,7 @@ export function TypesPanel({
     for (const line of lines) {
       const cells = line.includes("\t") ? line.split("\t") : line.split(/x/i);
       if (cells.length < columns.length) {
-        setPasteError(`Thiếu giá trị: "${line}" cần ${columns.length} số.`);
+        setPasteError(t.typesPasteMissingValues(line, columns.length));
         return;
       }
 
@@ -498,7 +518,7 @@ export function TypesPanel({
         const raw = cells[index]?.replace(/[^\d.,-]/g, "").replace(",", ".");
         const value = Number(raw);
         if (!raw || !Number.isFinite(value) || value <= 0) {
-          setPasteError(`Giá trị không hợp lệ ở dòng: "${line}"`);
+          setPasteError(t.typesPasteInvalidValue(line));
           return;
         }
         values[columns[index]] = value;
@@ -555,10 +575,10 @@ export function TypesPanel({
   };
 
   return (
-    <div className="types-panel" data-testid="types-panel">
+    <div className="types-panel" data-testid="types-panel" role="region" aria-label={t.types}>
       <div className="types-toolbar">
         <label className="types-prefix">
-          <span>Tiền tố</span>
+          <span>{t.typesPrefix}</span>
           <input
             value={prefix}
             aria-label="Type prefix"
@@ -571,7 +591,7 @@ export function TypesPanel({
           onClick={() => setPasteOpen((open) => !open)}
           data-testid="paste-toggle"
         >
-          Dán danh sách
+          {t.typesPasteToggle}
         </button>
         <button
           type="button"
@@ -579,10 +599,10 @@ export function TypesPanel({
           onClick={() => fileInput.current?.click()}
           data-testid="import-file"
         >
-          Nhập file…
+          {t.typesImportFile}
         </button>
         <button type="button" className="types-btn" onClick={downloadTemplate} data-testid="download-template">
-          Tải file mẫu
+          {t.typesDownloadTemplate}
         </button>
         <button
           type="button"
@@ -590,17 +610,21 @@ export function TypesPanel({
           onClick={() => setComboOpen((open) => !open)}
           data-testid="combo-toggle"
         >
-          Tạo tổ hợp
+          {t.typesComboToggle}
         </button>
         <button
           type="button"
           className="types-btn"
           onClick={loadCatalog}
           disabled={catalog.length === 0}
-          title={catalog.length === 0 ? "Spec không có type catalog" : `Nạp ${catalog.length} type từ catalog`}
+          title={
+            catalog.length === 0
+              ? t.typesNoCatalogHint
+              : t.typesLoadCatalogHint(catalog.length)
+          }
           data-testid="load-catalog"
         >
-          Lấy từ catalog
+          {t.typesLoadCatalog}
         </button>
         <button
           type="button"
@@ -608,7 +632,7 @@ export function TypesPanel({
           onClick={() => setAddColumnOpen((open) => !open)}
           data-testid="add-column"
         >
-          + Cột
+          {t.typesAddColumn}
         </button>
         <input
           ref={fileInput}
@@ -626,7 +650,7 @@ export function TypesPanel({
       {addColumnOpen && (
         <div className="types-popover">
           {driverOptions.length === 0 ? (
-            <span className="types-hint">Không còn tham số dẫn động để thêm.</span>
+            <span className="types-hint">{t.typesNoDriverParameters}</span>
           ) : (
             driverOptions.map((name) => (
               <button
@@ -651,14 +675,14 @@ export function TypesPanel({
           <textarea
             value={pasteText}
             onChange={(event) => setPasteText(event.target.value)}
-            placeholder={"400x300x100\n500x300x100\nhoặc dán cột từ Excel"}
+            placeholder={t.typesPastePlaceholder}
             rows={5}
             aria-label="Paste type list"
             data-testid="paste-input"
           />
           {pasteError && <span className="types-error">{pasteError}</span>}
           <button type="button" className="types-btn" onClick={pasteRow} data-testid="paste-apply">
-            Nhập danh sách
+            {t.typesPasteApply}
           </button>
         </div>
       )}
@@ -667,7 +691,7 @@ export function TypesPanel({
         <div className="types-popover types-combo" data-testid="combo-panel">
           {columns.length === 0 ? (
             <div className="types-hint" data-testid="combo-hint">
-              Chưa có cột nào. Bấm “+ Cột” để chọn tham số kích thước trước khi tạo tổ hợp.
+              {t.typesComboNoColumns}
             </div>
           ) : (
             <div className="types-combo-grid">
@@ -695,14 +719,16 @@ export function TypesPanel({
                 onChange={(event) => setComboSmallerOnly(event.target.checked)}
                 data-testid="combo-smaller"
               />
-              Chỉ giữ Ladder Width 2 ≤ Ladder Width 1
+              {t.typesComboSmallerOnly}
             </label>
           )}
 
           <div className="types-combo-actions">
-            <span data-testid="combo-count">Sẽ tạo {comboRows.length} type</span>
-            {comboRows.length > 60 && (
-              <span className="types-warning-inline">⚠ Hơn 60 type: file RFA sẽ rất nặng.</span>
+            <span data-testid="combo-count">{t.typesComboCount(comboRows.length)}</span>
+            {comboRows.length > COMBO_WARNING_TYPES && (
+              <span className="types-warning-inline">
+                {t.typesComboTooMany(COMBO_WARNING_TYPES)}
+              </span>
             )}
             <button
               type="button"
@@ -711,7 +737,7 @@ export function TypesPanel({
               onClick={addCombos}
               data-testid="combo-apply"
             >
-              Thêm {comboRows.length} type
+              {t.typesComboAdd(comboRows.length)}
             </button>
           </div>
         </div>
@@ -721,21 +747,21 @@ export function TypesPanel({
         <div className="types-popover types-import" data-testid="import-preview">
           <div className="types-import-head">
             <strong data-testid="import-summary">
-              {importPreview.rows.length} dòng hợp lệ · {importPreview.issues.length} lỗi
+              {t.typesImportSummary(importPreview.rows.length, importPreview.issues.length)}
             </strong>
             <button type="button" className="types-btn" onClick={() => setImportPreview(null)}>
-              Huỷ
+              {t.typesCancel}
             </button>
           </div>
 
           {importPreview.ignoredColumns.length > 0 && (
             <div className="types-warning-inline">
-              Bỏ qua cột không khớp: {importPreview.ignoredColumns.join(", ")}
+              {t.typesImportIgnored(importPreview.ignoredColumns.join(", "))}
             </div>
           )}
           {importPreview.missingColumns.length > 0 && (
             <div className="types-warning-inline">
-              Thiếu cột, dùng giá trị hiện tại: {importPreview.missingColumns.join(", ")}
+              {t.typesImportMissing(importPreview.missingColumns.join(", "))}
             </div>
           )}
 
@@ -743,10 +769,12 @@ export function TypesPanel({
             <div className="types-import-issues">
               {importPreview.issues.slice(0, 8).map((issue) => (
                 <div key={`${issue.line}-${issue.message}`} data-testid="import-issue">
-                  Dòng {issue.line}: {issue.message}
+                  {t.typesImportIssueLine(issue.line, localizeMessage(issue.message))}
                 </div>
               ))}
-              {importPreview.issues.length > 8 && <div>… và {importPreview.issues.length - 8} lỗi nữa.</div>}
+              {importPreview.issues.length > 8 && (
+                <div>{t.typesImportMoreIssues(importPreview.issues.length - 8)}</div>
+              )}
             </div>
           )}
 
@@ -756,7 +784,9 @@ export function TypesPanel({
                 {row.name} · {columns.map((column) => formatValue(row.values[column])).join(" x ")}
               </div>
             ))}
-            {importPreview.rows.length > 6 && <div>… {importPreview.rows.length - 6} dòng nữa</div>}
+            {importPreview.rows.length > 6 && (
+              <div>{t.typesImportMoreRows(importPreview.rows.length - 6)}</div>
+            )}
           </div>
 
           <div className="types-import-actions">
@@ -767,7 +797,7 @@ export function TypesPanel({
               onClick={() => applyImport(false)}
               data-testid="import-add"
             >
-              Thêm {importPreview.rows.length} type
+              {t.typesImportAdd(importPreview.rows.length)}
             </button>
             <button
               type="button"
@@ -776,13 +806,13 @@ export function TypesPanel({
               onClick={() => applyImport(true)}
               data-testid="import-replace"
             >
-              Thay thế danh sách
+              {t.typesImportReplace}
             </button>
           </div>
         </div>
       )}
 
-      {importError && <div className="types-error">{importError}</div>}
+      {importError && <div className="types-error">{localizeMessage(importError)}</div>}
 
       <div className="types-listbar">
         <label className="types-checkbox">
@@ -793,12 +823,12 @@ export function TypesPanel({
             onChange={toggleAll}
             data-testid="select-all"
           />
-          Chọn tất cả
+          {t.typesSelectAll}
         </label>
         <input
           className="types-filter"
           value={filter}
-          placeholder="Lọc theo tên…"
+          placeholder={t.typesFilterPlaceholder}
           aria-label="Filter types"
           data-testid="types-filter"
           onChange={(event) => setFilter(event.target.value)}
@@ -810,7 +840,7 @@ export function TypesPanel({
             onClick={removeSelected}
             data-testid="delete-selected"
           >
-            Xoá các dòng đã chọn ({selected.length})
+            {t.typesDeleteSelected(selected.length)}
           </button>
         )}
       </div>
@@ -847,7 +877,7 @@ export function TypesPanel({
                     type="button"
                     className="types-column-remove"
                     aria-label={`Remove ${column} column`}
-                    title="Gỡ cột"
+                    title={t.typesRemoveColumn}
                     onClick={(event) => {
                       event.stopPropagation();
                       removeColumn(column);
@@ -874,9 +904,7 @@ export function TypesPanel({
             {visibleRows.length === 0 && (
               <tr>
                 <td colSpan={columns.length + 2} className="types-hint">
-                  {types.length === 0
-                    ? "Chưa có type nào. Dùng “Dán danh sách”, “Nhập file…” hoặc nhân bản một dòng."
-                    : "Không dòng nào khớp bộ lọc."}
+                  {types.length === 0 ? t.typesEmpty : t.typesNoMatches}
                 </td>
               </tr>
             )}
@@ -887,7 +915,7 @@ export function TypesPanel({
                   className="types-hint"
                   data-testid="no-columns-hint"
                 >
-                  Bấm “+ Cột” để chọn tham số kích thước cho từng type.
+                  {t.typesNoColumnsHint}
                 </td>
               </tr>
             )}
@@ -940,7 +968,7 @@ export function TypesPanel({
                       className={`types-icon ${previewing ? "active" : ""}`}
                       onClick={() => previewRow(index)}
                       aria-label={`Preview ${type.name}`}
-                      title="Xem trước 3D"
+                      title={t.typesPreviewRow}
                     >
                       👁
                     </button>
@@ -949,7 +977,7 @@ export function TypesPanel({
                       className="types-icon"
                       onClick={() => duplicateRow(index)}
                       aria-label={`Duplicate ${type.name}`}
-                      title="Nhân bản dòng"
+                      title={t.typesDuplicateRow}
                     >
                       ⧉
                     </button>
@@ -958,7 +986,7 @@ export function TypesPanel({
                       className="types-icon"
                       onClick={() => removeRow(index)}
                       aria-label={`Delete ${type.name}`}
-                      title="Xoá type"
+                      title={t.typesDeleteRow}
                     >
                       ✕
                     </button>
@@ -992,14 +1020,18 @@ export function TypesPanel({
           onClick={onExport}
           data-testid="export-types"
         >
-          {exporting ? "Đang xuất…" : `Xuất RFA nhiều type (${types.length})`}
+          {exporting ? t.typesExporting : t.typesExportButton(types.length)}
         </button>
         <span className="types-size" data-testid="types-size">
-          ≈ {estimate} MB ({types.length} type × {spec.parts.length} form)
+          {t.typesSizeEstimate(
+            formatNumber(estimate, { maximumFractionDigits: 1 }),
+            types.length,
+            spec.parts.length,
+          )}
         </span>
         {types.length > BIG_FAMILY_TYPES && (
           <span className="types-warning-inline" data-testid="types-size-warning">
-            ⚠ Hơn {BIG_FAMILY_TYPES} type: Revit sẽ chậm và file rất lớn.
+            {t.typesSizeWarning(BIG_FAMILY_TYPES)}
           </span>
         )}
       </div>

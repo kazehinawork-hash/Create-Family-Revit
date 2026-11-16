@@ -152,16 +152,68 @@ export function cleanupUploads({
   return result;
 }
 
+/** Keep only the newest `keep` revision files (ISO names sort oldest first). */
+export function pruneHistoryDir(dir, keep) {
+  if (!keep || keep <= 0) return { removed: 0 };
+
+  let files;
+  try {
+    files = fs
+      .readdirSync(dir)
+      .filter((file) => file.endsWith(".json") && !file.startsWith("."))
+      .sort();
+  } catch {
+    return { removed: 0 };
+  }
+
+  let removed = 0;
+  for (const file of files.slice(0, Math.max(0, files.length - keep))) {
+    try {
+      fs.rmSync(path.join(dir, file), { force: true });
+      removed += 1;
+    } catch {
+      // Retried on the next maintenance run.
+    }
+  }
+  return { removed };
+}
+
+/** Trim every live model's .history folder; trashed histories are left untouched. */
+export function pruneHistories({ savedDir = config.dirs.saved, keep = config.agent.historyKeep } = {}) {
+  if (!keep || keep <= 0) return { removed: 0 };
+
+  let entries;
+  try {
+    entries = fs.readdirSync(path.join(savedDir, ".history"), { withFileTypes: true });
+  } catch {
+    return { removed: 0 };
+  }
+
+  let removed = 0;
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    removed += pruneHistoryDir(path.join(savedDir, ".history", entry.name), keep).removed;
+  }
+  return { removed };
+}
+
 /** Startup + six-hourly maintenance; one line in the server log. */
 export function runCleanup(logger = console) {
   const jobs = cleanupJobs();
   const uploads = cleanupUploads();
   const trash = cleanupTrash(config.dirs.saved, { ttlDays: config.agent.trashTtlDays });
+  const history = pruneHistories();
   logger.log(
     `[cleanup] jobs removed=${jobs.removed} abandoned=${jobs.abandoned} ` +
-      `uploads removed=${uploads.removed} trash removed=${trash.removed}`,
+      `uploads removed=${uploads.removed} trash removed=${trash.removed} ` +
+      `history removed=${history.removed}`,
   );
-  return { ...jobs, uploads: uploads.removed, trash: trash.removed };
+  return {
+    ...jobs,
+    uploads: uploads.removed,
+    trash: trash.removed,
+    history: history.removed,
+  };
 }
 
 export const CLEANUP_INTERVAL_MS = 6 * 60 * 60 * 1000;

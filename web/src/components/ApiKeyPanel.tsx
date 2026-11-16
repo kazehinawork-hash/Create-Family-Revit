@@ -14,6 +14,7 @@ import {
   verifiedKeyFor,
   type ModelEntry,
 } from "../lib/api-key";
+import { useI18n } from "../lib/i18n";
 
 export interface ApiKeyStatus {
   state: "idle" | "checking" | "ok" | "error";
@@ -39,6 +40,24 @@ interface StoredConfig {
   baseUrl: string;
   apiKey: string;
   model: string;
+}
+
+/**
+ * Failure reasons are stored as codes, not sentences, so the visible message can
+ * follow a language change without verifying the key again.
+ */
+type PanelError =
+  | { kind: "rejected"; provider: string }
+  | { kind: "invalid" }
+  | { kind: "server"; message: string }
+  | { kind: "offline" };
+
+interface PanelState {
+  state: ApiKeyStatus["state"];
+  provider: string;
+  count: number;
+  retryable?: boolean;
+  revalidating?: boolean;
 }
 
 const DEFAULT_BASE = "https://api.openai.com/v1";
@@ -73,8 +92,10 @@ function readCollapsed(): boolean {
  * verification and model selection all happen on their own.
  */
 export function ApiKeyPanel({ model, onModel, open, onClose, onStatus }: Props) {
+  const { t } = useI18n();
   const [config, setConfig] = useState<StoredConfig>(readStoredConfig);
-  const [status, setStatus] = useState<ApiKeyStatus>({ state: "idle", provider: "", count: 0 });
+  const [panel, setPanel] = useState<PanelState>({ state: "idle", provider: "", count: 0 });
+  const [panelError, setPanelError] = useState<PanelError | null>(null);
   const [models, setModels] = useState<string[]>([]);
   const [modelNames, setModelNames] = useState<Record<string, string>>({});
   const [query, setQuery] = useState("");
@@ -83,6 +104,29 @@ export function ApiKeyPanel({ model, onModel, open, onClose, onStatus }: Props) 
   const [helpOpen, setHelpOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const [retryTick, setRetryTick] = useState(0);
+
+  const describeError = useCallback(
+    (error: PanelError | null): string | undefined => {
+      if (!error) return undefined;
+      switch (error.kind) {
+        case "rejected":
+          return t.apiKeyRejected(error.provider);
+        case "invalid":
+          return t.apiKeyInvalid;
+        case "offline":
+          return t.apiConnectionFailed;
+        case "server":
+          return error.message;
+      }
+    },
+    [t],
+  );
+
+  /** The public status (also reported upward) with its message in the active language. */
+  const status = useMemo<ApiKeyStatus>(
+    () => ({ ...panel, error: describeError(panelError) }),
+    [panel, panelError, describeError],
+  );
 
   const detected = analyzeKeyOrInput(config.apiKey || config.baseUrl, config.baseUrl);
   const suggestions = useMemo(
@@ -189,7 +233,8 @@ export function ApiKeyPanel({ model, onModel, open, onClose, onStatus }: Props) 
       verifiedForRef.current = "";
       setModels([]);
       setModelNames({});
-      setStatus({ state: "idle", provider: "", count: 0 });
+      setPanel({ state: "idle", provider: "", count: 0 });
+      setPanelError(null);
       return;
     }
 
@@ -199,10 +244,11 @@ export function ApiKeyPanel({ model, onModel, open, onClose, onStatus }: Props) 
 
     let cancelled = false;
     // A key that was already verified stays "ok" while it is checked again.
-    setStatus((current) =>
+    setPanelError(null);
+    setPanel((current) =>
       current.state === "ok"
         ? { ...current, revalidating: true }
-        : { state: "checking", provider: current.provider ?? "", count: current.count ?? 0 },
+        : { state: "checking", provider: current.provider, count: current.count },
     );
 
     const timer = window.setTimeout(async () => {
@@ -236,11 +282,12 @@ export function ApiKeyPanel({ model, onModel, open, onClose, onStatus }: Props) 
           verifiedForRef.current = verifiedKeyFor(verifyKey, verifyBase);
           setModels(list);
           setModelNames(names);
-          setStatus({
+          setPanel({
             state: "ok",
             provider: String(data.provider ?? label),
             count: list.length,
           });
+          setPanelError(null);
 
           const mapped =
             current.model && !isModelId(current.model)
@@ -261,27 +308,25 @@ export function ApiKeyPanel({ model, onModel, open, onClose, onStatus }: Props) 
           verifiedForRef.current = "";
           setModels([]);
           setModelNames({});
-          setStatus({
+          setPanel({
             state: "error",
             provider: label,
             count: 0,
-            error:
-              data.status === 401 || data.status === 403
-                ? `Key không đúng — kiểm tra lại key trên trang của ${label.replace(/ API$/, "")}`
-                : data.error || "Key không hợp lệ",
             retryable: !(data.status === 401 || data.status === 403),
           });
+          setPanelError(
+            data.status === 401 || data.status === 403
+              ? { kind: "rejected", provider: label.replace(/ API$/, "") }
+              : data.error
+                ? { kind: "server", message: String(data.error) }
+                : { kind: "invalid" },
+          );
         }
       } catch {
         if (cancelled) return;
         verifiedForRef.current = "";
-        setStatus({
-          state: "error",
-          provider: label,
-          count: 0,
-          error: "Không kết nối được — thử lại",
-          retryable: true,
-        });
+        setPanel({ state: "error", provider: label, count: 0, retryable: true });
+        setPanelError({ kind: "offline" });
       }
     }, 500);
 
@@ -304,17 +349,21 @@ export function ApiKeyPanel({ model, onModel, open, onClose, onStatus }: Props) 
       suggested.map((id) => ({ id, label: modelNames[id] ?? id })),
       query,
     );
-    if (suggestedEntries.length > 0) out.push({ group: "⭐ Đề xuất", items: suggestedEntries });
+    if (suggestedEntries.length > 0) out.push({ group: t.apiSuggestedGroup, items: suggestedEntries });
 
     for (const [group, entries] of Object.entries(groups)) {
       const filtered = filterModels(entries, query);
-      if (filtered.length > 0) out.push({ group, items: filtered });
+      // Ids without a provider prefix share one bucket whose label comes from the
+      // api-key helper, so it is renamed here to the active language.
+      const ungrouped = entries.length > 0 && entries.every((entry) => !entry.id.includes("/"));
+      if (filtered.length > 0) out.push({ group: ungrouped ? t.apiOtherGroup : group, items: filtered });
     }
     return out;
-  }, [groups, modelNames, query, suggested]);
+  }, [groups, modelNames, query, suggested, t]);
 
   const chosenLabel = modelNames[config.model] ?? config.model;
-  const providerLabel = status.provider || detected.label;
+  const providerLabel =
+    status.provider || (config.apiKey.trim() || config.baseUrl.trim() ? detected.label : t.apiAutoDetect);
 
   if (!open) return null;
 
@@ -323,14 +372,14 @@ export function ApiKeyPanel({ model, onModel, open, onClose, onStatus }: Props) 
       <div className="api-panel api-panel-collapsed" data-testid="api-panel">
         <span className="api-panel-dot ok" />
         <strong>{providerLabel}</strong>
-        <span className="api-panel-model-name">{chosenLabel || "chưa chọn model"}</span>
+        <span className="api-panel-model-name">{chosenLabel || t.apiNoModelChosen}</span>
         <button
           type="button"
           className="api-panel-link"
           onClick={() => rememberCollapsed(false)}
-          aria-label="Mở cấu hình API"
+          aria-label={t.apiOpenConfig}
         >
-          Đổi
+          {t.apiChange}
         </button>
       </div>
     );
@@ -339,19 +388,19 @@ export function ApiKeyPanel({ model, onModel, open, onClose, onStatus }: Props) 
   return (
     <div className="api-panel" data-testid="api-panel" ref={panelRef}>
       <div className="api-panel-head">
-        <span className="api-panel-title">Cấu hình API</span>
+        <span className="api-panel-title">{t.apiConfigTitle}</span>
         <div className="api-panel-head-right">
           {status.state === "checking" ? (
-            <span className="api-panel-status">Đang kiểm tra…</span>
+            <span className="api-panel-status">{t.apiChecking}</span>
           ) : status.state === "ok" ? (
             <span className="api-panel-status ok">
-              ● Đã kết nối · {providerLabel} · {status.count} model
-              {status.revalidating ? " · đang làm mới" : ""}
+              ● {t.apiConnected(providerLabel, status.count)}
+              {status.revalidating ? t.apiRefreshing : ""}
             </span>
           ) : status.state === "error" ? (
             <span className="api-panel-status error">● {status.error}</span>
           ) : null}
-          <button type="button" className="api-panel-close" onClick={onClose} aria-label="Đóng cấu hình API">
+          <button type="button" className="api-panel-close" onClick={onClose} aria-label={t.apiCloseConfig}>
             ×
           </button>
         </div>
@@ -359,7 +408,7 @@ export function ApiKeyPanel({ model, onModel, open, onClose, onStatus }: Props) 
 
       {status.state === "error" && status.retryable && (
         <button type="button" className="api-panel-retry" onClick={() => setRetryTick((n) => n + 1)}>
-          Thử lại
+          {t.apiRetry}
         </button>
       )}
 
@@ -367,7 +416,7 @@ export function ApiKeyPanel({ model, onModel, open, onClose, onStatus }: Props) 
         <input
           type={showKey ? "text" : "password"}
           className="api-panel-key"
-          placeholder="Dán API key (sk-…, AIza…, user_…)"
+          placeholder={t.apiKeyPlaceholder}
           value={config.apiKey}
           onChange={(event) => {
             const key = event.target.value;
@@ -400,8 +449,8 @@ export function ApiKeyPanel({ model, onModel, open, onClose, onStatus }: Props) 
           type="button"
           className="api-panel-icon"
           onClick={() => setShowKey((value) => !value)}
-          aria-label={showKey ? "Ẩn key" : "Hiện key"}
-          title={showKey ? "Ẩn key" : "Hiện key"}
+          aria-label={showKey ? t.apiHideKey : t.apiShowKey}
+          title={showKey ? t.apiHideKey : t.apiShowKey}
         >
           👁
         </button>
@@ -421,10 +470,10 @@ export function ApiKeyPanel({ model, onModel, open, onClose, onStatus }: Props) 
               /* clipboard permission denied: nothing to report */
             }
           }}
-          aria-label="Dán key từ clipboard"
-          title="Dán key từ clipboard"
+          aria-label={t.apiPasteClipboard}
+          title={t.apiPasteClipboard}
         >
-          Dán
+          {t.apiPaste}
         </button>
       </div>
 
@@ -434,10 +483,10 @@ export function ApiKeyPanel({ model, onModel, open, onClose, onStatus }: Props) 
             <input
               type="search"
               className="api-panel-search"
-              placeholder="Tìm model…"
+              placeholder={t.apiSearchModelPlaceholder}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              aria-label="Tìm model"
+              aria-label={t.apiSearchModel}
             />
           )}
           <select
@@ -450,7 +499,7 @@ export function ApiKeyPanel({ model, onModel, open, onClose, onStatus }: Props) 
               // Choosing a model is a finished action: fold the panel away.
               collapseIfAllowed("picked");
             }}
-            aria-label="Chọn model"
+            aria-label={t.apiChooseModel}
           >
             {config.model && !models.includes(config.model) && (
               <option value={config.model}>{chosenLabel || config.model}</option>
@@ -470,7 +519,7 @@ export function ApiKeyPanel({ model, onModel, open, onClose, onStatus }: Props) 
 
       {status.state === "ok" && (
         <button type="button" className="api-panel-link api-panel-fold" onClick={() => rememberCollapsed(true)}>
-          Thu gọn
+          {t.apiCollapse}
         </button>
       )}
 
@@ -480,7 +529,7 @@ export function ApiKeyPanel({ model, onModel, open, onClose, onStatus }: Props) 
         onClick={() => setAdvanced((value) => !value)}
         aria-expanded={advanced}
       >
-        {advanced ? "Ẩn tuỳ chọn nâng cao" : "Nâng cao"}
+        {advanced ? t.apiAdvancedHide : t.apiAdvancedShow}
       </button>
 
       {advanced && (
@@ -502,7 +551,11 @@ export function ApiKeyPanel({ model, onModel, open, onClose, onStatus }: Props) 
             />
           </label>
           <p className="api-panel-hint">
-            Key <code>user_…</code> cũng được lưu cho CLI Command Code (không cần <code>cmd login</code>).
+            {t.apiCliHintLead}
+            <code>user_…</code>
+            {t.apiCliHintMiddle}
+            <code>cmd login</code>
+            {t.apiCliHintTail}
           </p>
         </div>
       )}
@@ -513,12 +566,13 @@ export function ApiKeyPanel({ model, onModel, open, onClose, onStatus }: Props) 
         onClick={() => setHelpOpen((value) => !value)}
         aria-expanded={helpOpen}
       >
-        Key của tôi ở đâu?
+        {t.apiWhereIsKey}
       </button>
       {helpOpen && (
         <p className="api-panel-hint">
-          Command Code: commandcode.ai → Studio → API keys (dạng <code>user_…</code>). OpenAI:
-          platform.openai.com → API keys. Google: aistudio.google.com. Anthropic: console.anthropic.com.
+          {t.apiHelpBefore}
+          <code>user_…</code>
+          {t.apiHelpAfter}
         </p>
       )}
     </div>

@@ -13,7 +13,7 @@ import {
 } from "@family/spec-core";
 import { parameterDisplay, parameterUnit, type Units } from "../lib/format";
 import { TypesPanel } from "./TypesPanel";
-import { t, localizeIssueMessage } from "../lib/strings";
+import { useI18n } from "../lib/i18n";
 
 interface Props {
   spec: FamilySpec;
@@ -87,6 +87,7 @@ function ParameterRow({
   onUpdate: (name: string, value: number | string) => void;
   onHighlight?: (partIds: string[]) => void;
 }) {
+  const { t } = useI18n();
   const derived = Boolean(resolved.formula);
   const isYesNo = param.type === "YesNo";
   const isNumeric =
@@ -153,15 +154,15 @@ function ParameterRow({
             type="button"
             className="param-impact"
             onClick={() => onHighlight?.(impact.parts.map((part) => part.id))}
-            title={`${impact.parameters.length} parameter phụ thuộc · ${impact.parts.length} part bị ảnh hưởng`}
+            title={t.paramsImpactTitle(impact.parameters.length, impact.parts.length)}
           >
-            ↳ {impact.parameters.length} param · {impact.parts.length} part
+            {t.paramsImpactBadge(impact.parameters.length, impact.parts.length)}
           </button>
         )}
       </div>
       <div className="param-value-wrap">
         {isYesNo ? (
-          <label className="param-checkbox-wrap" title={`Bật/Tắt ${param.name}`}>
+          <label className="param-checkbox-wrap" title={t.paramsYesNoToggle(param.name)}>
             <input
               type="checkbox"
               className="param-checkbox"
@@ -169,7 +170,9 @@ function ParameterRow({
               checked={Boolean(resolved.value)}
               onChange={(e) => onUpdate(param.name, e.target.checked ? 1 : 0)}
             />
-            <span className="param-checkbox-label">{resolved.value ? "Yes" : "No"}</span>
+            <span className="param-checkbox-label">
+              {resolved.value ? t.paramsYes : t.paramsNo}
+            </span>
           </label>
         ) : (
           <>
@@ -179,7 +182,7 @@ function ParameterRow({
                   type="button"
                   className="btn-step"
                   onClick={() => stepValue(-1)}
-                  title="Giảm giá trị"
+                  title={t.paramsDecrease}
                 >
                   −
                 </button>
@@ -187,7 +190,7 @@ function ParameterRow({
                   type="button"
                   className="btn-step"
                   onClick={() => stepValue(1)}
-                  title="Tăng giá trị"
+                  title={t.paramsIncrease}
                 >
                   +
                 </button>
@@ -249,6 +252,7 @@ export function ParameterPanel({
   exportingTypes = false,
   previewTypeActive = false,
 }: Props) {
+  const { t, formatNumber, localizeIssue } = useI18n();
   const [tab, setTab] = useState<"parameters" | "parts" | "connectors" | "types">("parameters");
   const [filter, setFilter] = useState("");
   const [partFilter, setPartFilter] = useState("");
@@ -366,6 +370,13 @@ export function ParameterPanel({
   const materialColor = (name?: string) =>
     spec.materials?.find((material) => material.name === name)?.color ?? "#a9aeb2";
 
+  // Spec connectors keep numeric fields as `number | string`; format both, and
+  // leave anything that is not a number exactly as the spec wrote it.
+  const formatNumeric = (value: number | string) => {
+    const number = Number(value);
+    return Number.isFinite(number) ? formatNumber(number) : String(value);
+  };
+
   const submitNew = () => {
     const name = draftName.trim();
     if (!name) return;
@@ -379,17 +390,19 @@ export function ParameterPanel({
       {selectedPart && (
         <div className="selected-part-params">
           <div className="selected-part-params-head">
-            <span className="selected-part-label">Part</span>
+            <span className="selected-part-label">{t.part}</span>
             <strong className="selected-part-name" title={selectedPart.name}>
               {selectedPart.name}
             </strong>
-            <span className="selected-part-count">{selectedPartParameters.length} parameter</span>
+            <span className="selected-part-count">
+              {t.paramsSelectedPartCount(selectedPartParameters.length)}
+            </span>
             <button
               type="button"
               className="selected-part-clear"
               onClick={() => onSelectPart?.(null)}
-              title="Bỏ chọn part"
-              aria-label="Bỏ chọn part"
+              title={t.paramsClearPartSelection}
+              aria-label={t.paramsClearPartSelection}
             >
               ×
             </button>
@@ -406,9 +419,7 @@ export function ParameterPanel({
                 />
               ))
             ) : (
-              <div className="selected-part-empty">
-                Part này không tham chiếu parameter trực tiếp.
-              </div>
+              <div className="selected-part-empty">{t.paramsPartNoParameters}</div>
             )}
           </div>
         </div>
@@ -460,7 +471,7 @@ export function ParameterPanel({
           <div className="param-scroll">
             {spec.typeName && (
               <div className="editing-type-badge">
-                <span className="editing-label">Đang sửa Type</span>
+                <span className="editing-label">{t.paramsEditingType}</span>
                 <span className="editing-name">{spec.typeName}</span>
               </div>
             )}
@@ -496,7 +507,9 @@ export function ParameterPanel({
             })}
 
             {groups.length === 0 && (
-              <div className="pane-empty small">Không có tham số nào khớp bộ lọc.</div>
+              <div className="pane-empty small">
+                {spec.parameters.length === 0 ? t.parametersEmpty : t.paramsNoFilterMatch}
+              </div>
             )}
 
             {adding ? (
@@ -504,7 +517,7 @@ export function ParameterPanel({
                 <input
                   autoFocus
                   value={draftName}
-                  placeholder="Parameter name"
+                  placeholder={t.paramsNewNamePlaceholder}
                   onChange={(event) => setDraftName(event.target.value)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter") submitNew();
@@ -523,7 +536,7 @@ export function ParameterPanel({
                     ))}
                   </select>
                   <button type="button" className="btn-ghost" onClick={submitNew}>
-                    Add
+                    {t.paramsAdd}
                   </button>
                 </div>
               </div>
@@ -549,26 +562,23 @@ export function ParameterPanel({
               value={partFilter}
               onChange={(event) => setPartFilter(event.target.value)}
               placeholder={t.filterParts}
-              aria-label="Filter parts"
+              aria-label={t.filterParts}
             />
-            <label
-              className="parity-filter"
-              title="Chỉ hiện part sẽ khác preview hoặc mất native form"
-            >
+            <label className="parity-filter" title={t.paramsRiskFilterHint}>
               <input
                 type="checkbox"
                 checked={onlyRisks}
                 onChange={(event) => setOnlyRisks(event.target.checked)}
               />
-              <span>Rủi ro</span>
+              <span>{t.paramsRiskFilter}</span>
             </label>
-            <label className="parity-filter" title="Hiện gợi ý info: mặt khít nhau, part bị chôn">
+            <label className="parity-filter" title={t.paramsInfoFilterHint}>
               <input
                 type="checkbox"
                 checked={showInfo}
                 onChange={(event) => setShowInfo(event.target.checked)}
               />
-              <span>Info</span>
+              <span>{t.paramsInfoFilter}</span>
             </label>
           </div>
 
@@ -608,7 +618,7 @@ export function ParameterPanel({
                       <div
                         className={`part-row ${isSelected ? "selected" : ""} ${isHidden ? "hidden-part" : ""} ${isTransparent ? "transparent-part" : ""}`}
                         onClick={() => onSelectPart?.(isSelected ? null : part.id)}
-                        title="Click to highlight in 3D viewer"
+                        title={t.paramsHighlightHint}
                       >
                         <span
                           className="swatch"
@@ -621,20 +631,22 @@ export function ParameterPanel({
                             title={
                               parity.risks.length > 0
                                 ? parity.risks.map((risk) => risk.message).join("\n")
-                                : "Part giữ native form trong Revit"
+                                : t.paramsParityNative
                             }
                           >
                             {PARITY_LABELS[parity.status]}
                           </span>
                         )}
-                        {hasIssue && <span className="part-issue-dot" title="Cảnh báo bố trí" />}
+                        {hasIssue && (
+                          <span className="part-issue-dot" title={t.paramsIssueDotHint} />
+                        )}
                         <span className="id">{part.id}</span>
                         <div className="part-actions" onClick={(e) => e.stopPropagation()}>
                           {onIsolatePart && (
                             <button
                               type="button"
                               className="btn-part-action"
-                              title="Chỉ hiện part này (Isolate)"
+                              title={t.paramsIsolateHint}
                               onClick={() => onIsolatePart(part.id)}
                             >
                               <svg
@@ -654,9 +666,7 @@ export function ParameterPanel({
                             type="button"
                             className={`btn-part-action ${isTransparent ? "active" : ""}`}
                             title={
-                              isTransparent
-                                ? "Làm đặc lại (Opaque)"
-                                : "Làm mờ (Ghost / Translucent)"
+                              isTransparent ? t.paramsMakeOpaque : t.paramsMakeTransparent
                             }
                             onClick={() => onToggleTransparentPart?.(part.id)}
                           >
@@ -679,9 +689,7 @@ export function ParameterPanel({
                           <button
                             type="button"
                             className={`btn-hide-part ${isHidden ? "hidden" : ""}`}
-                            title={
-                              isHidden ? "Unhide part (Hiện cấu kiện)" : "Hide part (Ẩn cấu kiện)"
-                            }
+                            title={isHidden ? t.paramsUnhidePart : t.paramsHidePart}
                             onClick={() => onToggleHidePart?.(part.id)}
                           >
                             {isHidden ? (
@@ -717,9 +725,7 @@ export function ParameterPanel({
                           {partIssues.map((issue, idx) => (
                             <div key={idx} className={`part-issue-item ${issue.severity}`}>
                               <span className="issue-icon">⚠</span>
-                              <span className="issue-msg">
-                                {localizeIssueMessage(issue.message)}
-                              </span>
+                              <span className="issue-msg">{localizeIssue(issue.message, issue.code, issue.params)}</span>
                             </div>
                           ))}
                         </div>
@@ -746,13 +752,19 @@ export function ParameterPanel({
             </div>
             {paritySummary.risky > 0 && (
               <div className="banner warn">
-                {paritySummary.risky}/{paritySummary.total} part sẽ khác preview hoặc mất native
-                form trong .rfa. Bật “Rủi ro” để lọc.
+                {t.paramsParityWarning(
+                  formatNumber(paritySummary.risky),
+                  formatNumber(paritySummary.total),
+                )}
               </div>
             )}
             <div className="banner info">
-              {analysis.model.instances} solids · {paritySummary.native}/{paritySummary.total}{" "}
-              native · {spec.materials?.length ?? 0} materials
+              {t.paramsModelSummary(
+                formatNumber(analysis.model.instances),
+                formatNumber(paritySummary.native),
+                formatNumber(paritySummary.total),
+                formatNumber(spec.materials?.length ?? 0),
+              )}
             </div>
           </div>
         </>
@@ -763,7 +775,7 @@ export function ParameterPanel({
           <div className="connectors-tab-list">
             {(spec.connectors ?? []).length === 0 ? (
               <div style={{ padding: "18px 12px", color: "#8c8e91" }}>
-                Chưa có MEP Connector nào trong mô hình này.
+                {t.paramsNoConnectors}
               </div>
             ) : (
               (spec.connectors ?? []).map((conn, idx) => {
@@ -786,11 +798,13 @@ export function ParameterPanel({
                   return Number.isFinite(number) ? Math.round(number) : fallback;
                 };
                 const sizeText = isRound
-                  ? `Ø${rounded(diameter, 50)}mm`
-                  : `${rounded(width, 200)}×${rounded(height, 200)}mm`;
+                  ? `Ø${formatNumber(rounded(diameter, 50))}mm`
+                  : `${formatNumber(rounded(width, 200))}×${formatNumber(rounded(height, 200))}mm`;
                 const coordinates = [origin?.x, origin?.y, origin?.z]
                   .map((value) =>
-                    Number.isFinite(Number(value)) ? Math.round(Number(value)) : "—",
+                    Number.isFinite(Number(value))
+                      ? formatNumber(Math.round(Number(value)))
+                      : "—",
                   )
                   .join(", ");
 
@@ -808,7 +822,7 @@ export function ParameterPanel({
                     <div className="connector-meta-row">
                       <span className="connector-system">
                         {conn.systemType}
-                        {referenceHost ? " · reference plane" : ""}
+                        {referenceHost ? ` · ${t.paramsReferencePlane}` : ""}
                       </span>
                       <span className="connector-coords">({coordinates})</span>
                       <button
@@ -821,26 +835,26 @@ export function ParameterPanel({
                           )
                         }
                         disabled={!onUpdateConnectorHost}
-                        title="Đổi kiểu host của connector"
+                        title={t.paramsHostToggleHint}
                       >
-                        {referenceHost ? "Reference plane" : "Solid face"}
+                        {referenceHost ? t.paramsReferencePlane : t.paramsSolidFace}
                       </button>
                     </div>
 
                     {conn.flow !== undefined && (
                       <div className="connector-flow-row">
                         <span>
-                          Flow: {conn.flow} {conn.flowUnit || "L/s"}
+                          {t.paramsFlow}: {formatNumeric(conn.flow)} {conn.flowUnit || "L/s"}
                         </span>
                         {conn.pressureDrop !== undefined && (
-                          <span> · ΔP: {conn.pressureDrop} Pa</span>
+                          <span> · ΔP: {formatNumeric(conn.pressureDrop)} Pa</span>
                         )}
                       </div>
                     )}
 
                     {isOrphan && (
                       <div className="connector-orphan-warning">
-                        ⚠ Cổng kết nối đang bị lơ lửng, không chạm bề mặt chi tiết nào!
+                        ⚠ {t.paramsOrphanConnector}
                       </div>
                     )}
                   </div>
@@ -849,7 +863,7 @@ export function ParameterPanel({
             )}
           </div>
           <div className="banner info">
-            {spec.connectors?.length ?? 0} MEP connectors configured
+            {t.paramsConnectorsConfigured(formatNumber(spec.connectors?.length ?? 0))}
           </div>
         </div>
       )}
