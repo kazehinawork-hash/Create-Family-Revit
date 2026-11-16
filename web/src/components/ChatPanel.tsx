@@ -728,6 +728,7 @@ export function ChatPanel({
           <button
             type="button"
             className="send"
+            data-testid="chat-send"
             onClick={submit}
             disabled={disabled || !draft.trim()}
             aria-label={t.chatSend}
