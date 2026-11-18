@@ -2133,6 +2133,7 @@ export function App() {
         <Viewer
           model={previewModel ?? deferredModel}
           fileName={spec?.name ?? undefined}
+          theme={resolvedTheme}
           skippedCutPartIds={skippedCutPartIds}
           onCaptureReady={(capture) => {
             viewerCaptureRef.current = capture;
@@ -2307,6 +2308,7 @@ export function App() {
             parameters={thumbJob.parameters}
             materials={thumbJob.materials}
             units="mm"
+            theme="light"
             showGrid={false}
             onToggleGrid={() => {}}
             showPlanes={false}

@@ -40,6 +40,8 @@ interface PartCacheEntry {
   /** Stencil helpers that mark the solid part of a section cut. */
   stencilBack?: THREE.Mesh;
   stencilFront?: THREE.Mesh;
+  /** Dark back-face shell that makes the outer silhouette read stronger. */
+  silhouette?: THREE.Mesh;
   disposables: { dispose: () => void }[];
 }
 
@@ -76,6 +78,7 @@ interface Props {
   fileName?: string;
   /** Parts whose cuts the add-in will skip (thin prism): drawn as dashed ghosts. */
   skippedCutPartIds?: string[];
+  theme?: "light" | "dark";
 }
 
 /**
@@ -186,6 +189,81 @@ function snapToAxis(
   return { point, axis };
 }
 
+function createInfiniteGrid(): THREE.Mesh {
+  const material = new THREE.ShaderMaterial({
+    uniforms: {
+      uMinorColor: { value: new THREE.Color(0xb8b0a5) },
+      uMajorColor: { value: new THREE.Color(0x8f877d) },
+      uMinorOpacity: { value: 0.22 },
+      uMajorOpacity: { value: 0.34 },
+      uFadeStart: { value: 6000 },
+      uFadeEnd: { value: 36000 },
+      uCamera: { value: new THREE.Vector3() },
+    },
+    vertexShader: `
+      varying vec3 vWorldPosition;
+      void main() {
+        vec4 world = modelMatrix * vec4(position, 1.0);
+        vWorldPosition = world.xyz;
+        gl_Position = projectionMatrix * viewMatrix * world;
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uMinorColor;
+      uniform vec3 uMajorColor;
+      uniform float uMinorOpacity;
+      uniform float uMajorOpacity;
+      uniform float uFadeStart;
+      uniform float uFadeEnd;
+      uniform vec3 uCamera;
+      varying vec3 vWorldPosition;
+
+      float gridLine(vec2 world, float spacing) {
+        vec2 coord = world / spacing;
+        vec2 derivative = max(fwidth(coord), vec2(1e-5));
+        vec2 grid = abs(fract(coord - 0.5) - 0.5) / derivative;
+        return 1.0 - smoothstep(0.0, 1.2, min(grid.x, grid.y));
+      }
+
+      void main() {
+        vec2 world = vWorldPosition.xy;
+        // Pick a scale from the pixel footprint, then blend one decade at a time.
+        float footprint = max(fwidth(world.x), fwidth(world.y));
+        float target = max(10.0, footprint * 64.0);
+        float level = clamp(log(target / 10.0) / log(10.0), 0.0, 3.0);
+        float exponent = floor(level);
+        float blend = fract(level);
+        float base = 10.0 * pow(10.0, exponent);
+
+        float minor = mix(
+          gridLine(world, base),
+          gridLine(world, base * 10.0),
+          blend
+        );
+        float major = mix(
+          gridLine(world, base * 5.0),
+          gridLine(world, base * 50.0),
+          blend
+        );
+
+        float distanceToCamera = length(world - uCamera.xy);
+        float fade = 1.0 - smoothstep(uFadeStart, uFadeEnd, distanceToCamera);
+        float alpha = max(minor * uMinorOpacity, major * uMajorOpacity) * fade;
+        if (alpha < 0.002) discard;
+        gl_FragColor = vec4(mix(uMinorColor, uMajorColor, major), alpha);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    depthTest: true,
+    side: THREE.DoubleSide,
+  });
+  const grid = new THREE.Mesh(new THREE.PlaneGeometry(2000000, 2000000), material);
+  grid.position.z = -0.05;
+  grid.renderOrder = -2;
+  return grid;
+}
+
 interface SceneState {
   renderer: THREE.WebGLRenderer;
   scene: THREE.Scene;
@@ -193,8 +271,7 @@ interface SceneState {
   controls: OrbitControls;
   content: THREE.Group;
   handlesGroup: THREE.Group;
-  grid: THREE.GridHelper;
-  gridSize: number;
+  grid: THREE.Mesh;
   refPlanesGroup: THREE.Group;
   connectorsGroup: THREE.Group;
   key: THREE.DirectionalLight;
@@ -229,6 +306,7 @@ export function Viewer({
   onCaptureReady,
   fileName,
   skippedCutPartIds = [],
+  theme = "light",
 }: Props) {
   const { t, formatNumber } = useI18n();
   const hostRef = useRef<HTMLDivElement>(null);
@@ -297,6 +375,8 @@ export function Viewer({
   const [turntableActive, setTurntableActive] = useState<boolean>(false);
   const turntableRef = useRef<boolean>(false);
   turntableRef.current = turntableActive;
+  const themeRef = useRef(theme);
+  themeRef.current = theme;
 
   const [shadowsEnabled, setShadowsEnabled] = useState<boolean>(true);
   const shadowsEnabledRef = useRef<boolean>(true);
@@ -479,8 +559,8 @@ export function Viewer({
       stencil: true,
       powerPreference: "high-performance",
     });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    // Transparent canvas: the CSS gradient behind it carries the light/dark theme.
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 3));
+    // The scene background carries the theme; the canvas itself stays opaque.
     renderer.setClearColor(0x000000, 0);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 0.96;
@@ -504,6 +584,7 @@ export function Viewer({
     }
 
     const scene = new THREE.Scene();
+    scene.background = new THREE.Color(themeRef.current === "dark" ? 0x191e22 : 0xece9e2);
 
     // A neutral room probe gives the metals something to reflect; without it every
     // metalness > 0 surface renders as flat grey.
@@ -511,7 +592,7 @@ export function Viewer({
     const environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     pmrem.dispose();
     scene.environment = environment;
-    scene.environmentIntensity = 0.5;
+    scene.environmentIntensity = 0.42;
 
     const camera = new THREE.PerspectiveCamera(38, 1, 10, 200000);
     camera.up.set(0, 0, 1);
@@ -546,9 +627,9 @@ export function Viewer({
       RIGHT: THREE.MOUSE.PAN,
     };
 
-    scene.add(new THREE.HemisphereLight(0xffffff, 0xa7a29a, 1.05));
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x7f776d, 0.62));
 
-    const key = new THREE.DirectionalLight(0xffffff, 2.2);
+    const key = new THREE.DirectionalLight(0xfff7ec, 2.8);
     key.position.set(2800, -3200, 3600);
     key.castShadow = shadowsEnabledRef.current;
     key.shadow.mapSize.set(2048, 2048);
@@ -559,11 +640,11 @@ export function Viewer({
     scene.add(key);
     scene.add(key.target);
 
-    const fill = new THREE.DirectionalLight(0xffffff, 0.75);
+    const fill = new THREE.DirectionalLight(0xdce8f5, 0.42);
     fill.position.set(-3200, 2400, 1400);
     scene.add(fill);
 
-    const rim = new THREE.DirectionalLight(0xffffff, 0.35);
+    const rim = new THREE.DirectionalLight(0xffffff, 0.3);
     rim.position.set(-400, 2600, -3000);
     scene.add(rim);
 
@@ -579,14 +660,8 @@ export function Viewer({
     const connectorsGroup = new THREE.Group();
     scene.add(connectorsGroup);
 
-    const grid = new THREE.GridHelper(6000, 30, 0x9aa0a6, 0xb9bec4);
-    grid.rotation.x = Math.PI / 2;
-    grid.position.z = -0.4;
-    // Faint lines: the model must dominate, not the grid.
-    const gridMaterial = grid.material as THREE.Material;
-    gridMaterial.transparent = true;
-    gridMaterial.opacity = 0.2;
-    gridMaterial.depthWrite = false;
+    const grid = createInfiniteGrid();
+    const gridMaterial = grid.material as THREE.ShaderMaterial;
     scene.add(grid);
 
     // Hatched section cap.
@@ -627,17 +702,21 @@ export function Viewer({
 
     // Catches the key light's shadow so parts read as sitting on the floor.
     const shadowPlane = new THREE.Mesh(
-      new THREE.PlaneGeometry(6000, 6000),
-      new THREE.ShadowMaterial({ color: 0x1f2328, opacity: 0.24 }),
+      new THREE.PlaneGeometry(1, 1),
+      new THREE.ShadowMaterial({ color: 0x14191d, opacity: 0.32 }),
     );
+    shadowPlane.scale.setScalar(12000);
     shadowPlane.position.z = -0.25;
     shadowPlane.receiveShadow = true;
     shadowPlane.visible = shadowsEnabledRef.current;
     scene.add(shadowPlane);
 
+    // Direct WebGL rendering with native MSAA. Post-processing was removed because
+    // its resolve pass softened the thin sheet edges and made the image pulse.
     const resize = () => {
       const width = host.clientWidth || 1;
       const height = host.clientHeight || 1;
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 3));
       renderer.setSize(width, height, false);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
@@ -648,6 +727,7 @@ export function Viewer({
     resize();
 
     let downPos = { x: 0, y: 0 };
+    const CLICK_DRAG_TOLERANCE_PX = 6;
     let draggingHandle: {
       arrow: THREE.Object3D;
       axis: "x" | "y" | "z";
@@ -1149,6 +1229,68 @@ export function Viewer({
       renderDirtyRef.current = true;
     };
 
+    const pickPointer = new THREE.Vector2();
+    const pickRaycaster = new THREE.Raycaster();
+
+    const partAtObject = (
+      object: THREE.Object3D,
+    ): { partId: string; partName: string; object: THREE.Object3D } | null => {
+      let current: THREE.Object3D | null = object;
+      while (current && current !== content) {
+        const partId = current.userData?.partId as string | undefined;
+        if (partId) {
+          return {
+            partId,
+            partName: (current.userData?.partName as string) || partId,
+            object: current,
+          };
+        }
+        current = current.parent;
+      }
+      return null;
+    };
+
+    const visibleInTree = (object: THREE.Object3D): boolean => {
+      let current: THREE.Object3D | null = object;
+      while (current) {
+        if (!current.visible) return false;
+        if (current === content) return true;
+        current = current.parent;
+      }
+      return true;
+    };
+
+    /** Shared picker: hover, click and context menu must all resolve the same part. */
+    const pickPartAt = (
+      clientX: number,
+      clientY: number,
+    ): {
+      hit: THREE.Intersection;
+      partId: string;
+      partName: string;
+      object: THREE.Object3D;
+    } | null => {
+      const rect = renderer.domElement.getBoundingClientRect();
+      if (!rect.width || !rect.height) return null;
+      pickPointer.set(
+        ((clientX - rect.left) / rect.width) * 2 - 1,
+        -((clientY - rect.top) / rect.height) * 2 + 1,
+      );
+      pickRaycaster.setFromCamera(pickPointer, camera);
+      const hits = pickRaycaster.intersectObjects(content.children, true);
+      for (const hit of hits) {
+        if (!(hit.object as THREE.Mesh).isMesh || !visibleInTree(hit.object)) continue;
+        if (
+          renderer.clippingPlanes?.some((plane) => plane.distanceToPoint(hit.point) < 0)
+        ) {
+          continue;
+        }
+        const part = partAtObject(hit.object);
+        if (part) return { hit, ...part };
+      }
+      return null;
+    };
+
     const onCanvasClick = (e: MouseEvent) => {
       // Ignore the click that ends a section-arrow drag.
       if (sectionDragMovedRef.current) {
@@ -1158,7 +1300,7 @@ export function Viewer({
       // Ignore if user was dragging / orbiting
       const dx = Math.abs(e.clientX - downPos.x);
       const dy = Math.abs(e.clientY - downPos.y);
-      if (dx > 4 || dy > 4) return;
+      if (dx > CLICK_DRAG_TOLERANCE_PX || dy > CLICK_DRAG_TOLERANCE_PX) return;
 
       const rect = renderer.domElement.getBoundingClientRect();
       const pointer = new THREE.Vector2(
@@ -1170,10 +1312,7 @@ export function Viewer({
       mainRaycaster.setFromCamera(pointer, camera);
 
       if (pickingSectionRef.current) {
-        const meshHits = mainRaycaster
-          .intersectObjects(content.children, true)
-          .filter((entry) => (entry.object as THREE.Mesh).isMesh);
-        const hit = meshHits[0];
+        const hit = pickPartAt(e.clientX, e.clientY)?.hit;
         if (hit?.face) {
           const mesh = hit.object as THREE.Mesh;
           // Face normals point outward; flip so the interior side is kept and the
@@ -1239,23 +1378,8 @@ export function Viewer({
       const handleHits = mainRaycaster.intersectObjects(handlesGroup.children, true);
       if (handleHits.length > 0) return;
 
-      const intersects = mainRaycaster.intersectObjects(content.children, true);
-
-      if (intersects.length > 0) {
-        let currentObj: THREE.Object3D | null = intersects[0].object;
-        while (
-          currentObj &&
-          !currentObj.userData.partId &&
-          currentObj.parent !== content &&
-          currentObj.parent
-        ) {
-          currentObj = currentObj.parent;
-        }
-        const hitId = currentObj?.userData.partId || null;
-        onSelectPartRef.current?.(hitId);
-      } else {
-        onSelectPartRef.current?.(null);
-      }
+      const picked = pickPartAt(e.clientX, e.clientY);
+      onSelectPartRef.current?.(picked?.partId ?? null);
     };
 
     const onContextMenu = (e: MouseEvent) => {
@@ -1265,66 +1389,43 @@ export function Viewer({
       // If user dragged with right mouse button (pan), don't show context menu
       const dx = Math.abs(e.clientX - downPos.x);
       const dy = Math.abs(e.clientY - downPos.y);
-      if (dx > 4 || dy > 4) {
+      if (dx > CLICK_DRAG_TOLERANCE_PX || dy > CLICK_DRAG_TOLERANCE_PX) {
         return;
       }
 
-      const rect = renderer.domElement.getBoundingClientRect();
-      const pointer = new THREE.Vector2(
-        ((e.clientX - rect.left) / rect.width) * 2 - 1,
-        -((e.clientY - rect.top) / rect.height) * 2 + 1,
-      );
+      const picked = pickPartAt(e.clientX, e.clientY);
+      if (picked) {
+        const { hit, partId, object } = picked;
+        const partDef = modelRef.current?.parts.find((p) => p.id === partId);
+        const partName = partDef?.name || picked.partName || partId;
 
-      const hitRaycaster = new THREE.Raycaster();
-      hitRaycaster.setFromCamera(pointer, camera);
+        // Section placed from this click: plane normal follows the clicked face and
+        // is flipped to face away from the camera, so the near half gets cut.
+        const normal: THREE.Vector3 = hit.face
+          ? hit.face.normal
+              .clone()
+              .transformDirection((hit.object as THREE.Mesh).matrixWorld)
+              .normalize()
+              .negate()
+          : camera.getWorldDirection(new THREE.Vector3());
 
-      const intersects = hitRaycaster.intersectObjects(content.children, true);
-      if (intersects.length > 0) {
-        const hit = intersects[0];
-        let currentObj: THREE.Object3D | null = hit.object;
-        while (
-          currentObj &&
-          !currentObj.userData.partId &&
-          currentObj.parent !== content &&
-          currentObj.parent
-        ) {
-          currentObj = currentObj.parent;
-        }
-        const hitId = currentObj?.userData.partId || null;
-        if (hitId) {
-          const partDef = modelRef.current?.parts.find((p) => p.id === hitId);
-          const partName = partDef?.name || hitId;
+        // Cut through the middle of the part so it is visibly sliced, not flush
+        // with the surface that was clicked.
+        let center: THREE.Vector3 | null = null;
+        const box = new THREE.Box3().setFromObject(object);
+        if (!box.isEmpty()) center = box.getCenter(new THREE.Vector3());
+        if (!center) center = hit.point.clone();
 
-          // Section placed from this click: plane normal follows the clicked face and
-          // is flipped to face away from the camera, so the near half gets cut.
-          const normal: THREE.Vector3 = hit.face
-            ? hit.face.normal
-                .clone()
-                .transformDirection((hit.object as THREE.Mesh).matrixWorld)
-                .normalize()
-                .negate()
-            : camera.getWorldDirection(new THREE.Vector3());
-
-          // Cut through the middle of the part so it is visibly sliced, not flush
-          // with the surface that was clicked.
-          let center: THREE.Vector3 | null = null;
-          if (currentObj) {
-            const box = new THREE.Box3().setFromObject(currentObj);
-            if (!box.isEmpty()) center = box.getCenter(new THREE.Vector3());
-          }
-          if (!center) center = hit.point.clone();
-
-          onSelectPartRef.current?.(hitId);
-          setContextMenu({
-            partId: hitId,
-            partName,
-            x: e.clientX,
-            y: e.clientY,
-            normal,
-            center,
-          });
-          return;
-        }
+        onSelectPartRef.current?.(partId);
+        setContextMenu({
+          partId,
+          partName,
+          x: e.clientX,
+          y: e.clientY,
+          normal,
+          center,
+        });
+        return;
       }
 
       setContextMenu(null);
@@ -1338,8 +1439,6 @@ export function Viewer({
 
     // Hover: one raycast per animation frame, never while orbiting or using a tool.
     let hoverFrame = 0;
-    const hoverRay = new THREE.Raycaster();
-    const hoverPointer = new THREE.Vector2();
 
     const clearHover = () => {
       setHoveredPartId((current) => (current === null ? current : null));
@@ -1360,17 +1459,9 @@ export function Viewer({
         const rect = renderer.domElement.getBoundingClientRect();
         if (!rect.width || !rect.height) return;
 
-        hoverPointer.set(
-          ((x - rect.left) / rect.width) * 2 - 1,
-          -((y - rect.top) / rect.height) * 2 + 1,
-        );
-        hoverRay.setFromCamera(hoverPointer, camera);
-        const hits = hoverRay
-          .intersectObjects(content.children, true)
-          .filter((entry) => (entry.object as THREE.Mesh).isMesh);
-        const hit = hits.find((entry) => entry.object.userData?.partId);
-        const partId = (hit?.object.userData?.partId as string) || null;
-        const name = (hit?.object.userData?.partName as string) || "";
+        const picked = pickPartAt(x, y);
+        const partId = picked?.partId ?? null;
+        const name = picked?.partName ?? "";
 
         setHoveredPartId((current) => (current === partId ? current : partId));
         setHoverInfo((current) => {
@@ -1919,6 +2010,9 @@ export function Viewer({
       }
       if (renderDirtyRef.current) {
         renderDirtyRef.current = false;
+        gridMaterial.uniforms.uCamera.value.copy(camera.position);
+        // Direct renderer every frame: same antialiasing, tone mapping and
+        // pixel ratio while idle or dragging.
         renderer.render(scene, camera);
         if (statsEl) {
           statsEl.textContent = `${renderer.info.render.calls} calls · ${Math.round(
@@ -1945,7 +2039,6 @@ export function Viewer({
       content,
       handlesGroup,
       grid,
-      gridSize: 6000,
       refPlanesGroup,
       connectorsGroup,
       key,
@@ -1985,6 +2078,7 @@ export function Viewer({
       const previousNear = state.camera.near;
       const previousFar = state.camera.far;
       const previousTarget = state.controls.target.clone();
+      const previousBackground = state.scene.background;
 
       let image: string | null = null;
       try {
@@ -1992,6 +2086,8 @@ export function Viewer({
         state.refPlanesGroup.visible = false;
         state.connectorsGroup.visible = false;
         state.handlesGroup.visible = false;
+        // Library thumbnails use the same warm paper background as the library cards.
+        state.scene.background = new THREE.Color(0xf4f2ec);
 
         // Render at exactly 16:9 so the JPEG can be used without a square crop.
         state.renderer.setPixelRatio(1);
@@ -2070,6 +2166,7 @@ export function Viewer({
         state.camera.updateProjectionMatrix();
         state.controls.target.copy(previousTarget);
         state.controls.update();
+        state.scene.background = previousBackground;
         renderDirtyRef.current = true;
       }
 
@@ -2096,6 +2193,8 @@ export function Viewer({
       window.removeEventListener("pointermove", onSectionPointerMove);
       window.removeEventListener("pointerup", onSectionPointerUp);
       controls.dispose();
+      grid.geometry.dispose();
+      gridMaterial.dispose();
       renderer.dispose();
       environment.dispose();
       shadowPlane.geometry.dispose();
@@ -2117,6 +2216,15 @@ export function Viewer({
       stateRef.current = null;
     };
   }, []);
+
+  // Theme also drives the opaque canvas background; the post-processing target
+  // needs a solid clear colour so MSAA resolves clean edges.
+  useEffect(() => {
+    const state = stateRef.current;
+    if (!state) return;
+    state.scene.background = new THREE.Color(theme === "dark" ? 0x191e22 : 0xece9e2);
+    renderDirtyRef.current = true;
+  }, [theme]);
 
   // Bật/Tắt đổ bóng: tắt shadow map của renderer + nguồn sáng và ẩn mặt phẳng hứng bóng,
   // đồng thời buộc biên dịch lại vật liệu để shader nhận cờ shadow mới.
@@ -2248,6 +2356,10 @@ export function Viewer({
     const materialsKey = materials
       .map((material) => `${material.name}:${material.color ?? ""}`)
       .join(",");
+    const modelExtent = model?.bounds
+      ? Math.max(model.bounds.size.x, model.bounds.size.y, model.bounds.size.z, 500)
+      : 1000;
+    const silhouetteWidth = Math.max(0.7, Math.min(modelExtent * 0.0018, 4));
 
     const styleOf = (part: ResolvedPart, ghost = false) => {
       const isClearance =
@@ -2286,15 +2398,13 @@ export function Viewer({
       const transparent = style.isTransparent || style.isGhost || style.isDimmed;
       const transparencyChanged = material.transparent !== transparent;
       material.color.set(style.color);
-      // Lift the palette a little: the old flat grey read as "washed out" on the beige
-      // background, especially at low zoom.
-      material.color.lerp(new THREE.Color(0xffffff), 0.12);
       if (style.isSelected) {
         // 25% accent tint, visible on both the light and the dark palette.
         material.color.lerp(new THREE.Color(0x4f9dff), 0.25);
       }
       material.metalness = style.metalness;
       material.roughness = style.roughness;
+      material.envMapIntensity = style.isTransparent || style.isGhost ? 0.5 : 1.15;
       material.transparent = transparent;
       material.opacity = style.isGhost
         ? 0.1
@@ -2345,16 +2455,29 @@ export function Viewer({
         edgeMaterial.transparent = true;
       } else if (style.isTransparent) {
         edgeMaterial.color.setHex(0x30373b);
-        edgeMaterial.opacity = 0.14;
+        edgeMaterial.opacity = 0.2;
         edgeMaterial.transparent = true;
       } else {
-        edgeMaterial.color.setHex(0x30373b);
-        edgeMaterial.opacity = 0.32;
+        edgeMaterial.color.setHex(theme === "dark" ? 0xc4ccd1 : 0x252c31);
+        edgeMaterial.opacity = 0.54;
         edgeMaterial.transparent = true;
       }
 
+      if (entry.silhouette) {
+        const silhouetteMaterial = entry.silhouette.material as THREE.ShaderMaterial;
+        entry.silhouette.visible = !style.isTransparent && !style.isGhost;
+        silhouetteMaterial.uniforms.outlineColor.value.setHex(
+          theme === "dark" ? 0xc4ccd1 : 0x171d21,
+        );
+        silhouetteMaterial.uniforms.outlineOpacity.value = style.isSelected
+          ? 0.55
+          : 0.34;
+      }
+
       for (const child of entry.group.children) {
-        if (child instanceof THREE.Mesh) child.castShadow = !style.isTransparent && !style.isGhost;
+        if (child instanceof THREE.Mesh && child !== entry.silhouette) {
+          child.castShadow = !style.isTransparent && !style.isGhost;
+        }
       }
     };
 
@@ -2380,6 +2503,51 @@ export function Viewer({
 
       const count = Math.max(1, part.array.count);
       let entryStencil: { back: THREE.Mesh; front: THREE.Mesh } | null = null;
+      let silhouette: THREE.Mesh | undefined;
+
+      if (count === 1) {
+        const silhouetteMaterial = new THREE.ShaderMaterial({
+          uniforms: {
+            outlineColor: {
+              value: new THREE.Color(themeRef.current === "dark" ? 0xc4ccd1 : 0x171d21),
+            },
+            outlineOpacity: { value: 0.34 },
+            outlineWidth: { value: silhouetteWidth },
+          },
+          vertexShader: `
+            #include <common>
+            #include <clipping_planes_pars_vertex>
+            attribute vec3 normal;
+            uniform float outlineWidth;
+            void main() {
+              vec3 expanded = position + normalize(normal) * outlineWidth;
+              vec4 mvPosition = modelViewMatrix * vec4(expanded, 1.0);
+              gl_Position = projectionMatrix * mvPosition;
+              #include <clipping_planes_vertex>
+            }
+          `,
+          fragmentShader: `
+            #include <common>
+            #include <clipping_planes_pars_fragment>
+            uniform vec3 outlineColor;
+            uniform float outlineOpacity;
+            void main() {
+              #include <clipping_planes_fragment>
+              gl_FragColor = vec4(outlineColor, outlineOpacity);
+            }
+          `,
+          side: THREE.BackSide,
+          clipping: true,
+          transparent: true,
+          depthWrite: false,
+          depthTest: true,
+        });
+        silhouette = new THREE.Mesh(geometry, silhouetteMaterial);
+        silhouette.renderOrder = -1;
+        silhouette.userData = { silhouette: true };
+        group.add(silhouette);
+        disposables.push(silhouetteMaterial);
+      }
 
       if (count > 1) {
         // Repeated parts (bolts, fins, louvres) are one draw call, not one per copy.
@@ -2465,6 +2633,7 @@ export function Viewer({
         group,
         meshMaterial,
         edgeMaterial,
+        ...(silhouette ? { silhouette } : {}),
         ...(entryStencil ? { stencilBack: entryStencil.back, stencilFront: entryStencil.front } : {}),
         disposables,
       };
@@ -2516,6 +2685,7 @@ export function Viewer({
         style.isGhost ? "ghost" : "",
         style.isHovered ? "hover" : "",
         style.isDimmed ? "dim" : "",
+        theme,
       ].join("|");
 
       const existing = partCache.get(part.id);
@@ -2610,6 +2780,7 @@ export function Viewer({
     dimOthers,
     detailLevel,
     previewQuality,
+    theme,
   ]);
 
   // Explode: push each part away from the model centre. Positions are restored at 0%.
@@ -2905,7 +3076,7 @@ export function Viewer({
     const state = stateRef.current;
     if (!state) return;
 
-    // Rebuild only when the plane orientation/base changes; sliding reuses the meshes.
+    renderDirtyRef.current = true;
     const modelKey = model?.bounds
       ? `${model.bounds.size.x.toFixed(1)},${model.bounds.size.y.toFixed(1)},${model.bounds.size.z.toFixed(1)}`
       : "none";
@@ -3253,30 +3424,15 @@ export function Viewer({
       return;
     }
 
-    const size = Math.max(model.bounds?.size.x ?? 0, model.bounds?.size.y ?? 0, 3000);
-    const gridSize = Math.ceil((size * 2.4) / 1000) * 1000;
-    if (state.gridSize !== gridSize) {
-      state.scene.remove(state.grid);
-      state.grid.geometry.dispose();
-      state.grid.dispose();
-      const nextGrid = new THREE.GridHelper(
-        gridSize,
-        Math.max(12, Math.round(gridSize / 200)),
-        0x9aa0a6,
-        0xb9bec4,
-      );
-      nextGrid.rotation.x = Math.PI / 2;
-      nextGrid.position.z = -0.4;
-      const nextMaterial = nextGrid.material as THREE.Material;
-      nextMaterial.transparent = true;
-      nextMaterial.opacity = 0.2;
-      nextMaterial.depthWrite = false;
-      state.scene.add(nextGrid);
-      nextGrid.visible = showGrid;
-      state.grid = nextGrid;
-      state.gridSize = gridSize;
-    }
-    state.grid.visible = showGrid;
+    const size = Math.max(
+      model.bounds?.size.x ?? 0,
+      model.bounds?.size.y ?? 0,
+      model.bounds?.size.z ?? 0,
+      100,
+    );
+    const gridMaterial = state.grid.material as THREE.ShaderMaterial;
+    gridMaterial.uniforms.uFadeStart.value = Math.max(size * 2.5, 5000);
+    gridMaterial.uniforms.uFadeEnd.value = Math.max(size * 12, 22000);
 
     // Fit the key light and its shadow frustum to the model so the shadow stays crisp.
     if (model.bounds) {
@@ -3286,6 +3442,7 @@ export function Viewer({
         (min.y + max.y) / 2,
         (min.z + max.z) / 2,
       );
+      state.shadowPlane.position.set(center.x, center.y, -0.25);
       const extent =
         Math.max(model.bounds.size.x, model.bounds.size.y, model.bounds.size.z, 600) * 1.6;
       state.key.position.set(center.x + extent * 0.7, center.y - extent, center.z + extent * 1.5);
@@ -3301,7 +3458,7 @@ export function Viewer({
       shadowCamera.far = extent * 6;
       shadowCamera.updateProjectionMatrix();
 
-      state.shadowPlane.scale.setScalar(gridSize / 6000);
+      state.shadowPlane.scale.setScalar(Math.max(size * 8, 6000) * 1.15);
       state.renderer.shadowMap.needsUpdate = true;
     }
 
