@@ -728,8 +728,12 @@ export function partMaterialProps(
   materials: { name: string; color?: string; metalness?: number; roughness?: number }[],
 ): { metalness: number; roughness: number } {
   const material = materials.find((entry) => entry.name === part.material);
+  const name = (material?.name ?? "").toLowerCase();
+  const painted = /(paint|sơn|powder|coating|epoxy)/i.test(name);
+  const metal = /(steel|inox|stainless|galv|kẽm|thép|metal|aluminium|nhôm)/i.test(name);
   return {
-    metalness: material?.metalness ?? 0.2,
-    roughness: material?.roughness ?? 0.6,
+    metalness: material?.metalness ?? (painted ? 0.16 : metal ? 0.62 : 0.38),
+    roughness:
+      material?.roughness ?? (painted ? 0.5 : metal ? 0.36 : 0.46),
   };
 }
