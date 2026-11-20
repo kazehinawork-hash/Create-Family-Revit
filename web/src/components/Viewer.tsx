@@ -13,6 +13,7 @@ import {
 } from "../lib/three-build";
 import { buildPartGeometryAsync, type BuiltPartGeometry } from "../lib/geometry-pool";
 import { useI18n } from "../lib/i18n";
+import type { ChatTarget, ModelNote, NoteDraft, Vec3Like } from "../lib/annotations";
 
 /** Camera presets the ViewCube can request. */
 type ViewDirection =
@@ -60,6 +61,13 @@ interface Props {
   onToggleHandles?: () => void;
   selectedPartId?: string | null;
   onSelectPart?: (partId: string | null) => void;
+  /** Add parts to the chat composer from the context menu. */
+  onSendPartsToChat?: (targets: ChatTarget[]) => void;
+  /** Notes pinned on the model. */
+  notes?: ModelNote[];
+  onAddNote?: (draft: NoteDraft) => void;
+  onFocusNote?: (note: ModelNote) => void;
+  focusNote?: ModelNote | null;
   hiddenPartIds?: string[];
   onToggleHidePart?: (partId: string) => void;
   onUnhideAll?: () => void;
@@ -292,6 +300,11 @@ export function Viewer({
   onToggleConnectors,
   selectedPartId,
   onSelectPart,
+  onSendPartsToChat,
+  notes = [],
+  onAddNote,
+  onFocusNote,
+  focusNote = null,
   hiddenPartIds = [],
   onToggleHidePart,
   onUnhideAll,
@@ -330,6 +343,10 @@ export function Viewer({
   const modelRef = useRef<ResolvedModel | null>(model);
   const onSelectPartRef = useRef(onSelectPart);
   onSelectPartRef.current = onSelectPart;
+  const onSendPartsToChatRef = useRef(onSendPartsToChat);
+  onSendPartsToChatRef.current = onSendPartsToChat;
+  const onFocusNoteRef = useRef(onFocusNote);
+  onFocusNoteRef.current = onFocusNote;
   const onUpdateParameterRef = useRef(onUpdateParameter);
   onUpdateParameterRef.current = onUpdateParameter;
   const onToggleHidePartRef = useRef(onToggleHidePart);
@@ -356,8 +373,45 @@ export function Viewer({
     x: number;
     y: number;
     normal: THREE.Vector3 | null;
+    surfaceNormal: THREE.Vector3 | null;
+    point: THREE.Vector3 | null;
     center: THREE.Vector3 | null;
   } | null>(null);
+  const [pickedPartIds, setPickedPartIds] = useState<string[]>([]);
+  const pickedPartIdsRef = useRef<string[]>([]);
+  pickedPartIdsRef.current = pickedPartIds;
+  const notesRef = useRef<ModelNote[]>(notes);
+  notesRef.current = notes;
+  const notePinRefs = useRef(new Map<string, HTMLButtonElement>());
+  const [noteComposer, setNoteComposer] = useState<{
+    partId: string;
+    partName: string;
+    x: number;
+    y: number;
+    point: Vec3Like;
+    normal?: Vec3Like;
+    text: string;
+  } | null>(null);
+
+  // A selection made in the parameter panel or chat replaces the Ctrl+click set.
+  useEffect(() => {
+    if (!selectedPartId) {
+      setPickedPartIds([]);
+      return;
+    }
+    setPickedPartIds((current) =>
+      current.includes(selectedPartId) ? current : [selectedPartId],
+    );
+  }, [selectedPartId]);
+
+  // Drop ids that no longer exist after a spec edit.
+  useEffect(() => {
+    const live = new Set((model?.parts ?? []).map((part) => part.id));
+    setPickedPartIds((current) => {
+      const next = current.filter((id) => live.has(id));
+      return next.length === current.length ? current : next;
+    });
+  }, [model]);
 
   const [visiblePartCount, setVisiblePartCount] = useState<number>(0);
   const prevModelRef = useRef<ResolvedModel | null>(null);
@@ -456,6 +510,31 @@ export function Viewer({
     link.click();
     link.remove();
   };
+
+  /** Keep HTML note pins attached to their world point without hiding behind geometry. */
+  const positionNotePins = useCallback(() => {
+    const state = stateRef.current;
+    const host = hostRef.current;
+    if (!state || !host) return;
+    const rect = host.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const projected = new THREE.Vector3();
+    for (const note of notesRef.current) {
+      const pin = notePinRefs.current.get(note.id);
+      if (!pin) continue;
+      projected.set(note.point.x, note.point.y, note.point.z).project(state.camera);
+      const visible = projected.z <= 1 && projected.z >= -1;
+      pin.style.display = visible ? "inline-flex" : "none";
+      if (!visible) continue;
+      const x = (projected.x * 0.5 + 0.5) * rect.width;
+      const y = (-projected.y * 0.5 + 0.5) * rect.height;
+      pin.style.transform = `translate(-50%, -100%) translate(${x}px, ${y}px)`;
+    }
+  }, []);
+
+  useEffect(() => {
+    positionNotePins();
+  }, [notes, positionNotePins]);
 
   const clearMeasurements = () => {
     const state = stateRef.current;
@@ -863,6 +942,7 @@ export function Viewer({
     const onCanvasMouseDown = (e: MouseEvent) => {
       downPos = { x: e.clientX, y: e.clientY };
       setContextMenu(null);
+      setNoteComposer(null);
 
       const rect = renderer.domElement.getBoundingClientRect();
       dragPointer.set(
@@ -1379,7 +1459,26 @@ export function Viewer({
       if (handleHits.length > 0) return;
 
       const picked = pickPartAt(e.clientX, e.clientY);
-      onSelectPartRef.current?.(picked?.partId ?? null);
+      if (!picked) {
+        setPickedPartIds([]);
+        pickedPartIdsRef.current = [];
+        onSelectPartRef.current?.(null);
+        return;
+      }
+
+      const modifier = e.ctrlKey || e.metaKey;
+      if (modifier) {
+        const next = pickedPartIdsRef.current.includes(picked.partId)
+          ? pickedPartIdsRef.current.filter((id) => id !== picked.partId)
+          : [...pickedPartIdsRef.current, picked.partId];
+        pickedPartIdsRef.current = next;
+        setPickedPartIds(next);
+        onSelectPartRef.current?.(next[next.length - 1] ?? null);
+      } else {
+        setPickedPartIds([picked.partId]);
+        pickedPartIdsRef.current = [picked.partId];
+        onSelectPartRef.current?.(picked.partId);
+      }
     };
 
     const onContextMenu = (e: MouseEvent) => {
@@ -1398,15 +1497,15 @@ export function Viewer({
         const { hit, partId, object } = picked;
         const partDef = modelRef.current?.parts.find((p) => p.id === partId);
         const partName = partDef?.name || picked.partName || partId;
+        const mesh = hit.object as THREE.Mesh;
 
         // Section placed from this click: plane normal follows the clicked face and
         // is flipped to face away from the camera, so the near half gets cut.
-        const normal: THREE.Vector3 = hit.face
-          ? hit.face.normal
-              .clone()
-              .transformDirection((hit.object as THREE.Mesh).matrixWorld)
-              .normalize()
-              .negate()
+        const surfaceNormal: THREE.Vector3 | null = hit.face
+          ? hit.face.normal.clone().transformDirection(mesh.matrixWorld).normalize()
+          : null;
+        const normal: THREE.Vector3 = surfaceNormal
+          ? surfaceNormal.clone().negate()
           : camera.getWorldDirection(new THREE.Vector3());
 
         // Cut through the middle of the part so it is visibly sliced, not flush
@@ -1416,6 +1515,10 @@ export function Viewer({
         if (!box.isEmpty()) center = box.getCenter(new THREE.Vector3());
         if (!center) center = hit.point.clone();
 
+        if (!pickedPartIdsRef.current.includes(partId)) {
+          setPickedPartIds([partId]);
+          pickedPartIdsRef.current = [partId];
+        }
         onSelectPartRef.current?.(partId);
         setContextMenu({
           partId,
@@ -1423,6 +1526,8 @@ export function Viewer({
           x: e.clientX,
           y: e.clientY,
           normal,
+          surfaceNormal,
+          point: hit.point.clone(),
           center,
         });
         return;
@@ -2020,6 +2125,7 @@ export function Viewer({
           )}k tris`;
         }
       }
+      positionNotePins();
 
       if (cubeRenderer && cubeScene && cubeCamera) {
         // Sync cube camera rotation with main scene camera
@@ -2215,7 +2321,7 @@ export function Viewer({
       }
       stateRef.current = null;
     };
-  }, []);
+  }, [positionNotePins]);
 
   // Theme also drives the opaque canvas background; the post-processing target
   // needs a solid clear colour so MSAA resolves clean edges.
@@ -2361,6 +2467,9 @@ export function Viewer({
       : 1000;
     const silhouetteWidth = Math.max(0.7, Math.min(modelExtent * 0.0018, 4));
 
+    const activeSelectedIds = new Set(
+      [selectedPartId, ...pickedPartIds].filter((id): id is string => Boolean(id)),
+    );
     const styleOf = (part: ResolvedPart, ghost = false) => {
       const isClearance =
         part.id.toLowerCase().includes("clearance") ||
@@ -2371,7 +2480,7 @@ export function Viewer({
         color: partColor(part, materials),
         metalness: props.metalness,
         roughness: props.roughness,
-        isSelected: part.id === selectedPartId,
+        isSelected: activeSelectedIds.has(part.id),
         isTransparent: transparentPartIds.includes(part.id) || isClearance,
         isClearance,
         hasIssue: issuePartIds.includes(part.id),
@@ -2381,9 +2490,9 @@ export function Viewer({
         isHovered: part.id === hoveredPartId,
         // Other parts recede a little so the selection reads at a glance.
         isDimmed:
-          Boolean(selectedPartId) &&
+          activeSelectedIds.size > 0 &&
           dimOthers &&
-          part.id !== selectedPartId &&
+          !activeSelectedIds.has(part.id) &&
           !ghost &&
           !isClearance,
       };
@@ -2770,6 +2879,7 @@ export function Viewer({
     model,
     materials,
     selectedPartId,
+    pickedPartIds,
     hiddenPartIds,
     transparentPartIds,
     issuePartIds,
@@ -3039,6 +3149,9 @@ export function Viewer({
       if (event.key !== "Escape") return;
       setHoveredPartId(null);
       setHoverInfo(null);
+      setPickedPartIds([]);
+      pickedPartIdsRef.current = [];
+      setNoteComposer(null);
       onSelectPartRef.current?.(null);
     };
     window.addEventListener("keydown", onKey);
@@ -3070,6 +3183,27 @@ export function Viewer({
     state.controls.update();
     renderDirtyRef.current = true;
   }, [focusPartId]);
+
+  // Zoom to the exact pinned point when a note is opened from the notes panel.
+  useEffect(() => {
+    const state = stateRef.current;
+    if (!state || !focusNote) return;
+    const point = new THREE.Vector3(focusNote.point.x, focusNote.point.y, focusNote.point.z);
+    const bounds = modelRef.current?.bounds;
+    const extent = bounds
+      ? Math.max(bounds.size.x, bounds.size.y, bounds.size.z, 300)
+      : 1200;
+    const distance = Math.max(280, extent * 0.34);
+    state.camera.position
+      .copy(point)
+      .add(new THREE.Vector3(0.55, -0.75, 0.45).normalize().multiplyScalar(distance));
+    state.camera.near = Math.max(1, distance / 500);
+    state.camera.far = distance * 15;
+    state.camera.updateProjectionMatrix();
+    state.controls.target.copy(point);
+    state.controls.update();
+    renderDirtyRef.current = true;
+  }, [focusNote]);
 
   // Section box: one global clipping plane in front of the chosen axis.
   useEffect(() => {
@@ -4446,6 +4580,85 @@ export function Viewer({
         </div>
       )}
 
+      <div className="viewer-note-pins">
+        {notes.map((note, index) => {
+          const exists = Boolean(model?.parts.some((part) => part.id === note.partId));
+          return (
+            <button
+              key={note.id}
+              ref={(node) => {
+                if (node) notePinRefs.current.set(note.id, node);
+                else notePinRefs.current.delete(note.id);
+              }}
+              type="button"
+              className={`viewer-note-pin${note.status === "resolved" ? " resolved" : ""}${
+                exists ? "" : " stale"
+              }`}
+              style={{ left: 0, top: 0, display: "none" }}
+              title={`${note.text}${exists ? "" : ` · ${t.viewerNoteChanged}`}`}
+              onClick={(event) => {
+                event.stopPropagation();
+                onFocusNoteRef.current?.(note);
+              }}
+            >
+              {index + 1}
+            </button>
+          );
+        })}
+      </div>
+
+      {noteComposer && (
+        <form
+          className="viewer-note-composer"
+          style={{ left: `${noteComposer.x}px`, top: `${noteComposer.y}px` }}
+          onSubmit={(event) => {
+            event.preventDefault();
+            const text = noteComposer.text.trim();
+            if (!text || !onAddNote) return;
+            onAddNote({
+              partId: noteComposer.partId,
+              partName: noteComposer.partName,
+              point: noteComposer.point,
+              normal: noteComposer.normal,
+              text,
+            });
+            setNoteComposer(null);
+          }}
+        >
+          <div className="note-composer-part">{noteComposer.partName}</div>
+          <textarea
+            autoFocus
+            rows={3}
+            maxLength={2000}
+            value={noteComposer.text}
+            placeholder={t.viewerNotePlaceholder}
+            onChange={(event) =>
+              setNoteComposer((current) =>
+                current ? { ...current, text: event.target.value } : current,
+              )
+            }
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                setNoteComposer(null);
+              }
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                event.currentTarget.form?.requestSubmit();
+              }
+            }}
+          />
+          <div className="note-composer-actions">
+            <button type="button" className="btn-ghost" onClick={() => setNoteComposer(null)}>
+              {t.viewerNoteCancel}
+            </button>
+            <button type="submit" className="btn-primary" disabled={!noteComposer.text.trim()}>
+              {t.viewerNoteSave}
+            </button>
+          </div>
+        </form>
+      )}
+
       {contextMenu && (
         <div
           className="viewer-context-menu"
@@ -4458,9 +4671,90 @@ export function Viewer({
           <div className="menu-header">
             <span className="menu-part-icon" />
             <span className="menu-part-name" title={contextMenu.partName}>
-              {contextMenu.partName}
+              {pickedPartIds.length > 1 && pickedPartIds.includes(contextMenu.partId)
+                ? t.viewerSelectedParts(formatNumber(pickedPartIds.length))
+                : contextMenu.partName}
             </span>
           </div>
+          <div className="menu-divider" />
+
+          <button
+            type="button"
+            className="menu-item"
+            onClick={() => {
+              const ids =
+                pickedPartIds.length > 1 && pickedPartIds.includes(contextMenu.partId)
+                  ? pickedPartIds
+                  : [contextMenu.partId];
+              const targets = ids
+                .map((id) => {
+                  const part = model?.parts.find((item) => item.id === id);
+                  if (!part) return null;
+                  return { partId: part.id, partName: part.name };
+                })
+                .filter((target): target is ChatTarget => Boolean(target));
+              if (targets.length > 0) onSendPartsToChatRef.current?.(targets);
+              setContextMenu(null);
+            }}
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
+              <path d="M8 9h8M8 13h5" />
+            </svg>
+            <span>{t.viewerSendToChat}</span>
+          </button>
+
+          <button
+            type="button"
+            className="menu-item"
+            onClick={() => {
+              if (!contextMenu.point) {
+                setContextMenu(null);
+                return;
+              }
+              setNoteComposer({
+                partId: contextMenu.partId,
+                partName: contextMenu.partName,
+                x: Math.max(8, Math.min(contextMenu.x, window.innerWidth - 270)),
+                y: Math.max(8, Math.min(contextMenu.y, window.innerHeight - 190)),
+                point: {
+                  x: contextMenu.point.x,
+                  y: contextMenu.point.y,
+                  z: contextMenu.point.z,
+                },
+                normal: contextMenu.surfaceNormal
+                  ? {
+                      x: contextMenu.surfaceNormal.x,
+                      y: contextMenu.surfaceNormal.y,
+                      z: contextMenu.surfaceNormal.z,
+                    }
+                  : undefined,
+                text: "",
+              });
+              setContextMenu(null);
+            }}
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <path d="M12 21s7-5.2 7-11a7 7 0 1 0-14 0c0 5.8 7 11 7 11z" />
+              <circle cx="12" cy="10" r="2.2" />
+            </svg>
+            <span>{t.viewerAddNoteHere}</span>
+          </button>
+
           <div className="menu-divider" />
 
           <button
@@ -4660,7 +4954,9 @@ export function Viewer({
           <span>
             {t.part}:{" "}
             <strong>
-              {model?.parts.find((p) => p.id === selectedPartId)?.name || selectedPartId}
+              {pickedPartIds.length > 1
+                ? t.viewerSelectedParts(formatNumber(pickedPartIds.length))
+                : model?.parts.find((p) => p.id === selectedPartId)?.name || selectedPartId}
             </strong>
           </span>
           {onToggleHidePart && (

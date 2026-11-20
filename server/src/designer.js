@@ -648,7 +648,7 @@ export function lodStandard(lod) {
   const level = LOD_LEVELS.includes(Number(lod)) ? Number(lod) : DEFAULT_LOD;
   return `${LOD_STANDARDS[level]}
 
-Ghi rõ mức LOD ${level} đã dựng vào mảng \`notes\` (tiếng Việt).`;
+Mức LOD ${level} đã nằm trong trường \`lod\`; không cần lặp lại trong \`notes\`.`;
 }
 
 function systemPrompt(
@@ -1050,6 +1050,80 @@ function imagePartsFor(attachments, customApiConfig) {
 
 const DESIGN_LANGUAGES = new Set(["vi", "en", "zh"]);
 
+function compactJson(value, maxChars) {
+  const text = JSON.stringify(value);
+  if (!text) return "";
+  return text.length > maxChars ? `${text.slice(0, maxChars)}…` : text;
+}
+
+function roundedPoint(point) {
+  if (!point) return null;
+  const round = (value) => Math.round(Number(value) * 10) / 10;
+  return { x: round(point.x), y: round(point.y), z: round(point.z) };
+}
+
+/**
+ * The block the model receives when the user explicitly points at parts in the
+ * viewer. The parts and parameter definitions are copied from the current spec,
+ * so the model does not have to guess what a chip refers to.
+ */
+export function designTargetsBlock(targets, currentSpec) {
+  const list = (Array.isArray(targets) ? targets : []).filter(
+    (target) => target && typeof target.partId === "string" && target.partId.trim(),
+  );
+  if (list.length === 0) return "";
+
+  const parts = new Map((currentSpec?.parts ?? []).map((part) => [part.id, part]));
+  const parameters = new Map(
+    (currentSpec?.parameters ?? []).map((parameter) => [parameter.name, parameter]),
+  );
+  const dependencies = new Map(
+    (currentSpec ? collectPartDependencies(currentSpec) : []).map((entry) => [entry.id, entry]),
+  );
+  const lines = [
+    "ĐỐI TƯỢNG ĐƯỢC CHỌN (người dùng đã chỉ trực tiếp trên mô hình 3D):",
+    "Quy tắc 1: ưu tiên sửa đúng các part dưới đây bằng patch. Không sửa part khác, trừ khi một tham số bắt buộc kéo theo part phụ thuộc; khi đó nêu rõ part bị kéo theo.",
+    "Toạ độ và pháp tuyến tính bằng mm trong hệ toạ độ của spec hiện tại.",
+  ];
+
+  for (const [index, target] of list.slice(0, 20).entries()) {
+    if (lines.join("\n").length > 18_000) {
+      lines.push(`- … còn ${list.length - index} target khác bị bỏ qua để giữ prompt gọn.`);
+      break;
+    }
+    const part = parts.get(target.partId);
+    const dependency = dependencies.get(target.partId);
+    const parameterDefs = (dependency?.parameters ?? [])
+      .map((name) => parameters.get(name))
+      .filter(Boolean)
+      .map((parameter) => ({
+        name: parameter.name,
+        type: parameter.type,
+        value: parameter.value,
+        formula: parameter.formula ?? null,
+      }));
+    lines.push(`- target ${index + 1}: partId="${target.partId}"`);
+    lines.push(`  partName: ${JSON.stringify(part?.name || target.partName || target.partId)}`);
+    if (!part) {
+      lines.push("  status: part không còn tồn tại trong spec hiện tại — không tự tạo lại nếu người dùng không yêu cầu.");
+    } else {
+      lines.push(`  part: ${compactJson(part, 5000)}`);
+    }
+    lines.push(`  parametersUsed: ${compactJson(parameterDefs, 3000)}`);
+    if (target.point) lines.push(`  point: ${compactJson(roundedPoint(target.point), 300)}`);
+    if (target.normal) lines.push(`  normal: ${compactJson(roundedPoint(target.normal), 300)}`);
+    if (target.note) lines.push(`  note: ${JSON.stringify(String(target.note).slice(0, 2000))}`);
+  }
+
+  if (list.length > 20) lines.push(`- … còn ${list.length - 20} target khác bị bỏ qua.`);
+  return lines.join("\n");
+}
+
+function promptWithDesignTargets(prompt, targets, currentSpec) {
+  const block = designTargetsBlock(targets, currentSpec);
+  return block ? `${block}\n\n---\n\n${prompt}` : prompt;
+}
+
 /** Tell the agent which language to answer in; the system prompt itself stays English. */
 function replyLanguageInstruction(language) {
   const target = DESIGN_LANGUAGES.has(language) ? language : "vi";
@@ -1148,7 +1222,7 @@ export function turnTimeoutMs({ hasCurrentSpec = false, remainingMs = Infinity }
 async function designStable(options) {
   const startedAt = Date.now();
   const {
-    prompt,
+    prompt: rawPrompt,
     currentSpec,
     lod,
     emit,
@@ -1156,10 +1230,12 @@ async function designStable(options) {
     customApiConfig,
     commandCodeApiKey,
     attachments,
+    targets = [],
     signal,
     fresh,
     language,
   } = options;
+  const prompt = promptWithDesignTargets(rawPrompt, targets, currentSpec);
   const send = typeof emit === "function" ? emit : () => {};
   const generate = options.generate ?? generateJson;
   const level = LOD_LEVELS.includes(Number(lod)) ? Number(lod) : DEFAULT_LOD;
@@ -1183,7 +1259,7 @@ async function designStable(options) {
   }
 
   // ---- tier 0: a precise "change X to N" edit is applied locally, no model call.
-  if (currentSpec && !attachments?.length) {
+  if (currentSpec && !attachments?.length && targets.length === 0) {
     const edit = parseFastParameterEdit(prompt, currentSpec);
     const nextSpec = edit ? applyFastParameterEdit(currentSpec, edit) : null;
     if (nextSpec) {
@@ -1969,16 +2045,18 @@ async function designStable(options) {
 async function designExperimental(options) {
   const startedAt = Date.now();
   const {
-    prompt,
+    prompt: rawPrompt,
     currentSpec,
     lod,
     emit,
     model,
     customApiConfig,
     attachments,
+    targets = [],
     allowUpgrade,
     fresh,
   } = options;
+  const prompt = promptWithDesignTargets(rawPrompt, targets, currentSpec);
   const level = LOD_LEVELS.includes(Number(lod)) ? Number(lod) : DEFAULT_LOD;
 
   // AGENT_ROUTER=0 replays the old behaviour (one tier, full spec, no cache) so the
@@ -1991,7 +2069,7 @@ async function designExperimental(options) {
   const canCache = !legacy && route.tier === TIER.PATCH && !attachments?.length && !customApiConfig;
 
   // ---- tier 0: deterministic local edit, no model call at all.
-  if (route.tier === TIER.FAST && currentSpec && !attachments?.length) {
+  if (route.tier === TIER.FAST && currentSpec && !attachments?.length && targets.length === 0) {
     const edit = route.fastEdit ?? parseFastParameterEdit(prompt, currentSpec);
     const nextSpec = edit ? applyFastParameterEdit(currentSpec, edit) : null;
     if (nextSpec) {

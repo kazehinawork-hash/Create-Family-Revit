@@ -1,4 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 
 import type { SavedModelMeta, SavedModelRevision, TrashItem } from "../lib/api";
 import { useI18n } from "../lib/i18n";
@@ -47,6 +55,31 @@ export interface LibraryPanelProps {
 }
 
 const SORTS: LibrarySort[] = ["recent", "name", "category", "adjustable"];
+const SIDEBAR_WIDTH_KEY = "family.library.sidebarWidth.v1";
+const SIDEBAR_DEFAULT_WIDTH = 210;
+const SIDEBAR_MIN_WIDTH = 150;
+const SIDEBAR_MAX_WIDTH = 380;
+
+function clampSidebarWidth(value: number): number {
+  return Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, value));
+}
+
+function readSidebarWidth(): number {
+  try {
+    const value = Number(window.localStorage.getItem(SIDEBAR_WIDTH_KEY));
+    return Number.isFinite(value) ? clampSidebarWidth(value) : SIDEBAR_DEFAULT_WIDTH;
+  } catch {
+    return SIDEBAR_DEFAULT_WIDTH;
+  }
+}
+
+function writeSidebarWidth(value: number): void {
+  try {
+    window.localStorage.setItem(SIDEBAR_WIDTH_KEY, String(value));
+  } catch {
+    // Private mode or blocked storage: resizing still works for this session.
+  }
+}
 
 function IconFolder() {
   return (
@@ -111,6 +144,7 @@ export function LibraryPanel({
   // an absolutely positioned dropdown that reaches past their edge.
   const [openMenu, setOpenMenu] = useState<{ key: string; top: number; left: number } | null>(null);
   const [dragOverGroup, setDragOverGroup] = useState<string | null>(null);
+  const [sidebarWidth, setSidebarWidth] = useState(readSidebarWidth);
   const renameCancelled = useRef(false);
 
   const sidebar = useMemo(() => sidebarGroups(models, groups), [models, groups]);
@@ -169,6 +203,35 @@ export function LibraryPanel({
     setCollapsed((current) =>
       current.includes(key) ? current.filter((entry) => entry !== key) : [...current, key],
     );
+  };
+
+  const beginSidebarResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = sidebarWidth;
+    let lastWidth = startWidth;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    const move = (moveEvent: PointerEvent) => {
+      lastWidth = clampSidebarWidth(startWidth + moveEvent.clientX - startX);
+      setSidebarWidth(lastWidth);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      writeSidebarWidth(lastWidth);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
+  const resizeSidebarBy = (delta: number) => {
+    const next = clampSidebarWidth(sidebarWidth + delta);
+    setSidebarWidth(next);
+    writeSidebarWidth(next);
   };
 
   const beginRename = (item: SavedModelMeta) => {
@@ -452,7 +515,10 @@ export function LibraryPanel({
             </div>
           )}
 
-          <div className="library-columns">
+          <div
+            className="library-columns"
+            style={{ "--library-side-width": `${sidebarWidth}px` } as CSSProperties}
+          >
             <aside className="library-side" aria-label={t.libGroupsAria}>
               <button
                 type="button"
@@ -586,6 +652,29 @@ export function LibraryPanel({
                 {t.newGroup}
               </button>
             </aside>
+
+            <div
+              className="library-side-resizer"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label={t.resizePanel}
+              title={t.resizePanel}
+              tabIndex={0}
+              onPointerDown={beginSidebarResize}
+              onDoubleClick={() => {
+                setSidebarWidth(SIDEBAR_DEFAULT_WIDTH);
+                writeSidebarWidth(SIDEBAR_DEFAULT_WIDTH);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "ArrowLeft") {
+                  event.preventDefault();
+                  resizeSidebarBy(-12);
+                } else if (event.key === "ArrowRight") {
+                  event.preventDefault();
+                  resizeSidebarBy(12);
+                }
+              }}
+            />
 
             <section className="library-main">
               {!showTrash && (

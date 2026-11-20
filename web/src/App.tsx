@@ -24,6 +24,14 @@ import pumpExampleRaw from "../../spec/examples/pump-dn80.json";
 import ystrainerExampleRaw from "../../spec/examples/ystrainer-dn80.json";
 import ystrainerTubeExampleRaw from "../../spec/examples/ystrainer-tube.json";
 import { ChatPanel, type ChatEntry } from "./components/ChatPanel";
+import { diffNotes, diffSpecs } from "./lib/spec-diff";
+import {
+  mergeTargets,
+  targetFromNote,
+  type ChatTarget,
+  type ModelNote,
+  type NoteDraft,
+} from "./lib/annotations";
 import { LibraryPanel } from "./components/LibraryPanel";
 import { ParameterPanel } from "./components/ParameterPanel";
 import { TopBar } from "./components/TopBar";
@@ -228,6 +236,10 @@ export function App() {
   /** Missing requirement items of the current spec, or null when it is complete. */
   const [incomplete, setIncomplete] = useState<string[] | null>(null);
   const [attachments, setAttachments] = useState<UploadedDocument[]>([]);
+  const [chatTargets, setChatTargets] = useState<ChatTarget[]>([]);
+  const [chatFocusSignal, setChatFocusSignal] = useState(0);
+  const [modelNotes, setModelNotes] = useState<ModelNote[]>([]);
+  const [focusNote, setFocusNote] = useState<ModelNote | null>(null);
   const [uploading, setUploading] = useState(false);
   const [showGrid, setShowGrid] = useState(true);
   const [showPlanes, setShowPlanes] = useState(false);
@@ -287,6 +299,9 @@ export function App() {
   const abortRef = useRef<AbortController | null>(null);
   /** Last brief, so the chat's "Gửi lại" button can resend it. */
   const lastPromptRef = useRef("");
+  const lastTargetsRef = useRef<ChatTarget[]>([]);
+  const lastNoteIdsRef = useRef<string[]>([]);
+  const pendingNoteIdsRef = useRef<string[]>([]);
 
   // Undo/redo stack for spec edits (parameter typing, handles, agent rewrites).
   const specRef = useRef<FamilySpec | null>(null);
@@ -708,14 +723,29 @@ export function App() {
   const handleSend = async (
     text: string,
     specOverride?: FamilySpec,
-    sendOptions?: { fresh?: boolean },
+    sendOptions?: { fresh?: boolean; targets?: ChatTarget[]; noteIds?: string[] },
   ) => {
     if (running || uploading) return;
     lastPromptRef.current = text;
     const baseSpec = specOverride ?? spec;
     const hadSpec = Boolean(baseSpec);
     const docs = attachments;
-    pushEntry({ role: "user", text, attachments: docs.length > 0 ? docs : undefined });
+    const outgoingTargets = sendOptions?.targets ?? chatTargets;
+    const outgoingNoteIds = sendOptions?.noteIds ?? [];
+    if (!baseSpec) {
+      setModelNotes([]);
+      setFocusNote(null);
+    }
+    lastTargetsRef.current = outgoingTargets;
+    lastNoteIdsRef.current = outgoingNoteIds;
+    pendingNoteIdsRef.current = outgoingNoteIds;
+    pushEntry({
+      role: "user",
+      text,
+      attachments: docs.length > 0 ? docs : undefined,
+      targets: outgoingTargets.length > 0 ? outgoingTargets : undefined,
+    });
+    setChatTargets([]);
     setRunning(true);
     setRunStartedAt(Date.now());
     setNow(Date.now());
@@ -749,50 +779,14 @@ export function App() {
       prefix = "",
       outcome: "ok" | "incomplete" | "has-errors" | "unchanged" | null = null,
       errors: Array<{ message?: string } | string> = [],
+      previousSpec: FamilySpec | null = null,
     ) => {
-      // k-values keep one decimal, using the active locale's decimal separator.
-      const kilo = (value: number) =>
-        formatNumber(value / 1000, { maximumFractionDigits: 1, minimumFractionDigits: 1 });
-      const dims = stats.bounds
-        ? `${formatNumber(stats.bounds.x)} × ${formatNumber(stats.bounds.y)} × ${formatNumber(stats.bounds.z)} mm`
-        : "";
       const fast = stats.fastEdit;
-      const fastUnit = fast?.type === "Length" ? " mm" : fast?.type === "Angle" ? "°" : "";
-      const fastLine = fast
-        ? `\n⚡ Local edit: ${fast.name} → ${fast.value}${fastUnit} · ${1 + (fast.affectedParameters?.length ?? 0)} parameter, ${fast.affectedParts?.length ?? 0} part · 0 token`
-        : "";
-      const stepLine =
-        Array.isArray(stats.steps) && stats.steps.length > 1
-          ? `\n${stats.steps
-              .map(
-                (step: { label: string; ms: number; ok: boolean; error?: string }) =>
-                  `${step.ok ? "✓" : "⚠"} ${step.label}: ${durationText(step.ms, t)}${step.error ? ` (${step.error})` : ""}`,
-              )
-              .join(" · ")}`
-          : "";
-
-      const tierLine =
-        stats.tier != null
-          ? ` · ${t.appTier(formatNumber(stats.tier), stats.tierLabel ?? "")}` +
-            ` · ${stats.model ?? t.appNoModel} · ${t.appCalls(formatNumber(stats.modelCalls ?? 0))}` +
-            ` · ${t.appPromptChars(kilo(stats.promptChars ?? 0))}`
-          : "";
-      const savedLine = stats.savedCalls
-        ? ` · ${t.appSavedCalls(formatNumber(stats.savedCalls))}`
-        : "";
-      const inChars = (stats.calls ?? []).reduce(
-        (total, call) => total + (call.inChars ?? call.promptChars ?? 0),
-        0,
-      );
-      const outChars = (stats.calls ?? []).reduce((total, call) => total + (call.outChars ?? 0), 0);
-      const callLine =
-        (stats.calls?.length ?? 0) > 0
-          ? ` · ${t.appCalls(formatNumber(stats.calls!.length))}` +
-            (inChars ? ` · ${t.appInChars(kilo(inChars))}` : "") +
-            (outChars ? ` / ${t.appOutChars(kilo(outChars))}` : "")
-          : "";
+      const diff = diffSpecs(previousSpec, specValue);
+      const notes = diffNotes(previousSpec?.notes, specValue.notes);
       const isIncomplete = stats.complete === false || outcome === "incomplete";
-      setIncomplete(isIncomplete ? (stats.missing ?? [t.appMissingUnknown]) : null);
+      const warningList = (stats.warnings as string[] | undefined) ?? [];
+      const missing = isIncomplete ? (stats.missing ?? [t.appMissingUnknown]) : undefined;
 
       const copy = describeOutcome(
         {
@@ -806,24 +800,56 @@ export function App() {
         { updated: hadSpec },
         t,
       );
-      const bullets = copy.items
-        .slice(0, 12)
-        .map((item) => `• ${item}`)
-        .join("\n");
-      const summary =
-        `${t.appPartsParams(formatNumber(stats.parts), formatNumber(stats.parameters))}${stats.lod ? ` · LOD ${stats.lod}` : ""}` +
-        `${dims ? ` · ${dims}` : ""}${fastLine}${stepLine}${callLine}`;
+      const errorList = copy.outcome === "has-errors" ? (errors as never[]) : [];
+
+      if (copy.outcome === "ok" && pendingNoteIdsRef.current.length > 0) {
+        const resolved = new Set(pendingNoteIdsRef.current);
+        setModelNotes((current) =>
+          current.map((note) =>
+            resolved.has(note.id)
+              ? { ...note, status: "resolved", resolvedAt: Date.now() }
+              : note,
+          ),
+        );
+        pendingNoteIdsRef.current = [];
+        lastNoteIdsRef.current = [];
+      }
+
+      const changedNames = [
+        ...diff.parts.map((part) => part.name),
+        ...diff.parameters.map((parameter) => parameter.name),
+      ].slice(0, 3);
+      const answer =
+        notes.answer ??
+        (changedNames.length > 0
+          ? previousSpec
+            ? t.chatFallbackChanged(changedNames.join(", "))
+            : t.chatFallbackCreated(changedNames.join(", "))
+          : copy.title);
+
+      const inChars = (stats.calls ?? []).reduce(
+        (total, call) => total + (call.inChars ?? call.promptChars ?? 0),
+        0,
+      );
+      const outChars = (stats.calls ?? []).reduce((total, call) => total + (call.outChars ?? 0), 0);
+      const calls = stats.modelCalls ?? stats.calls?.length ?? 0;
+      const model = stats.model ?? stats.calls?.[0]?.model;
+      const cachedAt = stats.cachedAt
+        ? formatDate(stats.cachedAt, { hour: "2-digit", minute: "2-digit" })
+        : "--:--";
+
+      setIncomplete(isIncomplete ? (stats.missing ?? [t.appMissingUnknown]) : null);
 
       setSessionUsage((current) => {
-        const calls = stats.calls?.length
+        const callRows = stats.calls?.length
           ? stats.calls
           : stats.model
             ? [{ model: stats.model, modelCalls: stats.modelCalls ?? 1 }]
             : [];
-        if (calls.length === 0) return current;
+        if (callRows.length === 0) return current;
 
         const next = { ...current };
-        for (const call of calls) {
+        for (const call of callRows) {
           if (!call.model) continue;
           next[call.model] = (next[call.model] ?? 0) + (call.modelCalls ?? 1);
         }
@@ -833,11 +859,20 @@ export function App() {
       pushEntry({
         role: "agent",
         tone: copy.tone === "normal" ? "normal" : "error",
-        text: `${copy.title}${bullets ? `\n${bullets}` : ""}\n` + `${prefix}${summary}`,
-        warnings: (stats.warnings as string[] | undefined) ?? undefined,
-        notes: specValue.notes ?? [],
+        text: `${prefix}${answer}`,
+        warnings: warningList.length > 0 ? warningList : undefined,
+        notes: notes.fresh.length > 0 ? notes.fresh : undefined,
+        oldNotes: notes.old.length > 0 ? notes.old : undefined,
+        changes: diff,
+        check: {
+          ok: errorList.length === 0 && warningList.length === 0 && !missing?.length,
+          errors: errorList.length,
+          warnings: warningList.length,
+          missing,
+        },
+        undoSpec: previousSpec,
         // Errors are the clickable issue list (jump to the offending part).
-        issues: copy.outcome === "has-errors" ? (errors as never[]) : undefined,
+        issues: errorList,
         action: stats.cached
           ? { label: t.runFresh, kind: "fresh" as const }
           : copy.outcome === "unchanged"
@@ -851,16 +886,29 @@ export function App() {
               source?: string;
             }[])
           : undefined,
-        meta: fast
-          ? `⚡ local · ${durationText(stats.elapsedMs, t)}${savedLine}`
+        metaInfo: fast
+          ? {
+              elapsed: durationText(stats.elapsedMs, t),
+              inChars,
+              outChars,
+              local: true,
+            }
           : stats.cached
-            ? (() => {
-                const time = stats.cachedAt
-                  ? formatDate(stats.cachedAt, { hour: "2-digit", minute: "2-digit" })
-                  : "--:--";
-                return `${t.cachedResult(time)} · 0 token${savedLine}`;
-              })()
-            : `${durationText(stats.elapsedMs, t)}${tierLine}${savedLine}`,
+            ? {
+                elapsed: durationText(stats.elapsedMs, t),
+                model,
+                calls,
+                inChars,
+                outChars,
+                cached: t.cachedResult(cachedAt),
+              }
+            : {
+                elapsed: durationText(stats.elapsedMs, t),
+                model,
+                calls,
+                inChars,
+                outChars,
+              },
       });
     };
 
@@ -897,6 +945,7 @@ export function App() {
           })(),
           attachments:
             docs.length > 0 ? docs.map((d) => ({ path: d.path, name: d.name })) : undefined,
+          targets: outgoingTargets.length > 0 ? outgoingTargets : undefined,
         },
         (event) => {
           if (event.type === "job") {
@@ -971,7 +1020,14 @@ export function App() {
           }
 
           receivedSpec = true;
-          pushSpecEntry(event.spec, stats, "", event.outcome ?? null, event.errors ?? []);
+          pushSpecEntry(
+            event.spec,
+            stats,
+            "",
+            event.outcome ?? null,
+            event.errors ?? [],
+            baseSpec,
+          );
         },
         controller.signal,
         () => {
@@ -1018,6 +1074,9 @@ export function App() {
               elapsedMs: 0,
             },
             t.appRecoveredPrefix,
+            null,
+            [],
+            baseSpec,
           );
         } else {
           setStage(null);
@@ -1102,6 +1161,81 @@ export function App() {
   const handleFocusPart = (partId: string) => {
     setSelectedPartId(partId);
     setFocusPartId(partId);
+    setFocusNote(null);
+    setMobileTab("viewer");
+  };
+
+  const handleSendPartsToChat = (incoming: ChatTarget[]) => {
+    setChatTargets((current) => mergeTargets(current, incoming));
+    setChatFocusSignal((value) => value + 1);
+    setMobileTab("chat");
+  };
+
+  const handleAddNote = (draft: NoteDraft) => {
+    const note: ModelNote = {
+      id: newId(),
+      partId: draft.partId,
+      partName: draft.partName,
+      point: draft.point,
+      normal: draft.normal,
+      text: draft.text,
+      status: "open",
+      createdAt: Date.now(),
+    };
+    setModelNotes((current) => [...current, note]);
+    setSelectedPartId(note.partId);
+    setMobileTab("viewer");
+  };
+
+  const handleFocusNote = (note: ModelNote) => {
+    setSelectedPartId(note.partId);
+    setFocusPartId(note.partId);
+    setFocusNote(note);
+    setMobileTab("viewer");
+  };
+
+  const handleUpdateNote = (id: string, text: string) => {
+    setModelNotes((current) =>
+      current.map((note) => (note.id === id ? { ...note, text } : note)),
+    );
+  };
+
+  const handleDeleteNote = (id: string) => {
+    setModelNotes((current) => current.filter((note) => note.id !== id));
+    setFocusNote((current) => (current?.id === id ? null : current));
+  };
+
+  const handleToggleNoteResolved = (id: string) => {
+    setModelNotes((current) =>
+      current.map((note) =>
+        note.id === id
+          ? {
+              ...note,
+              status: note.status === "resolved" ? "open" : "resolved",
+              resolvedAt: note.status === "resolved" ? undefined : Date.now(),
+            }
+          : note,
+      ),
+    );
+  };
+
+  const sendNotesToAgent = (notes: ModelNote[]) => {
+    if (notes.length === 0 || running) return;
+    const text =
+      notes.length === 1
+        ? t.appSendNotePrompt(notes[0].text)
+        : t.appSendAllNotesPrompt(formatNumber(notes.length));
+    void handleSend(text, undefined, {
+      targets: notes.map(targetFromNote),
+      noteIds: notes.map((note) => note.id),
+    });
+    setMobileTab("chat");
+  };
+
+  const handleSendNote = (note: ModelNote) => sendNotesToAgent([note]);
+
+  const handleSendAllNotes = () => {
+    sendNotesToAgent(modelNotes.filter((note) => note.status !== "resolved"));
   };
 
   const handleToggleTransparentPart = (partId: string) => {
@@ -1366,6 +1500,7 @@ export function App() {
         name: spec.name,
         spec,
         entries,
+        annotations: modelNotes,
         // A new family saved while a group is selected starts in that group. The
         // server ignores this for an overwrite, so an existing model never moves.
         ...(currentModelId ? {} : { group: activeSaveGroup() }),
@@ -1401,6 +1536,7 @@ export function App() {
         name,
         spec: copySpec,
         entries,
+        annotations: modelNotes,
         group: activeSaveGroup(),
         thumbnail: captureThumbnail(),
       });
@@ -1627,6 +1763,9 @@ export function App() {
     }
     applySpec(revision.spec, { reset: true });
     setCurrentModelId(historyModelId);
+    setModelNotes(Array.isArray(revision.annotations) ? revision.annotations : []);
+    setFocusNote(null);
+    setChatTargets([]);
     setHistoryModelId(null);
     setLibraryOpen(false);
     setToast({
@@ -1642,6 +1781,9 @@ export function App() {
       if (detail && detail.spec) {
         applySpec(detail.spec, { reset: true });
         setCurrentModelId(detail.id);
+        setModelNotes(Array.isArray(detail.annotations) ? detail.annotations : []);
+        setFocusNote(null);
+        setChatTargets([]);
         if (detail.spec.lod) handleLod(detail.spec.lod);
         if (Array.isArray(detail.entries) && detail.entries.length > 0) {
           setEntries(detail.entries);
@@ -1719,6 +1861,9 @@ export function App() {
       );
       if (currentModelId === id) {
         setCurrentModelId(null);
+        setModelNotes([]);
+        setFocusNote(null);
+        setChatTargets([]);
       }
       setToast({
         text: t.trashMoved,
@@ -1778,6 +1923,9 @@ export function App() {
     }
     applySpec(null, { reset: true });
     setCurrentModelId(null);
+    setModelNotes([]);
+    setFocusNote(null);
+    setChatTargets([]);
     setEntries([
       {
         id: "seed",
@@ -1895,6 +2043,9 @@ export function App() {
     setHiddenPartIds([]);
     setTransparentPartIds([]);
     setCurrentModelId(null);
+    setModelNotes([]);
+    setFocusNote(null);
+    setChatTargets([]);
     setRunning(true);
     const startSimTime = Date.now();
     setRunStartedAt(startSimTime);
@@ -2069,7 +2220,9 @@ export function App() {
             stage ? `${stage.message}${elapsedLabel ? ` · ${elapsedLabel}` : ""}` : null
           }
           stageIssues={stage?.issues}
-          onSend={handleSend}
+          onSend={(text, targets) =>
+            void handleSend(text, undefined, targets?.length ? { targets } : undefined)
+          }
           onStop={handleStop}
           disabled={running || uploading}
           agentReady={health ? health.agent.ready : null}
@@ -2083,17 +2236,40 @@ export function App() {
           availableModels={health?.models}
           backends={health?.backends}
           onFocusPart={handleFocusPart}
+          partIds={spec?.parts.map((part) => part.id) ?? []}
+          targets={chatTargets}
+          onRemoveTarget={(index) =>
+            setChatTargets((current) => current.filter((_, position) => position !== index))
+          }
+          focusSignal={chatFocusSignal}
+          onHighlightParts={(partIds) => {
+            setHighlightPartIds(partIds);
+            setMobileTab("viewer");
+          }}
+          onUndoSpec={(snapshot) => {
+            applySpec(snapshot);
+            setNative(false);
+          }}
           attachments={attachments}
           uploading={uploading}
           onAttach={handleAttach}
           onRemoveAttachment={handleRemoveAttachment}
           onRetry={() => {
-            if (lastPromptRef.current) void handleSend(lastPromptRef.current);
+            if (lastPromptRef.current) {
+              void handleSend(lastPromptRef.current, undefined, {
+                targets: lastTargetsRef.current,
+                noteIds: lastNoteIdsRef.current,
+              });
+            }
           }}
           onAction={(action) => {
             if (action.kind === "fresh") {
               if (lastPromptRef.current) {
-                void handleSend(lastPromptRef.current, undefined, { fresh: true });
+                void handleSend(lastPromptRef.current, undefined, {
+                  fresh: true,
+                  targets: lastTargetsRef.current,
+                  noteIds: lastNoteIdsRef.current,
+                });
               }
               return;
             }
@@ -2155,6 +2331,11 @@ export function App() {
           onToggleHandles={() => setShowHandles((current) => !current)}
           selectedPartId={selectedPartId}
           onSelectPart={setSelectedPartId}
+          onSendPartsToChat={handleSendPartsToChat}
+          notes={modelNotes}
+          onAddNote={handleAddNote}
+          onFocusNote={handleFocusNote}
+          focusNote={focusNote}
           hiddenPartIds={hiddenPartIds}
           onToggleHidePart={handleToggleHidePart}
           onUnhideAll={handleUnhideAll}
@@ -2197,6 +2378,14 @@ export function App() {
             onIsolatePart={handleIsolatePart}
             issuePartIds={issuePartIds}
             onUpdateParameter={handleUpdateParameter}
+            notes={modelNotes}
+            notesSending={running}
+            onFocusNote={handleFocusNote}
+            onUpdateNote={handleUpdateNote}
+            onDeleteNote={handleDeleteNote}
+            onToggleNoteResolved={handleToggleNoteResolved}
+            onSendNote={handleSendNote}
+            onSendAllNotes={handleSendAllNotes}
             onAddParameter={handleAddParameter}
             onHighlightParts={setHighlightPartIds}
             onUpdateConnectorHost={handleUpdateConnectorHost}

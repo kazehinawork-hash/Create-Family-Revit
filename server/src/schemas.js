@@ -8,6 +8,33 @@ const customApiConfig = z
   })
   .passthrough();
 
+const vec3 = z.object({
+  x: z.number().finite(),
+  y: z.number().finite(),
+  z: z.number().finite(),
+});
+
+const chatTarget = z.object({
+  partId: z.string().trim().min(1).max(200),
+  partName: z.string().trim().max(240).optional(),
+  point: vec3.optional(),
+  normal: vec3.optional(),
+  note: z.string().trim().max(2000).optional(),
+  noteId: z.string().trim().max(120).optional(),
+});
+
+const modelNote = z.object({
+  id: z.string().trim().min(1).max(120),
+  partId: z.string().trim().min(1).max(200),
+  partName: z.string().trim().max(240).optional(),
+  point: vec3,
+  normal: vec3.optional(),
+  text: z.string().trim().min(1).max(2000),
+  status: z.enum(["open", "resolved"]).optional(),
+  createdAt: z.number().finite().optional(),
+  resolvedAt: z.number().finite().optional(),
+});
+
 export const designRequest = z.object({
   prompt: z.preprocess(
     (value) => (typeof value === "string" ? value : ""),
@@ -33,6 +60,8 @@ export const designRequest = z.object({
     .array(z.object({ path: z.string().min(1), name: z.string().optional() }))
     .max(4)
     .optional(),
+  /** Parts and/or pinned notes the user selected in the 3D viewer. */
+  targets: z.array(chatTarget).max(20).optional(),
 });
 
 export const buildRequest = z.object({
@@ -49,6 +78,7 @@ export const modelSaveRequest = z.object({
   name: z.string().trim().max(200).optional(),
   spec: z.object({ name: z.string().min(1) }).passthrough(),
   entries: z.array(z.unknown()).optional(),
+  annotations: z.array(modelNote).max(300).optional(),
   /** Only used when the model is new; overwriting keeps the group already on disk. */
   group: z.string().trim().max(60).optional(),
   /** Viewer snapshot as a data URL (JPEG/WebP), ~320px. */

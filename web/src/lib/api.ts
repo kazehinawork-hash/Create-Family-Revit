@@ -1,4 +1,5 @@
 import type { FamilySpec, Issue } from "@family/spec-core";
+import type { ChatTarget, ModelNote } from "./annotations";
 
 export interface DesignStats {
   parameters: number;
@@ -244,6 +245,8 @@ export async function streamDesign(
     /** Command Code API key used to authenticate the local CLI (no cmd login needed). */
     commandCodeApiKey?: string;
     attachments?: { path: string; name: string }[];
+    /** Parts / surface notes the user explicitly pointed at in the viewer. */
+    targets?: ChatTarget[];
   },
   onEvent: (event: DesignEvent) => void,
   signal?: AbortSignal,
@@ -538,6 +541,7 @@ export interface SavedModelDetail {
   name: string;
   spec: FamilySpec;
   entries: any[];
+  annotations?: ModelNote[];
   savedAt: number;
 }
 
@@ -615,6 +619,8 @@ export async function saveModel(payload: {
   name?: string;
   spec: FamilySpec;
   entries?: any[];
+  /** Notes pinned on the model; stored next to the spec and restored with it. */
+  annotations?: ModelNote[];
   /** Only used for a new model; the server keeps an existing model's group. */
   group?: string;
   /** Data URL of a 320px viewer snapshot (JPEG/WebP). */

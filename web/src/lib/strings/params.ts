@@ -58,6 +58,23 @@ export const vi = {
   paramsFlow: "Lưu lượng",
   paramsOrphanConnector: "Cổng kết nối đang bị lơ lửng, không chạm bề mặt chi tiết nào!",
   paramsConnectorsConfigured: (count: string) => `${count} MEP connector đã cấu hình`,
+
+  // Notes tab
+  paramsNotesTab: "Ghi chú",
+  paramsNotesTitle: "Ghi chú trên mô hình",
+  paramsNotesHint: "Chuột phải lên part → “Ghi chú tại đây”.",
+  paramsNotesEmpty: "Chưa có ghi chú nào trên mô hình.",
+  paramsNoteSend: "Gửi cho Agent",
+  paramsNoteSendAll: (count: string) => `Gửi tất cả (${count})`,
+  paramsNoteFocusHint: "Zoom tới điểm đã ghim",
+  paramsNoteEdit: "Sửa",
+  paramsNoteDelete: "Xoá",
+  paramsNoteDeleteConfirm: "Xoá ghi chú này?",
+  paramsNoteSave: "Lưu",
+  paramsNoteCancel: "Huỷ",
+  paramsNoteResolve: "Đã giải quyết",
+  paramsNoteResolvedBadge: "Đã xử lý",
+  paramsNoteReopen: "Mở lại",
 };
 
 export const en: Translation<typeof vi> = {
@@ -107,6 +124,22 @@ export const en: Translation<typeof vi> = {
   paramsFlow: "Flow",
   paramsOrphanConnector: "This connector is floating — it does not touch any part face!",
   paramsConnectorsConfigured: (count) => `${count} MEP connectors configured`,
+
+  paramsNotesTab: "Notes",
+  paramsNotesTitle: "Model notes",
+  paramsNotesHint: "Right-click a part → “Add note here”.",
+  paramsNotesEmpty: "No notes on this model yet.",
+  paramsNoteSend: "Send to agent",
+  paramsNoteSendAll: (count) => `Send all (${count})`,
+  paramsNoteFocusHint: "Zoom to the pinned point",
+  paramsNoteEdit: "Edit",
+  paramsNoteDelete: "Delete",
+  paramsNoteDeleteConfirm: "Delete this note?",
+  paramsNoteSave: "Save",
+  paramsNoteCancel: "Cancel",
+  paramsNoteResolve: "Mark resolved",
+  paramsNoteResolvedBadge: "Resolved",
+  paramsNoteReopen: "Reopen",
 };
 
 export const zh: Translation<typeof vi> = {
@@ -151,4 +184,20 @@ export const zh: Translation<typeof vi> = {
   paramsFlow: "流量",
   paramsOrphanConnector: "该连接口悬空，没有接触任何零件表面！",
   paramsConnectorsConfigured: (count) => `已配置 ${count} 个 MEP 连接口`,
+
+  paramsNotesTab: "备注",
+  paramsNotesTitle: "模型备注",
+  paramsNotesHint: "右键点击零件 →“在此添加备注”。",
+  paramsNotesEmpty: "此模型还没有备注。",
+  paramsNoteSend: "发送给 Agent",
+  paramsNoteSendAll: (count) => `发送全部 (${count})`,
+  paramsNoteFocusHint: "缩放到钉住的位置",
+  paramsNoteEdit: "编辑",
+  paramsNoteDelete: "删除",
+  paramsNoteDeleteConfirm: "删除此备注？",
+  paramsNoteSave: "保存",
+  paramsNoteCancel: "取消",
+  paramsNoteResolve: "标记为已解决",
+  paramsNoteResolvedBadge: "已处理",
+  paramsNoteReopen: "重新打开",
 };

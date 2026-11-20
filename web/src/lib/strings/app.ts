@@ -151,6 +151,8 @@ const viDictionary = {
   // History, trash and the open model
   appRevisionUnreadable: "Không đọc được bản lưu này",
   appRevisionRestored: "Đã khôi phục bản lưu",
+  appSendNotePrompt: (text: string) => `Sửa theo ghi chú trên mô hình: “${text}”`,
+  appSendAllNotesPrompt: (count: string) => `Xử lý ${count} ghi chú trên mô hình.`,
   appModelReloaded: (name: string) =>
     `Đã nạp lại mô hình đã lưu: ${name}.\nBạn có thể tiếp tục trò chuyện để yêu cầu chỉnh sửa hoặc thay đổi thông số.`,
   appModelOpened: (name: string) => `Đã mở mô hình: ${name}`,
@@ -329,6 +331,8 @@ export const en: Translation<typeof vi> = {
 
   appRevisionUnreadable: "Could not read this saved revision",
   appRevisionRestored: "Revision restored",
+  appSendNotePrompt: (text: string) => `Fix this pinned model note: “${text}”`,
+  appSendAllNotesPrompt: (count: string) => `Resolve ${count} model notes.`,
   appModelReloaded: (name) =>
     `Reloaded the saved model: ${name}.\nKeep chatting to request edits or change parameters.`,
   appModelOpened: (name) => `Model opened: ${name}`,
@@ -494,6 +498,8 @@ export const zh: Translation<typeof vi> = {
 
   appRevisionUnreadable: "无法读取此存档版本",
   appRevisionRestored: "存档版本已恢复",
+  appSendNotePrompt: (text: string) => `按模型备注修改：“${text}”`,
+  appSendAllNotesPrompt: (count: string) => `处理 ${count} 条模型备注。`,
   appModelReloaded: (name) => `已重新载入保存的模型：${name}。\n可以继续对话以请求修改或更改参数。`,
   appModelOpened: (name) => `已打开模型：${name}`,
   appModelOpenFailed: (message) => `无法打开模型：${message}`,
