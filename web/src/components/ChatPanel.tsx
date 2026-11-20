@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { Issue } from "@family/spec-core";
+import type { FamilySpec, Issue } from "@family/spec-core";
 import {
   isImageDocument,
   type AgentBackends,
@@ -9,6 +9,8 @@ import {
 import { ApiKeyPanel, type ApiKeyStatus } from "./ApiKeyPanel";
 import { isApiReady } from "../lib/api-key";
 import { useI18n } from "../lib/i18n";
+import type { SpecDiff } from "../lib/spec-diff";
+import type { ChatTarget } from "../lib/annotations";
 
 export interface ResolutionRow {
   name: string;
@@ -25,14 +27,55 @@ function levelClass(level?: number): string {
   return "lvl-assumed";
 }
 
+/** Render `formula` spans from a note as small inline code without a markdown dependency. */
+function InlineCode({ text }: { text: string }) {
+  return (
+    <>
+      {text.split(/(`[^`]+`)/g).map((part, index) =>
+        part.startsWith("`") && part.endsWith("`") ? (
+          <code key={index} className="chat-inline-code">
+            {part.slice(1, -1)}
+          </code>
+        ) : (
+          <span key={index}>{part}</span>
+        ),
+      )}
+    </>
+  );
+}
+
 export interface ChatEntry {
   id: string;
   role: "user" | "agent";
   text: string;
   tone?: "normal" | "error";
   meta?: string;
+  /** Structured meta for a finished design turn. */
+  metaInfo?: {
+    elapsed?: string;
+    model?: string;
+    calls?: number;
+    inChars?: number;
+    outChars?: number;
+    cached?: string;
+    local?: boolean;
+  };
   issues?: Issue[];
+  /** Assumptions introduced this turn. */
   notes?: string[];
+  /** Assumptions carried over from earlier turns, collapsed by default. */
+  oldNotes?: string[];
+  changes?: SpecDiff;
+  check?: {
+    ok: boolean;
+    errors: number;
+    warnings: number;
+    missing?: string[];
+  };
+  /** Spec before this turn, used by the undo button on the result card. */
+  undoSpec?: FamilySpec | null;
+  /** Parts / notes attached to a user message. */
+  targets?: ChatTarget[];
   /** Warnings from the run (separate from the assumptions in `notes`). */
   warnings?: string[];
   /** Parameter values the agent used, with where each one came from. */
@@ -52,7 +95,7 @@ interface Props {
   running: boolean;
   stageMessage: string | null;
   stageIssues: Issue[] | undefined;
-  onSend: (text: string) => void;
+  onSend: (text: string, targets?: ChatTarget[]) => void;
   onStop: () => void;
   disabled: boolean;
   agentReady: boolean | null;
@@ -64,6 +107,16 @@ interface Props {
   availableModels?: CmdcModel[];
   backends?: AgentBackends;
   onFocusPart?: (partId: string) => void;
+  /** Parts currently present in the spec; missing target chips read "changed". */
+  partIds?: string[];
+  targets?: ChatTarget[];
+  onRemoveTarget?: (index: number) => void;
+  /** Bump this to focus the composer after the viewer adds chips. */
+  focusSignal?: number;
+  /** Highlight every part changed in one turn on the 3D model. */
+  onHighlightParts?: (partIds: string[]) => void;
+  /** Restore the spec snapshot from before a design turn. */
+  onUndoSpec?: (spec: FamilySpec | null) => void;
   attachments: UploadedDocument[];
   uploading: boolean;
   onAttach: (files: File[]) => void;
@@ -95,6 +148,12 @@ export function ChatPanel({
   availableModels,
   backends,
   onFocusPart,
+  partIds = [],
+  targets = [],
+  onRemoveTarget,
+  focusSignal = 0,
+  onHighlightParts,
+  onUndoSpec,
   attachments,
   uploading,
   onAttach,
@@ -144,11 +203,15 @@ export function ChatPanel({
     return () => window.removeEventListener("keydown", onKey);
   }, [preview]);
 
+  useEffect(() => {
+    if (focusSignal > 0) inputRef.current?.focus();
+  }, [focusSignal]);
+
   const submit = () => {
     const text = draft.trim();
     if (!text || disabled) return;
     setDraft("");
-    onSend(text);
+    onSend(text, targets.length > 0 ? targets : undefined);
     if (inputRef.current) inputRef.current.style.height = "auto";
   };
 
@@ -439,6 +502,35 @@ export function ChatPanel({
                   )}
                 </div>
               )}
+              {entry.targets && entry.targets.length > 0 && (
+                <div className="msg-user-targets">
+                  {entry.targets.map((target, index) => {
+                    const missing = !partIds.includes(target.partId);
+                    return (
+                      <button
+                        key={`${target.partId}-${target.noteId ?? index}`}
+                        type="button"
+                        className={`msg-user-target${missing ? " stale" : ""}${
+                          target.note ? " with-note" : ""
+                        }`}
+                        disabled={missing}
+                        title={missing ? t.chatTargetChanged : t.chatFocusPartHint}
+                        onClick={() => {
+                          if (!missing) onFocusPart?.(target.partId);
+                        }}
+                      >
+                        <span className="msg-user-target-part">{target.partName}</span>
+                        {target.note && (
+                          <span className="msg-user-target-note">{target.note}</span>
+                        )}
+                        {missing && (
+                          <span className="msg-user-target-stale">{t.chatTargetChanged}</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
               {entry.text}
             </div>
           ) : (
@@ -446,7 +538,7 @@ export function ChatPanel({
               key={entry.id}
               className={`msg-agent${
                 entry.tone === "error"
-                  ? entry.text.startsWith("⛔")
+                  ? entry.text.startsWith("⛔") || (entry.check?.errors ?? 0) > 0
                     ? " msg-error"
                     : " msg-warn"
                   : ""
@@ -459,33 +551,185 @@ export function ChatPanel({
                 />
                 Family agent
               </div>
-              <div className="body">{entry.text}</div>
+              <div className="body">
+                <InlineCode text={entry.text} />
+              </div>
               {entry.details && (
                 <details className="msg-details" data-testid="chat-details">
                   <summary>{t.chatErrorDetails}</summary>
                   <pre>{entry.details}</pre>
                 </details>
               )}
-              {entry.action && (
-                <button
-                  type="button"
-                  className="msg-action"
-                  onClick={() => {
-                    if (entry.action?.kind === "open-api") {
-                      setApiPanelOpen(true);
-                      return;
-                    }
-                    return onAction ? onAction(entry.action!) : onRetry?.();
-                  }}
-                  data-testid="chat-retry"
-                >
-                  {entry.action.label}
-                </button>
+              {entry.changes &&
+                (entry.changes.parts.length > 0 || entry.changes.parameters.length > 0) && (
+                  <div className="agent-changes" data-testid="chat-changes">
+                    <div className="agent-section-title">{t.chatChangesTitle}</div>
+                    <ul className="change-list">
+                      {entry.changes.parts.slice(0, 6).map((part) => {
+                        const label =
+                          part.kind === "added"
+                            ? t.chatPartAdded
+                            : part.kind === "removed"
+                              ? t.chatPartRemoved
+                              : t.chatPartUpdated;
+                        return (
+                          <li key={`${part.kind}-${part.id}`} className={`change-part ${part.kind}`}>
+                            <span className="change-kind">{label}</span>
+                            {part.kind === "removed" ? (
+                              <span className="change-name">{part.name}</span>
+                            ) : (
+                              <button
+                                type="button"
+                                className="chat-part-link"
+                                onClick={() => onFocusPart?.(part.id)}
+                                title={t.chatFocusPartHint}
+                              >
+                                {part.name}
+                              </button>
+                            )}
+                          </li>
+                        );
+                      })}
+                      {entry.changes.parts.length > 6 && (
+                        <li className="change-more">
+                          {t.chatMoreChanges(entry.changes.parts.length - 6)}
+                        </li>
+                      )}
+                      {entry.changes.parameters.slice(0, 6).map((parameter) => {
+                        const label =
+                          parameter.kind === "added"
+                            ? t.chatParamAdded
+                            : parameter.kind === "removed"
+                              ? t.chatParamRemoved
+                              : t.chatParamUpdated;
+                        const values =
+                          parameter.kind === "removed"
+                            ? parameter.from
+                            : parameter.kind === "added"
+                              ? parameter.to
+                              : `${parameter.from} → ${parameter.to}`;
+                        return (
+                          <li
+                            key={`${parameter.kind}-${parameter.name}`}
+                            className={`change-parameter ${parameter.kind}`}
+                          >
+                            <span className="change-kind">{label}</span>
+                            <span className="change-name">{parameter.name}</span>
+                            {values && <code className="change-values">{values}</code>}
+                          </li>
+                        );
+                      })}
+                      {entry.changes.parameters.length > 6 && (
+                        <li className="change-more">
+                          {t.chatMoreChanges(entry.changes.parameters.length - 6)}
+                        </li>
+                      )}
+                    </ul>
+                  </div>
+                )}
+              {entry.check &&
+                (() => {
+                  const hasDetails =
+                    entry.issues?.length ||
+                    entry.warnings?.length ||
+                    (entry.check?.missing?.length ?? 0) > 0;
+                  const status = entry.check!.errors
+                    ? t.chatCheckErrors(entry.check!.errors)
+                    : entry.check!.warnings
+                      ? t.chatCheckWarnings(entry.check!.warnings)
+                      : (entry.check!.missing?.length ?? 0) > 0
+                        ? t.chatCheckIncomplete(entry.check!.missing!.length)
+                        : t.chatCheckOk;
+                  const tone = entry.check!.ok && !entry.check!.warnings ? "is-ok" : "has-warning";
+                  const content = (
+                    <>
+                      {entry.check!.missing && entry.check!.missing.length > 0 && (
+                        <ul className="check-missing">
+                          {entry.check!.missing.map((item, index) => (
+                            <li key={index}>{item}</li>
+                          ))}
+                        </ul>
+                      )}
+                      {entry.issues && entry.issues.length > 0 && (
+                        <div className="check-issues">
+                          {entry.issues.map((issue, index) => {
+                            const partId = issue.path.startsWith("logic.")
+                              ? (issue.path.split(".").pop() ?? null)
+                              : null;
+                            return (
+                              <div
+                                key={`${issue.path}-${index}`}
+                                className={`issue ${issue.severity}${partId ? " clickable" : ""}`}
+                                onClick={partId ? () => onFocusPart?.(partId) : undefined}
+                                title={partId ? t.chatFocusPartHint : undefined}
+                              >
+                                <span className="tag">{issue.severity}</span>
+                                <span>
+                                  <span className="where">{issue.path}</span>
+                                  {localizeIssue(issue.message, issue.code, issue.params)}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {entry.warnings && entry.warnings.length > 0 && (
+                        <ul className="warnings-list check-warnings">
+                          {entry.warnings.map((warning, index) => (
+                            <li key={index}>{warning}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </>
+                  );
+                  return hasDetails ? (
+                    <details
+                      className={`agent-check ${tone}`}
+                      open={Boolean(entry.check!.errors || entry.check!.missing?.length)}
+                    >
+                      <summary>
+                        <span className="check-title">{t.chatCheckTitle}</span>
+                        <span className="check-status">{status}</span>
+                      </summary>
+                      {content}
+                    </details>
+                  ) : (
+                    <div className={`agent-check ${tone}`}>
+                      <span className="check-title">{t.chatCheckTitle}</span>
+                      <span className="check-status">{status}</span>
+                    </div>
+                  );
+                })()}
+              {entry.notes && entry.notes.length > 0 && (
+                <div className="agent-assumptions">
+                  <div className="assumptions-title">
+                    {entry.check || entry.changes ? t.chatAssumptionsTitle : t.chatNotesTitle}
+                  </div>
+                  <ul className="assumptions-list">
+                    {entry.notes.map((note, idx) => (
+                      <li key={idx}>
+                        <InlineCode text={note} />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              {entry.oldNotes && entry.oldNotes.length > 0 && (
+                <details className="agent-assumptions assumptions-history">
+                  <summary>{t.chatOldAssumptions(entry.oldNotes.length)}</summary>
+                  <ul className="assumptions-list">
+                    {entry.oldNotes.map((note, idx) => (
+                      <li key={idx}>
+                        <InlineCode text={note} />
+                      </li>
+                    ))}
+                  </ul>
+                </details>
               )}
               {entry.resolution && entry.resolution.length > 0 && (
-                <div className="agent-assumptions">
+                <details className="agent-resolution">
+                  <summary>{t.chatResolutionTitle}</summary>
                   <div className="assumptions-head">
-                    <div className="assumptions-title">{t.chatResolutionTitle}</div>
                     <button
                       type="button"
                       className="assumptions-csv"
@@ -512,9 +756,47 @@ export function ChatPanel({
                       ))}
                     </tbody>
                   </table>
-                </div>
+                </details>
               )}
-              {entry.warnings && entry.warnings.length > 0 && (
+              {entry.metaInfo ? (
+                <div className="meta chat-meta-line" data-testid="chat-meta">
+                  {entry.metaInfo.elapsed && (
+                    <span>
+                      <span className="meta-label">{t.chatMetaTime}</span>{" "}
+                      {entry.metaInfo.elapsed}
+                    </span>
+                  )}
+                  {entry.metaInfo.model && (
+                    <span>
+                      <span className="meta-label">{t.chatMetaModel}</span>{" "}
+                      {entry.metaInfo.model}
+                    </span>
+                  )}
+                  {entry.metaInfo.calls !== undefined && (
+                    <span>
+                      <span className="meta-label">{t.chatMetaTurns}</span>{" "}
+                      {formatNumber(entry.metaInfo.calls)}
+                    </span>
+                  )}
+                  {(entry.metaInfo.inChars !== undefined ||
+                    entry.metaInfo.outChars !== undefined) && (
+                    <span title={t.chatMetaCharsHint}>
+                      <span className="meta-label">{t.chatMetaChars}</span>{" "}
+                      {formatNumber(entry.metaInfo.inChars ?? 0)} /{" "}
+                      {formatNumber(entry.metaInfo.outChars ?? 0)}
+                    </span>
+                  )}
+                  {entry.metaInfo.cached && (
+                    <span className="meta-muted">{entry.metaInfo.cached}</span>
+                  )}
+                  {entry.metaInfo.local && (
+                    <span className="meta-muted">⚡ local</span>
+                  )}
+                </div>
+              ) : (
+                entry.meta && <div className="meta">{entry.meta}</div>
+              )}
+              {!entry.check && entry.warnings && entry.warnings.length > 0 && (
                 <div className="agent-warnings">
                   <div className="warnings-title">{t.chatWarningsTitle}</div>
                   <ul className="warnings-list">
@@ -524,18 +806,7 @@ export function ChatPanel({
                   </ul>
                 </div>
               )}
-              {entry.notes && entry.notes.length > 0 && (
-                <div className="agent-assumptions">
-                  <div className="assumptions-title">{t.chatAssumptionsTitle}</div>
-                  <ul className="assumptions-list">
-                    {entry.notes.map((note, idx) => (
-                      <li key={idx}>{note}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {entry.meta && <div className="meta">{entry.meta}</div>}
-              {entry.issues && entry.issues.length > 0 && (
+              {!entry.check && entry.issues && entry.issues.length > 0 && (
                 <details className="issues">
                   <summary>{t.chatIssueCount(entry.issues.length)}</summary>
                   {entry.issues.map((issue, index) => {
@@ -558,6 +829,44 @@ export function ChatPanel({
                     );
                   })}
                 </details>
+              )}
+              {((entry.changes?.changedPartIds.length ?? 0) > 0 || entry.undoSpec !== undefined) && (
+                <div className="chat-result-actions">
+                  {(entry.changes?.changedPartIds.length ?? 0) > 0 && onHighlightParts && (
+                    <button
+                      type="button"
+                      className="chat-result-action"
+                      onClick={() => onHighlightParts(entry.changes!.changedPartIds)}
+                    >
+                      {t.chatViewOn3d}
+                    </button>
+                  )}
+                  {entry.undoSpec !== undefined && onUndoSpec && (
+                    <button
+                      type="button"
+                      className="chat-result-action"
+                      onClick={() => onUndoSpec(entry.undoSpec ?? null)}
+                    >
+                      {t.chatUndoThisTurn}
+                    </button>
+                  )}
+                </div>
+              )}
+              {entry.action && (
+                <button
+                  type="button"
+                  className="msg-action"
+                  onClick={() => {
+                    if (entry.action?.kind === "open-api") {
+                      setApiPanelOpen(true);
+                      return;
+                    }
+                    return onAction ? onAction(entry.action!) : onRetry?.();
+                  }}
+                  data-testid="chat-retry"
+                >
+                  {entry.action.label}
+                </button>
               )}
             </div>
           ),
@@ -587,6 +896,45 @@ export function ChatPanel({
       </div>
 
       <div className="chat-composer">
+        {targets.length > 0 && (
+          <div className="composer-targets" data-testid="composer-targets">
+            {targets.map((target, index) => (
+              <span
+                key={`${target.partId}-${target.noteId ?? index}`}
+                className={`composer-target${target.note ? " with-note" : ""}${
+                  partIds.includes(target.partId) ? "" : " stale"
+                }`}
+              >
+                <button
+                  type="button"
+                  className="composer-target-name"
+                  title={
+                    partIds.includes(target.partId)
+                      ? t.chatFocusPartHint
+                      : t.chatTargetChanged
+                  }
+                  disabled={!partIds.includes(target.partId)}
+                  onClick={() => onFocusPart?.(target.partId)}
+                >
+                  {target.partName}
+                </button>
+                {target.note && <span className="composer-target-note">{target.note}</span>}
+                {!partIds.includes(target.partId) && (
+                  <span className="composer-target-stale">{t.chatTargetChanged}</span>
+                )}
+                <button
+                  type="button"
+                  className="composer-target-remove"
+                  title={t.chatRemoveTarget}
+                  aria-label={t.chatRemoveTarget}
+                  onClick={() => onRemoveTarget?.(index)}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
         {attachments.length > 0 && (
           <div className="attachments-list">
             {attachments.map((doc, idx) => {

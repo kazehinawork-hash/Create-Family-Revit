@@ -12,7 +12,7 @@ test("every level names itself and its part budget", () => {
     const text = lodStandard(level);
     assert.match(text, new RegExp(`LOD ${level}`));
     assert.match(text, /parts/);
-    assert.match(text, new RegExp(`Ghi rõ mức LOD ${level}`));
+    assert.match(text, new RegExp(`Mức LOD ${level} đã nằm trong trường`));
   }
 });
 

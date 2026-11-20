@@ -676,6 +676,7 @@ app.post("/api/design", async (req, res) => {
           customApiConfig: body.customApiConfig,
           commandCodeApiKey: body.commandCodeApiKey,
           attachments: normalizeAttachments(body.attachments),
+          targets: body.targets ?? [],
           // Unknown product types get one cheap model call to learn a reusable pack.
           learnRules: true,
           signal: controller.signal,
@@ -1268,7 +1269,7 @@ app.post("/api/models", (req, res) => {
       return;
     }
 
-    const { id, name, spec, entries, group, thumbnail } = parsed.data;
+    const { id, name, spec, entries, annotations, group, thumbnail } = parsed.data;
     const modelId = id
       ? path.basename(id).replace(/[^\w.\- ]+/g, "_")
       : // New ids keep the Vietnamese name as plain ASCII; existing files are never renamed.
@@ -1292,6 +1293,7 @@ app.post("/api/models", (req, res) => {
       group: previousGroup || normalizeGroupName(group ?? "").name || "",
       spec,
       entries: Array.isArray(entries) ? entries : [],
+      annotations: Array.isArray(annotations) ? annotations : [],
       savedAt: Date.now(),
     };
     writeJsonAtomic(filePath, payload);

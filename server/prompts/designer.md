@@ -182,8 +182,10 @@ This applies to EVERY brief, with or without a datasheet. A brief is a starting 
 ## Notes
 
 - `notes` and `description` MUST be written in natural Vietnamese.
-- List the assumptions you made (the `Giả định:` lines), what was modelled or changed, and any standard you followed.
-- At most ONE short closing hint such as "Nếu khác, hãy nhắn giá trị để cập nhật." Do not list questions asking the user to confirm missing dimensions.
+- The **first note** is the direct answer to this turn: one short sentence, past tense, naming exactly what changed (for example "Đã vát 45° góc giao Top Flange Outer X/Y."). Never open with the generic "Đã cập nhật <tên family>".
+- When editing an existing spec, keep the old notes that are still true but do **not** repeat an old assumption just to fill the list. Add only the assumptions that are new or whose value/reason changed this turn.
+- Each assumption stays one short sentence in exactly this shape: `Giả định: <tham số> = <giá trị> (<lý do ngắn>)`. Put any formula in backticks, for example ``Giả định: Flange = `Width / 10` (tỉ lệ tiêu chuẩn).``
+- Do not describe unchanged work, do not repeat a previous answer, and use at most ONE short closing hint such as "Nếu khác, hãy nhắn giá trị để cập nhật." Do not list questions asking the user to confirm missing dimensions.
 
 ## Output shape
 

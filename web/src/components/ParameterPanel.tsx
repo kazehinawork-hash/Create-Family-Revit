@@ -13,7 +13,9 @@ import {
 } from "@family/spec-core";
 import { parameterDisplay, parameterUnit, type Units } from "../lib/format";
 import { TypesPanel } from "./TypesPanel";
+import { NotesPanel } from "./NotesPanel";
 import { useI18n } from "../lib/i18n";
+import type { ModelNote } from "../lib/annotations";
 
 interface Props {
   spec: FamilySpec;
@@ -37,6 +39,14 @@ interface Props {
   onExportTypes: () => void;
   exportingTypes?: boolean;
   previewTypeActive?: boolean;
+  notes?: ModelNote[];
+  notesSending?: boolean;
+  onFocusNote?: (note: ModelNote) => void;
+  onUpdateNote?: (id: string, text: string) => void;
+  onDeleteNote?: (id: string) => void;
+  onToggleNoteResolved?: (id: string) => void;
+  onSendNote?: (note: ModelNote) => void;
+  onSendAllNotes?: () => void;
 }
 
 const GROUP_ORDER = [
@@ -251,9 +261,19 @@ export function ParameterPanel({
   onExportTypes,
   exportingTypes = false,
   previewTypeActive = false,
+  notes = [],
+  notesSending = false,
+  onFocusNote,
+  onUpdateNote,
+  onDeleteNote,
+  onToggleNoteResolved,
+  onSendNote,
+  onSendAllNotes,
 }: Props) {
   const { t, formatNumber, localizeIssue } = useI18n();
-  const [tab, setTab] = useState<"parameters" | "parts" | "connectors" | "types">("parameters");
+  const [tab, setTab] = useState<"parameters" | "parts" | "connectors" | "types" | "notes">(
+    "parameters",
+  );
   const [filter, setFilter] = useState("");
   const [partFilter, setPartFilter] = useState("");
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
@@ -454,6 +474,14 @@ export function ParameterPanel({
           data-testid="tab-types"
         >
           {t.types} <span className="count">{types.length}</span>
+        </button>
+        <button
+          type="button"
+          className={`tab ${tab === "notes" ? "active" : ""}`}
+          onClick={() => setTab("notes")}
+          data-testid="tab-notes"
+        >
+          {t.paramsNotesTab} <span className="count">{notes.length}</span>
         </button>
       </div>
 
@@ -866,6 +894,19 @@ export function ParameterPanel({
             {t.paramsConnectorsConfigured(formatNumber(spec.connectors?.length ?? 0))}
           </div>
         </div>
+      )}
+      {tab === "notes" && (
+        <NotesPanel
+          notes={notes}
+          partIds={spec.parts.map((part) => part.id)}
+          sending={notesSending}
+          onFocusNote={(note) => onFocusNote?.(note)}
+          onUpdateNote={(id, text) => onUpdateNote?.(id, text)}
+          onDeleteNote={(id) => onDeleteNote?.(id)}
+          onToggleResolved={(id) => onToggleNoteResolved?.(id)}
+          onSendNote={(note) => onSendNote?.(note)}
+          onSendAll={() => onSendAllNotes?.()}
+        />
       )}
       {tab === "types" && (
         <TypesPanel
