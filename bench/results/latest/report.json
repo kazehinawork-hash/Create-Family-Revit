@@ -1,0 +1,4065 @@
+{
+  "generatedAt": "2026-11-26T02:26:26.067Z",
+  "options": {
+    "model": "default",
+    "runs": 1,
+    "mode": "both",
+    "stub": true
+  },
+  "summary": {
+    "before": {
+      "cases": 24,
+      "passed": 13,
+      "avgScore": 84.3,
+      "macroCases": 11,
+      "macroPassed": 0,
+      "macroAvgScore": 68.6,
+      "usedMacroCount": 0
+    },
+    "after": {
+      "cases": 24,
+      "passed": 24,
+      "avgScore": 98.5,
+      "macroCases": 11,
+      "macroPassed": 11,
+      "macroAvgScore": 99.6,
+      "usedMacroCount": 11
+    }
+  },
+  "before": [
+    {
+      "id": "tray-straight-400x100",
+      "group": "tray-macro",
+      "supportsMacro": true,
+      "usedMacro": false,
+      "ok": false,
+      "totalScore": 83,
+      "breakdown": {
+        "valid": 24,
+        "bounds": 25,
+        "params": 17,
+        "features": 17
+      },
+      "counts": {
+        "parts": 3,
+        "resolvedParts": 3,
+        "parameters": 4,
+        "connectors": 2,
+        "errors": 0,
+        "warnings": 1
+      },
+      "bounds": [
+        1000,
+        401.8,
+        100
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 1000,
+          "expected": [
+            950,
+            1050
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "y": {
+          "actual": 401.8,
+          "expected": [
+            395,
+            420
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "z": {
+          "actual": 100,
+          "expected": [
+            95,
+            110
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 0,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": true,
+          "actual": false,
+          "ok": false
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 37,
+      "promptChars": 10767,
+      "modelCalls": 2,
+      "mode": "before",
+      "runs": 1,
+      "avgScore": 83,
+      "passRate": "0/1"
+    },
+    {
+      "id": "tray-elbow-90-400x100",
+      "group": "tray-macro",
+      "supportsMacro": true,
+      "usedMacro": false,
+      "ok": false,
+      "totalScore": 78,
+      "breakdown": {
+        "valid": 24,
+        "bounds": 25,
+        "params": 16,
+        "features": 13
+      },
+      "counts": {
+        "parts": 4,
+        "resolvedParts": 4,
+        "parameters": 4,
+        "connectors": 2,
+        "errors": 0,
+        "warnings": 1
+      },
+      "bounds": [
+        700,
+        700.9,
+        100
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 700,
+          "expected": [
+            650,
+            750
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "y": {
+          "actual": 700.9,
+          "expected": [
+            650,
+            750
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "z": {
+          "actual": 100,
+          "expected": [
+            95,
+            110
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 0,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": true,
+          "actual": false,
+          "ok": false
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": true,
+          "actual": false,
+          "ok": false
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 14,
+      "promptChars": 10720,
+      "modelCalls": 4,
+      "mode": "before",
+      "runs": 1,
+      "avgScore": 78,
+      "passRate": "0/1"
+    },
+    {
+      "id": "ladder-elbow-90-500x100",
+      "group": "tray-macro",
+      "supportsMacro": true,
+      "usedMacro": false,
+      "ok": false,
+      "totalScore": 65,
+      "breakdown": {
+        "valid": 24,
+        "bounds": 8,
+        "params": 16,
+        "features": 17
+      },
+      "counts": {
+        "parts": 4,
+        "resolvedParts": 4,
+        "parameters": 4,
+        "connectors": 2,
+        "errors": 0,
+        "warnings": 1
+      },
+      "bounds": [
+        700,
+        700.9,
+        100
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 700,
+          "expected": [
+            1040,
+            1160
+          ],
+          "ok": false,
+          "delta": 340
+        },
+        "y": {
+          "actual": 700.9,
+          "expected": [
+            1040,
+            1160
+          ],
+          "ok": false,
+          "delta": 339.1
+        },
+        "z": {
+          "actual": 100,
+          "expected": [
+            95,
+            110
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 340,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": true,
+          "actual": false,
+          "ok": false
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": true,
+          "actual": false,
+          "ok": false
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 10,
+      "promptChars": 10714,
+      "modelCalls": 4,
+      "mode": "before",
+      "runs": 1,
+      "avgScore": 65,
+      "passRate": "0/1"
+    },
+    {
+      "id": "tray-elbow-45-300x100",
+      "group": "tray-macro",
+      "supportsMacro": true,
+      "usedMacro": false,
+      "ok": false,
+      "totalScore": 61,
+      "breakdown": {
+        "valid": 24,
+        "bounds": 8,
+        "params": 16,
+        "features": 13
+      },
+      "counts": {
+        "parts": 4,
+        "resolvedParts": 4,
+        "parameters": 4,
+        "connectors": 2,
+        "errors": 0,
+        "warnings": 1
+      },
+      "bounds": [
+        700,
+        700.9,
+        100
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 700,
+          "expected": [
+            750,
+            920
+          ],
+          "ok": false,
+          "delta": 50
+        },
+        "y": {
+          "actual": 700.9,
+          "expected": [
+            400,
+            560
+          ],
+          "ok": false,
+          "delta": 140.9
+        },
+        "z": {
+          "actual": 100,
+          "expected": [
+            95,
+            110
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 140.9,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": true,
+          "actual": false,
+          "ok": false
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": true,
+          "actual": false,
+          "ok": false
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 10,
+      "promptChars": 10697,
+      "modelCalls": 4,
+      "mode": "before",
+      "runs": 1,
+      "avgScore": 61,
+      "passRate": "0/1"
+    },
+    {
+      "id": "tray-z-offset-400x100",
+      "group": "tray-macro",
+      "supportsMacro": true,
+      "usedMacro": false,
+      "ok": false,
+      "totalScore": 61,
+      "breakdown": {
+        "valid": 24,
+        "bounds": 8,
+        "params": 16,
+        "features": 13
+      },
+      "counts": {
+        "parts": 4,
+        "resolvedParts": 4,
+        "parameters": 4,
+        "connectors": 2,
+        "errors": 0,
+        "warnings": 1
+      },
+      "bounds": [
+        700,
+        700.9,
+        100
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 700,
+          "expected": [
+            760,
+            860
+          ],
+          "ok": false,
+          "delta": 60
+        },
+        "y": {
+          "actual": 700.9,
+          "expected": [
+            850,
+            980
+          ],
+          "ok": false,
+          "delta": 149.1
+        },
+        "z": {
+          "actual": 100,
+          "expected": [
+            95,
+            110
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 149.1,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": true,
+          "actual": false,
+          "ok": false
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": true,
+          "actual": false,
+          "ok": false
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 3,
+      "promptChars": 10726,
+      "modelCalls": 2,
+      "mode": "before",
+      "runs": 1,
+      "avgScore": 61,
+      "passRate": "0/1"
+    },
+    {
+      "id": "tray-elbow-90-lid-400x100",
+      "group": "tray-macro",
+      "supportsMacro": true,
+      "usedMacro": false,
+      "ok": false,
+      "totalScore": 81,
+      "breakdown": {
+        "valid": 24,
+        "bounds": 25,
+        "params": 19,
+        "features": 13
+      },
+      "counts": {
+        "parts": 4,
+        "resolvedParts": 4,
+        "parameters": 4,
+        "connectors": 2,
+        "errors": 0,
+        "warnings": 1
+      },
+      "bounds": [
+        700,
+        700.9,
+        100
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 700,
+          "expected": [
+            650,
+            750
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "y": {
+          "actual": 700.9,
+          "expected": [
+            650,
+            750
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "z": {
+          "actual": 100,
+          "expected": [
+            98,
+            110
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 0,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": true,
+          "actual": false,
+          "ok": false
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": true,
+          "actual": false,
+          "ok": false
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 7,
+      "promptChars": 10918,
+      "modelCalls": 4,
+      "mode": "before",
+      "runs": 1,
+      "avgScore": 81,
+      "passRate": "0/1"
+    },
+    {
+      "id": "tray-elbow-no-flange-200x50",
+      "group": "tray-macro",
+      "supportsMacro": true,
+      "usedMacro": false,
+      "ok": false,
+      "totalScore": 64,
+      "breakdown": {
+        "valid": 24,
+        "bounds": 0,
+        "params": 19,
+        "features": 21
+      },
+      "counts": {
+        "parts": 4,
+        "resolvedParts": 4,
+        "parameters": 4,
+        "connectors": 2,
+        "errors": 0,
+        "warnings": 1
+      },
+      "bounds": [
+        700,
+        700.9,
+        100
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 700,
+          "expected": [
+            420,
+            490
+          ],
+          "ok": false,
+          "delta": 210
+        },
+        "y": {
+          "actual": 700.9,
+          "expected": [
+            420,
+            490
+          ],
+          "ok": false,
+          "delta": 210.9
+        },
+        "z": {
+          "actual": 100,
+          "expected": [
+            48,
+            55
+          ],
+          "ok": false,
+          "delta": 45
+        }
+      },
+      "maxDeltaMm": 210.9,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": true,
+          "actual": false,
+          "ok": false
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 7,
+      "promptChars": 10723,
+      "modelCalls": 4,
+      "mode": "before",
+      "runs": 1,
+      "avgScore": 64,
+      "passRate": "0/1"
+    },
+    {
+      "id": "tray-s-offset-45-300x75",
+      "group": "tray-macro",
+      "supportsMacro": true,
+      "usedMacro": false,
+      "ok": false,
+      "totalScore": 61,
+      "breakdown": {
+        "valid": 24,
+        "bounds": 8,
+        "params": 16,
+        "features": 13
+      },
+      "counts": {
+        "parts": 4,
+        "resolvedParts": 4,
+        "parameters": 4,
+        "connectors": 2,
+        "errors": 0,
+        "warnings": 1
+      },
+      "bounds": [
+        700,
+        700.9,
+        100
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 700,
+          "expected": [
+            1050,
+            1250
+          ],
+          "ok": false,
+          "delta": 350
+        },
+        "y": {
+          "actual": 700.9,
+          "expected": [
+            500,
+            650
+          ],
+          "ok": false,
+          "delta": 50.9
+        },
+        "z": {
+          "actual": 100,
+          "expected": [
+            72,
+            82
+          ],
+          "ok": true,
+          "delta": 18
+        }
+      },
+      "maxDeltaMm": 350,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": true,
+          "actual": false,
+          "ok": false
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": true,
+          "actual": false,
+          "ok": false
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 4,
+      "promptChars": 10716,
+      "modelCalls": 2,
+      "mode": "before",
+      "runs": 1,
+      "avgScore": 61,
+      "passRate": "0/1"
+    },
+    {
+      "id": "tray-u-turn-180-400x100",
+      "group": "tray-macro",
+      "supportsMacro": true,
+      "usedMacro": false,
+      "ok": false,
+      "totalScore": 70,
+      "breakdown": {
+        "valid": 24,
+        "bounds": 17,
+        "params": 16,
+        "features": 13
+      },
+      "counts": {
+        "parts": 4,
+        "resolvedParts": 4,
+        "parameters": 4,
+        "connectors": 2,
+        "errors": 0,
+        "warnings": 1
+      },
+      "bounds": [
+        700,
+        700.9,
+        100
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 700,
+          "expected": [
+            550,
+            720
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "y": {
+          "actual": 700.9,
+          "expected": [
+            850,
+            960
+          ],
+          "ok": false,
+          "delta": 149.1
+        },
+        "z": {
+          "actual": 100,
+          "expected": [
+            95,
+            110
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 149.1,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": true,
+          "actual": false,
+          "ok": false
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": true,
+          "actual": false,
+          "ok": false
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 3,
+      "promptChars": 10697,
+      "modelCalls": 2,
+      "mode": "before",
+      "runs": 1,
+      "avgScore": 70,
+      "passRate": "0/1"
+    },
+    {
+      "id": "tray-step-45-elbow-500x100",
+      "group": "tray-macro",
+      "supportsMacro": true,
+      "usedMacro": false,
+      "ok": false,
+      "totalScore": 61,
+      "breakdown": {
+        "valid": 24,
+        "bounds": 8,
+        "params": 16,
+        "features": 13
+      },
+      "counts": {
+        "parts": 4,
+        "resolvedParts": 4,
+        "parameters": 4,
+        "connectors": 2,
+        "errors": 0,
+        "warnings": 1
+      },
+      "bounds": [
+        700,
+        700.9,
+        100
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 700,
+          "expected": [
+            950,
+            1200
+          ],
+          "ok": false,
+          "delta": 250
+        },
+        "y": {
+          "actual": 700.9,
+          "expected": [
+            750,
+            960
+          ],
+          "ok": false,
+          "delta": 49.1
+        },
+        "z": {
+          "actual": 100,
+          "expected": [
+            95,
+            110
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 250,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": true,
+          "actual": false,
+          "ok": false
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": true,
+          "actual": false,
+          "ok": false
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 6,
+      "promptChars": 10681,
+      "modelCalls": 4,
+      "mode": "before",
+      "runs": 1,
+      "avgScore": 61,
+      "passRate": "0/1"
+    },
+    {
+      "id": "ladder-mitered-tee-400x300",
+      "group": "ladder-fitting",
+      "supportsMacro": false,
+      "usedMacro": false,
+      "ok": true,
+      "totalScore": 96,
+      "breakdown": {
+        "valid": 30,
+        "bounds": 25,
+        "params": 16,
+        "features": 25
+      },
+      "counts": {
+        "parts": 12,
+        "resolvedParts": 12,
+        "parameters": 21,
+        "connectors": 3,
+        "errors": 0,
+        "warnings": 5
+      },
+      "bounds": [
+        940,
+        485,
+        100
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 940,
+          "expected": [
+            880,
+            1020
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "y": {
+          "actual": 485,
+          "expected": [
+            460,
+            560
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "z": {
+          "actual": 100,
+          "expected": [
+            95,
+            110
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 0,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 8,
+      "promptChars": 10942,
+      "modelCalls": 2,
+      "mode": "before",
+      "runs": 1,
+      "avgScore": 96,
+      "passRate": "1/1"
+    },
+    {
+      "id": "ladder-mitered-cross-400x400",
+      "group": "ladder-fitting",
+      "supportsMacro": false,
+      "usedMacro": false,
+      "ok": true,
+      "totalScore": 96,
+      "breakdown": {
+        "valid": 30,
+        "bounds": 25,
+        "params": 16,
+        "features": 25
+      },
+      "counts": {
+        "parts": 18,
+        "resolvedParts": 18,
+        "parameters": 21,
+        "connectors": 4,
+        "errors": 0,
+        "warnings": 8
+      },
+      "bounds": [
+        940,
+        940,
+        100
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 940,
+          "expected": [
+            900,
+            1000
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "y": {
+          "actual": 940,
+          "expected": [
+            900,
+            1000
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "z": {
+          "actual": 100,
+          "expected": [
+            95,
+            110
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 0,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 8,
+      "promptChars": 10924,
+      "modelCalls": 2,
+      "mode": "before",
+      "runs": 1,
+      "avgScore": 96,
+      "passRate": "1/1"
+    },
+    {
+      "id": "tray-tee-equal-400x100",
+      "group": "tray-fitting",
+      "supportsMacro": false,
+      "usedMacro": false,
+      "ok": true,
+      "totalScore": 96,
+      "breakdown": {
+        "valid": 30,
+        "bounds": 25,
+        "params": 16,
+        "features": 25
+      },
+      "counts": {
+        "parts": 12,
+        "resolvedParts": 12,
+        "parameters": 21,
+        "connectors": 3,
+        "errors": 0,
+        "warnings": 5
+      },
+      "bounds": [
+        940,
+        535,
+        100
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 940,
+          "expected": [
+            850,
+            1020
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "y": {
+          "actual": 535,
+          "expected": [
+            510,
+            620
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "z": {
+          "actual": 100,
+          "expected": [
+            95,
+            110
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 0,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 6,
+      "promptChars": 10915,
+      "modelCalls": 2,
+      "mode": "before",
+      "runs": 1,
+      "avgScore": 96,
+      "passRate": "1/1"
+    },
+    {
+      "id": "tray-cross-unequal-400x200",
+      "group": "tray-fitting",
+      "supportsMacro": false,
+      "usedMacro": false,
+      "ok": true,
+      "totalScore": 92,
+      "breakdown": {
+        "valid": 30,
+        "bounds": 25,
+        "params": 16,
+        "features": 21
+      },
+      "counts": {
+        "parts": 18,
+        "resolvedParts": 18,
+        "parameters": 21,
+        "connectors": 4,
+        "errors": 0,
+        "warnings": 8
+      },
+      "bounds": [
+        940,
+        740,
+        100
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 940,
+          "expected": [
+            850,
+            1000
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "y": {
+          "actual": 740,
+          "expected": [
+            680,
+            820
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "z": {
+          "actual": 100,
+          "expected": [
+            95,
+            110
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 0,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": false,
+          "actual": true,
+          "ok": false
+        }
+      ],
+      "elapsedMs": 7,
+      "promptChars": 10684,
+      "modelCalls": 2,
+      "mode": "before",
+      "runs": 1,
+      "avgScore": 92,
+      "passRate": "1/1"
+    },
+    {
+      "id": "tray-reducer-concentric-400x200",
+      "group": "tray-fitting",
+      "supportsMacro": false,
+      "usedMacro": false,
+      "ok": true,
+      "totalScore": 100,
+      "breakdown": {
+        "valid": 30,
+        "bounds": 25,
+        "params": 20,
+        "features": 25
+      },
+      "counts": {
+        "parts": 4,
+        "resolvedParts": 4,
+        "parameters": 6,
+        "connectors": 2,
+        "errors": 0,
+        "warnings": 0
+      },
+      "bounds": [
+        350,
+        401.8,
+        100
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 350,
+          "expected": [
+            320,
+            380
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "y": {
+          "actual": 401.8,
+          "expected": [
+            395,
+            425
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "z": {
+          "actual": 100,
+          "expected": [
+            95,
+            110
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 0,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 2,
+      "promptChars": 10697,
+      "modelCalls": 1,
+      "mode": "before",
+      "runs": 1,
+      "avgScore": 100,
+      "passRate": "1/1"
+    },
+    {
+      "id": "tray-reducer-eccentric-500x300",
+      "group": "tray-fitting",
+      "supportsMacro": false,
+      "usedMacro": false,
+      "ok": true,
+      "totalScore": 100,
+      "breakdown": {
+        "valid": 30,
+        "bounds": 25,
+        "params": 20,
+        "features": 25
+      },
+      "counts": {
+        "parts": 4,
+        "resolvedParts": 4,
+        "parameters": 6,
+        "connectors": 2,
+        "errors": 0,
+        "warnings": 0
+      },
+      "bounds": [
+        350,
+        501.8,
+        100
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 350,
+          "expected": [
+            320,
+            380
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "y": {
+          "actual": 501.8,
+          "expected": [
+            495,
+            525
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "z": {
+          "actual": 100,
+          "expected": [
+            95,
+            110
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 0,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 2,
+      "promptChars": 10682,
+      "modelCalls": 1,
+      "mode": "before",
+      "runs": 1,
+      "avgScore": 100,
+      "passRate": "1/1"
+    },
+    {
+      "id": "tray-vertical-inside-riser-400x100",
+      "group": "tray-vertical",
+      "supportsMacro": false,
+      "usedMacro": false,
+      "ok": true,
+      "totalScore": 100,
+      "breakdown": {
+        "valid": 30,
+        "bounds": 25,
+        "params": 20,
+        "features": 25
+      },
+      "counts": {
+        "parts": 4,
+        "resolvedParts": 4,
+        "parameters": 3,
+        "connectors": 2,
+        "errors": 0,
+        "warnings": 0
+      },
+      "bounds": [
+        450.9,
+        400,
+        450
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 450.9,
+          "expected": [
+            380,
+            520
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "y": {
+          "actual": 400,
+          "expected": [
+            395,
+            420
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "z": {
+          "actual": 450,
+          "expected": [
+            380,
+            520
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 0,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 7,
+      "promptChars": 10685,
+      "modelCalls": 3,
+      "mode": "before",
+      "runs": 1,
+      "avgScore": 100,
+      "passRate": "1/1"
+    },
+    {
+      "id": "tray-vertical-outside-elbow-400x100",
+      "group": "tray-vertical",
+      "supportsMacro": false,
+      "usedMacro": false,
+      "ok": true,
+      "totalScore": 100,
+      "breakdown": {
+        "valid": 30,
+        "bounds": 25,
+        "params": 20,
+        "features": 25
+      },
+      "counts": {
+        "parts": 4,
+        "resolvedParts": 4,
+        "parameters": 3,
+        "connectors": 2,
+        "errors": 0,
+        "warnings": 0
+      },
+      "bounds": [
+        450.9,
+        400,
+        450
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 450.9,
+          "expected": [
+            380,
+            520
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "y": {
+          "actual": 400,
+          "expected": [
+            395,
+            420
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "z": {
+          "actual": 450,
+          "expected": [
+            380,
+            520
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 0,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 5,
+      "promptChars": 10926,
+      "modelCalls": 3,
+      "mode": "before",
+      "runs": 1,
+      "avgScore": 100,
+      "passRate": "1/1"
+    },
+    {
+      "id": "tray-straight-slotted-600x100",
+      "group": "tray-macro",
+      "supportsMacro": true,
+      "usedMacro": false,
+      "ok": false,
+      "totalScore": 70,
+      "breakdown": {
+        "valid": 24,
+        "bounds": 17,
+        "params": 16,
+        "features": 13
+      },
+      "counts": {
+        "parts": 3,
+        "resolvedParts": 3,
+        "parameters": 4,
+        "connectors": 2,
+        "errors": 0,
+        "warnings": 1
+      },
+      "bounds": [
+        1000,
+        401.8,
+        100
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 1000,
+          "expected": [
+            950,
+            1050
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "y": {
+          "actual": 401.8,
+          "expected": [
+            595,
+            620
+          ],
+          "ok": false,
+          "delta": 193.2
+        },
+        "z": {
+          "actual": 100,
+          "expected": [
+            95,
+            110
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 193.2,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": true,
+          "actual": false,
+          "ok": false
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": true,
+          "actual": false,
+          "ok": false
+        }
+      ],
+      "elapsedMs": 3,
+      "promptChars": 10943,
+      "modelCalls": 2,
+      "mode": "before",
+      "runs": 1,
+      "avgScore": 70,
+      "passRate": "0/1"
+    },
+    {
+      "id": "tray-splice-plate-h100",
+      "group": "tray-accessory",
+      "supportsMacro": false,
+      "usedMacro": false,
+      "ok": true,
+      "totalScore": 100,
+      "breakdown": {
+        "valid": 30,
+        "bounds": 25,
+        "params": 20,
+        "features": 25
+      },
+      "counts": {
+        "parts": 2,
+        "resolvedParts": 2,
+        "parameters": 4,
+        "connectors": 0,
+        "errors": 0,
+        "warnings": 0
+      },
+      "bounds": [
+        200,
+        15.5,
+        100
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 200,
+          "expected": [
+            190,
+            210
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "y": {
+          "actual": 15.5,
+          "expected": [
+            10,
+            35
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "z": {
+          "actual": 100,
+          "expected": [
+            95,
+            105
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 0,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 2,
+      "promptChars": 10930,
+      "modelCalls": 1,
+      "mode": "before",
+      "runs": 1,
+      "avgScore": 100,
+      "passRate": "1/1"
+    },
+    {
+      "id": "duct-transition-400x200-to-300",
+      "group": "mep-general",
+      "supportsMacro": false,
+      "usedMacro": false,
+      "ok": true,
+      "totalScore": 100,
+      "breakdown": {
+        "valid": 30,
+        "bounds": 25,
+        "params": 20,
+        "features": 25
+      },
+      "counts": {
+        "parts": 2,
+        "resolvedParts": 2,
+        "parameters": 4,
+        "connectors": 2,
+        "errors": 0,
+        "warnings": 1
+      },
+      "bounds": [
+        400,
+        300,
+        430
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 400,
+          "expected": [
+            380,
+            440
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "y": {
+          "actual": 300,
+          "expected": [
+            280,
+            340
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "z": {
+          "actual": 430,
+          "expected": [
+            380,
+            460
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 0,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 4,
+      "promptChars": 10735,
+      "modelCalls": 1,
+      "mode": "before",
+      "runs": 1,
+      "avgScore": 100,
+      "passRate": "1/1"
+    },
+    {
+      "id": "pipe-y-strainer-dn80",
+      "group": "mep-general",
+      "supportsMacro": false,
+      "usedMacro": false,
+      "ok": true,
+      "totalScore": 94,
+      "breakdown": {
+        "valid": 30,
+        "bounds": 25,
+        "params": 18,
+        "features": 21
+      },
+      "counts": {
+        "parts": 4,
+        "resolvedParts": 4,
+        "parameters": 4,
+        "connectors": 2,
+        "errors": 0,
+        "warnings": 0
+      },
+      "bounds": [
+        310,
+        200,
+        261
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 310,
+          "expected": [
+            290,
+            330
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "y": {
+          "actual": 200,
+          "expected": [
+            180,
+            230
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "z": {
+          "actual": 261,
+          "expected": [
+            210,
+            310
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 0,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": false,
+          "actual": true,
+          "ok": false
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 2,
+      "promptChars": 10923,
+      "modelCalls": 1,
+      "mode": "before",
+      "runs": 1,
+      "avgScore": 94,
+      "passRate": "1/1"
+    },
+    {
+      "id": "strut-channel-p1000-1000",
+      "group": "mep-general",
+      "supportsMacro": false,
+      "usedMacro": false,
+      "ok": true,
+      "totalScore": 99,
+      "breakdown": {
+        "valid": 30,
+        "bounds": 25,
+        "params": 19,
+        "features": 25
+      },
+      "counts": {
+        "parts": 1,
+        "resolvedParts": 1,
+        "parameters": 3,
+        "connectors": 0,
+        "errors": 0,
+        "warnings": 1
+      },
+      "bounds": [
+        1000,
+        41,
+        41
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 1000,
+          "expected": [
+            980,
+            1020
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "y": {
+          "actual": 41,
+          "expected": [
+            38,
+            45
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "z": {
+          "actual": 41,
+          "expected": [
+            38,
+            45
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 0,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 3,
+      "promptChars": 10931,
+      "modelCalls": 2,
+      "mode": "before",
+      "runs": 1,
+      "avgScore": 99,
+      "passRate": "1/1"
+    },
+    {
+      "id": "ahu-compact-1200x700x600",
+      "group": "mep-general",
+      "supportsMacro": false,
+      "usedMacro": false,
+      "ok": true,
+      "totalScore": 96,
+      "breakdown": {
+        "valid": 30,
+        "bounds": 25,
+        "params": 16,
+        "features": 25
+      },
+      "counts": {
+        "parts": 6,
+        "resolvedParts": 6,
+        "parameters": 4,
+        "connectors": 2,
+        "errors": 0,
+        "warnings": 2
+      },
+      "bounds": [
+        1260,
+        700,
+        600
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 1260,
+          "expected": [
+            1150,
+            1300
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "y": {
+          "actual": 700,
+          "expected": [
+            660,
+            820
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "z": {
+          "actual": 600,
+          "expected": [
+            580,
+            680
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 0,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 4,
+      "promptChars": 10706,
+      "modelCalls": 2,
+      "mode": "before",
+      "runs": 1,
+      "avgScore": 96,
+      "passRate": "1/1"
+    }
+  ],
+  "after": [
+    {
+      "id": "tray-straight-400x100",
+      "group": "tray-macro",
+      "supportsMacro": true,
+      "usedMacro": true,
+      "ok": true,
+      "totalScore": 100,
+      "breakdown": {
+        "valid": 30,
+        "bounds": 25,
+        "params": 20,
+        "features": 25
+      },
+      "counts": {
+        "parts": 5,
+        "resolvedParts": 5,
+        "parameters": 5,
+        "connectors": 2,
+        "errors": 0,
+        "warnings": 0
+      },
+      "bounds": [
+        1000,
+        403.6,
+        100
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 1000,
+          "expected": [
+            950,
+            1050
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "y": {
+          "actual": 403.6,
+          "expected": [
+            395,
+            420
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "z": {
+          "actual": 100,
+          "expected": [
+            95,
+            110
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 0,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 2,
+      "promptChars": 10767,
+      "modelCalls": 1,
+      "mode": "after",
+      "runs": 1,
+      "avgScore": 100,
+      "passRate": "1/1"
+    },
+    {
+      "id": "tray-elbow-90-400x100",
+      "group": "tray-macro",
+      "supportsMacro": true,
+      "usedMacro": true,
+      "ok": true,
+      "totalScore": 100,
+      "breakdown": {
+        "valid": 30,
+        "bounds": 25,
+        "params": 20,
+        "features": 25
+      },
+      "counts": {
+        "parts": 10,
+        "resolvedParts": 10,
+        "parameters": 5,
+        "connectors": 2,
+        "errors": 0,
+        "warnings": 0
+      },
+      "bounds": [
+        701.8,
+        701.8,
+        100
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 701.8,
+          "expected": [
+            650,
+            750
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "y": {
+          "actual": 701.8,
+          "expected": [
+            650,
+            750
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "z": {
+          "actual": 100,
+          "expected": [
+            95,
+            110
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 0,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 3,
+      "promptChars": 10720,
+      "modelCalls": 1,
+      "mode": "after",
+      "runs": 1,
+      "avgScore": 100,
+      "passRate": "1/1"
+    },
+    {
+      "id": "ladder-elbow-90-500x100",
+      "group": "tray-macro",
+      "supportsMacro": true,
+      "usedMacro": true,
+      "ok": true,
+      "totalScore": 96,
+      "breakdown": {
+        "valid": 30,
+        "bounds": 25,
+        "params": 16,
+        "features": 25
+      },
+      "counts": {
+        "parts": 10,
+        "resolvedParts": 10,
+        "parameters": 19,
+        "connectors": 2,
+        "errors": 0,
+        "warnings": 8
+      },
+      "bounds": [
+        1101.8,
+        1101.8,
+        100
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 1101.8,
+          "expected": [
+            1040,
+            1160
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "y": {
+          "actual": 1101.8,
+          "expected": [
+            1040,
+            1160
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "z": {
+          "actual": 100,
+          "expected": [
+            95,
+            110
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 0,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 7,
+      "promptChars": 10714,
+      "modelCalls": 2,
+      "mode": "after",
+      "runs": 1,
+      "avgScore": 96,
+      "passRate": "1/1"
+    },
+    {
+      "id": "tray-elbow-45-300x100",
+      "group": "tray-macro",
+      "supportsMacro": true,
+      "usedMacro": true,
+      "ok": true,
+      "totalScore": 100,
+      "breakdown": {
+        "valid": 30,
+        "bounds": 25,
+        "params": 20,
+        "features": 25
+      },
+      "counts": {
+        "parts": 10,
+        "resolvedParts": 10,
+        "parameters": 5,
+        "connectors": 2,
+        "errors": 0,
+        "warnings": 0
+      },
+      "bounds": [
+        875.3,
+        576.8,
+        100
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 875.3,
+          "expected": [
+            750,
+            920
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "y": {
+          "actual": 576.8,
+          "expected": [
+            400,
+            560
+          ],
+          "ok": true,
+          "delta": 16.8
+        },
+        "z": {
+          "actual": 100,
+          "expected": [
+            95,
+            110
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 16.8,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 5,
+      "promptChars": 10697,
+      "modelCalls": 1,
+      "mode": "after",
+      "runs": 1,
+      "avgScore": 100,
+      "passRate": "1/1"
+    },
+    {
+      "id": "tray-z-offset-400x100",
+      "group": "tray-macro",
+      "supportsMacro": true,
+      "usedMacro": true,
+      "ok": true,
+      "totalScore": 100,
+      "breakdown": {
+        "valid": 30,
+        "bounds": 25,
+        "params": 20,
+        "features": 25
+      },
+      "counts": {
+        "parts": 15,
+        "resolvedParts": 15,
+        "parameters": 6,
+        "connectors": 2,
+        "errors": 0,
+        "warnings": 0
+      },
+      "bounds": [
+        800,
+        903.6,
+        100
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 800,
+          "expected": [
+            760,
+            860
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "y": {
+          "actual": 903.6,
+          "expected": [
+            850,
+            980
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "z": {
+          "actual": 100,
+          "expected": [
+            95,
+            110
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 0,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 3,
+      "promptChars": 10726,
+      "modelCalls": 1,
+      "mode": "after",
+      "runs": 1,
+      "avgScore": 100,
+      "passRate": "1/1"
+    },
+    {
+      "id": "tray-elbow-90-lid-400x100",
+      "group": "tray-macro",
+      "supportsMacro": true,
+      "usedMacro": true,
+      "ok": true,
+      "totalScore": 100,
+      "breakdown": {
+        "valid": 30,
+        "bounds": 25,
+        "params": 20,
+        "features": 25
+      },
+      "counts": {
+        "parts": 12,
+        "resolvedParts": 12,
+        "parameters": 5,
+        "connectors": 2,
+        "errors": 0,
+        "warnings": 0
+      },
+      "bounds": [
+        701.8,
+        701.8,
+        101.8
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 701.8,
+          "expected": [
+            650,
+            750
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "y": {
+          "actual": 701.8,
+          "expected": [
+            650,
+            750
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "z": {
+          "actual": 101.8,
+          "expected": [
+            98,
+            110
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 0,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 4,
+      "promptChars": 10918,
+      "modelCalls": 1,
+      "mode": "after",
+      "runs": 1,
+      "avgScore": 100,
+      "passRate": "1/1"
+    },
+    {
+      "id": "tray-elbow-no-flange-200x50",
+      "group": "tray-macro",
+      "supportsMacro": true,
+      "usedMacro": true,
+      "ok": true,
+      "totalScore": 100,
+      "breakdown": {
+        "valid": 30,
+        "bounds": 25,
+        "params": 20,
+        "features": 25
+      },
+      "counts": {
+        "parts": 6,
+        "resolvedParts": 6,
+        "parameters": 4,
+        "connectors": 2,
+        "errors": 0,
+        "warnings": 0
+      },
+      "bounds": [
+        451.5,
+        451.5,
+        50
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 451.5,
+          "expected": [
+            420,
+            490
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "y": {
+          "actual": 451.5,
+          "expected": [
+            420,
+            490
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "z": {
+          "actual": 50,
+          "expected": [
+            48,
+            55
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 0,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 3,
+      "promptChars": 10723,
+      "modelCalls": 1,
+      "mode": "after",
+      "runs": 1,
+      "avgScore": 100,
+      "passRate": "1/1"
+    },
+    {
+      "id": "tray-s-offset-45-300x75",
+      "group": "tray-macro",
+      "supportsMacro": true,
+      "usedMacro": true,
+      "ok": true,
+      "totalScore": 100,
+      "breakdown": {
+        "valid": 30,
+        "bounds": 25,
+        "params": 20,
+        "features": 25
+      },
+      "counts": {
+        "parts": 15,
+        "resolvedParts": 15,
+        "parameters": 6,
+        "connectors": 2,
+        "errors": 0,
+        "warnings": 0
+      },
+      "bounds": [
+        1047.5,
+        550.5,
+        75
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 1047.5,
+          "expected": [
+            1050,
+            1250
+          ],
+          "ok": true,
+          "delta": 2.5
+        },
+        "y": {
+          "actual": 550.5,
+          "expected": [
+            500,
+            650
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "z": {
+          "actual": 75,
+          "expected": [
+            72,
+            82
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 2.5,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 5,
+      "promptChars": 10716,
+      "modelCalls": 1,
+      "mode": "after",
+      "runs": 1,
+      "avgScore": 100,
+      "passRate": "1/1"
+    },
+    {
+      "id": "tray-u-turn-180-400x100",
+      "group": "tray-macro",
+      "supportsMacro": true,
+      "usedMacro": true,
+      "ok": true,
+      "totalScore": 100,
+      "breakdown": {
+        "valid": 30,
+        "bounds": 25,
+        "params": 20,
+        "features": 25
+      },
+      "counts": {
+        "parts": 15,
+        "resolvedParts": 15,
+        "parameters": 6,
+        "connectors": 2,
+        "errors": 0,
+        "warnings": 0
+      },
+      "bounds": [
+        601.8,
+        903.6,
+        100
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 601.8,
+          "expected": [
+            550,
+            720
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "y": {
+          "actual": 903.6,
+          "expected": [
+            850,
+            960
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "z": {
+          "actual": 100,
+          "expected": [
+            95,
+            110
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 0,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 3,
+      "promptChars": 10697,
+      "modelCalls": 1,
+      "mode": "after",
+      "runs": 1,
+      "avgScore": 100,
+      "passRate": "1/1"
+    },
+    {
+      "id": "tray-step-45-elbow-500x100",
+      "group": "tray-macro",
+      "supportsMacro": true,
+      "usedMacro": true,
+      "ok": true,
+      "totalScore": 100,
+      "breakdown": {
+        "valid": 30,
+        "bounds": 25,
+        "params": 20,
+        "features": 25
+      },
+      "counts": {
+        "parts": 10,
+        "resolvedParts": 10,
+        "parameters": 6,
+        "connectors": 2,
+        "errors": 0,
+        "warnings": 0
+      },
+      "bounds": [
+        1131.7,
+        783.7,
+        100
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 1131.7,
+          "expected": [
+            950,
+            1200
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "y": {
+          "actual": 783.7,
+          "expected": [
+            750,
+            960
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "z": {
+          "actual": 100,
+          "expected": [
+            95,
+            110
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 0,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 4,
+      "promptChars": 10681,
+      "modelCalls": 1,
+      "mode": "after",
+      "runs": 1,
+      "avgScore": 100,
+      "passRate": "1/1"
+    },
+    {
+      "id": "ladder-mitered-tee-400x300",
+      "group": "ladder-fitting",
+      "supportsMacro": false,
+      "usedMacro": false,
+      "ok": true,
+      "totalScore": 96,
+      "breakdown": {
+        "valid": 30,
+        "bounds": 25,
+        "params": 16,
+        "features": 25
+      },
+      "counts": {
+        "parts": 12,
+        "resolvedParts": 12,
+        "parameters": 21,
+        "connectors": 3,
+        "errors": 0,
+        "warnings": 5
+      },
+      "bounds": [
+        940,
+        485,
+        100
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 940,
+          "expected": [
+            880,
+            1020
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "y": {
+          "actual": 485,
+          "expected": [
+            460,
+            560
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "z": {
+          "actual": 100,
+          "expected": [
+            95,
+            110
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 0,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 7,
+      "promptChars": 10942,
+      "modelCalls": 2,
+      "mode": "after",
+      "runs": 1,
+      "avgScore": 96,
+      "passRate": "1/1"
+    },
+    {
+      "id": "ladder-mitered-cross-400x400",
+      "group": "ladder-fitting",
+      "supportsMacro": false,
+      "usedMacro": false,
+      "ok": true,
+      "totalScore": 96,
+      "breakdown": {
+        "valid": 30,
+        "bounds": 25,
+        "params": 16,
+        "features": 25
+      },
+      "counts": {
+        "parts": 18,
+        "resolvedParts": 18,
+        "parameters": 21,
+        "connectors": 4,
+        "errors": 0,
+        "warnings": 8
+      },
+      "bounds": [
+        940,
+        940,
+        100
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 940,
+          "expected": [
+            900,
+            1000
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "y": {
+          "actual": 940,
+          "expected": [
+            900,
+            1000
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "z": {
+          "actual": 100,
+          "expected": [
+            95,
+            110
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 0,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 9,
+      "promptChars": 10924,
+      "modelCalls": 2,
+      "mode": "after",
+      "runs": 1,
+      "avgScore": 96,
+      "passRate": "1/1"
+    },
+    {
+      "id": "tray-tee-equal-400x100",
+      "group": "tray-fitting",
+      "supportsMacro": false,
+      "usedMacro": false,
+      "ok": true,
+      "totalScore": 96,
+      "breakdown": {
+        "valid": 30,
+        "bounds": 25,
+        "params": 16,
+        "features": 25
+      },
+      "counts": {
+        "parts": 12,
+        "resolvedParts": 12,
+        "parameters": 21,
+        "connectors": 3,
+        "errors": 0,
+        "warnings": 5
+      },
+      "bounds": [
+        940,
+        535,
+        100
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 940,
+          "expected": [
+            850,
+            1020
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "y": {
+          "actual": 535,
+          "expected": [
+            510,
+            620
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "z": {
+          "actual": 100,
+          "expected": [
+            95,
+            110
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 0,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 6,
+      "promptChars": 10915,
+      "modelCalls": 2,
+      "mode": "after",
+      "runs": 1,
+      "avgScore": 96,
+      "passRate": "1/1"
+    },
+    {
+      "id": "tray-cross-unequal-400x200",
+      "group": "tray-fitting",
+      "supportsMacro": false,
+      "usedMacro": false,
+      "ok": true,
+      "totalScore": 92,
+      "breakdown": {
+        "valid": 30,
+        "bounds": 25,
+        "params": 16,
+        "features": 21
+      },
+      "counts": {
+        "parts": 18,
+        "resolvedParts": 18,
+        "parameters": 21,
+        "connectors": 4,
+        "errors": 0,
+        "warnings": 8
+      },
+      "bounds": [
+        940,
+        740,
+        100
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 940,
+          "expected": [
+            850,
+            1000
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "y": {
+          "actual": 740,
+          "expected": [
+            680,
+            820
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "z": {
+          "actual": 100,
+          "expected": [
+            95,
+            110
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 0,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": false,
+          "actual": true,
+          "ok": false
+        }
+      ],
+      "elapsedMs": 7,
+      "promptChars": 10684,
+      "modelCalls": 2,
+      "mode": "after",
+      "runs": 1,
+      "avgScore": 92,
+      "passRate": "1/1"
+    },
+    {
+      "id": "tray-reducer-concentric-400x200",
+      "group": "tray-fitting",
+      "supportsMacro": false,
+      "usedMacro": false,
+      "ok": true,
+      "totalScore": 100,
+      "breakdown": {
+        "valid": 30,
+        "bounds": 25,
+        "params": 20,
+        "features": 25
+      },
+      "counts": {
+        "parts": 4,
+        "resolvedParts": 4,
+        "parameters": 6,
+        "connectors": 2,
+        "errors": 0,
+        "warnings": 0
+      },
+      "bounds": [
+        350,
+        401.8,
+        100
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 350,
+          "expected": [
+            320,
+            380
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "y": {
+          "actual": 401.8,
+          "expected": [
+            395,
+            425
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "z": {
+          "actual": 100,
+          "expected": [
+            95,
+            110
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 0,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 2,
+      "promptChars": 10697,
+      "modelCalls": 1,
+      "mode": "after",
+      "runs": 1,
+      "avgScore": 100,
+      "passRate": "1/1"
+    },
+    {
+      "id": "tray-reducer-eccentric-500x300",
+      "group": "tray-fitting",
+      "supportsMacro": false,
+      "usedMacro": false,
+      "ok": true,
+      "totalScore": 100,
+      "breakdown": {
+        "valid": 30,
+        "bounds": 25,
+        "params": 20,
+        "features": 25
+      },
+      "counts": {
+        "parts": 4,
+        "resolvedParts": 4,
+        "parameters": 6,
+        "connectors": 2,
+        "errors": 0,
+        "warnings": 0
+      },
+      "bounds": [
+        350,
+        501.8,
+        100
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 350,
+          "expected": [
+            320,
+            380
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "y": {
+          "actual": 501.8,
+          "expected": [
+            495,
+            525
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "z": {
+          "actual": 100,
+          "expected": [
+            95,
+            110
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 0,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 3,
+      "promptChars": 10682,
+      "modelCalls": 1,
+      "mode": "after",
+      "runs": 1,
+      "avgScore": 100,
+      "passRate": "1/1"
+    },
+    {
+      "id": "tray-vertical-inside-riser-400x100",
+      "group": "tray-vertical",
+      "supportsMacro": false,
+      "usedMacro": false,
+      "ok": true,
+      "totalScore": 100,
+      "breakdown": {
+        "valid": 30,
+        "bounds": 25,
+        "params": 20,
+        "features": 25
+      },
+      "counts": {
+        "parts": 4,
+        "resolvedParts": 4,
+        "parameters": 3,
+        "connectors": 2,
+        "errors": 0,
+        "warnings": 0
+      },
+      "bounds": [
+        450.9,
+        400,
+        450
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 450.9,
+          "expected": [
+            380,
+            520
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "y": {
+          "actual": 400,
+          "expected": [
+            395,
+            420
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "z": {
+          "actual": 450,
+          "expected": [
+            380,
+            520
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 0,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 11,
+      "promptChars": 10685,
+      "modelCalls": 3,
+      "mode": "after",
+      "runs": 1,
+      "avgScore": 100,
+      "passRate": "1/1"
+    },
+    {
+      "id": "tray-vertical-outside-elbow-400x100",
+      "group": "tray-vertical",
+      "supportsMacro": false,
+      "usedMacro": false,
+      "ok": true,
+      "totalScore": 100,
+      "breakdown": {
+        "valid": 30,
+        "bounds": 25,
+        "params": 20,
+        "features": 25
+      },
+      "counts": {
+        "parts": 4,
+        "resolvedParts": 4,
+        "parameters": 3,
+        "connectors": 2,
+        "errors": 0,
+        "warnings": 0
+      },
+      "bounds": [
+        450.9,
+        400,
+        450
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 450.9,
+          "expected": [
+            380,
+            520
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "y": {
+          "actual": 400,
+          "expected": [
+            395,
+            420
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "z": {
+          "actual": 450,
+          "expected": [
+            380,
+            520
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 0,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 6,
+      "promptChars": 10926,
+      "modelCalls": 3,
+      "mode": "after",
+      "runs": 1,
+      "avgScore": 100,
+      "passRate": "1/1"
+    },
+    {
+      "id": "tray-straight-slotted-600x100",
+      "group": "tray-macro",
+      "supportsMacro": true,
+      "usedMacro": true,
+      "ok": true,
+      "totalScore": 100,
+      "breakdown": {
+        "valid": 30,
+        "bounds": 25,
+        "params": 20,
+        "features": 25
+      },
+      "counts": {
+        "parts": 6,
+        "resolvedParts": 6,
+        "parameters": 7,
+        "connectors": 2,
+        "errors": 0,
+        "warnings": 0
+      },
+      "bounds": [
+        1000,
+        604,
+        100
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 1000,
+          "expected": [
+            950,
+            1050
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "y": {
+          "actual": 604,
+          "expected": [
+            595,
+            620
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "z": {
+          "actual": 100,
+          "expected": [
+            95,
+            110
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 0,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 2,
+      "promptChars": 10943,
+      "modelCalls": 1,
+      "mode": "after",
+      "runs": 1,
+      "avgScore": 100,
+      "passRate": "1/1"
+    },
+    {
+      "id": "tray-splice-plate-h100",
+      "group": "tray-accessory",
+      "supportsMacro": false,
+      "usedMacro": false,
+      "ok": true,
+      "totalScore": 100,
+      "breakdown": {
+        "valid": 30,
+        "bounds": 25,
+        "params": 20,
+        "features": 25
+      },
+      "counts": {
+        "parts": 2,
+        "resolvedParts": 2,
+        "parameters": 4,
+        "connectors": 0,
+        "errors": 0,
+        "warnings": 0
+      },
+      "bounds": [
+        200,
+        15.5,
+        100
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 200,
+          "expected": [
+            190,
+            210
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "y": {
+          "actual": 15.5,
+          "expected": [
+            10,
+            35
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "z": {
+          "actual": 100,
+          "expected": [
+            95,
+            105
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 0,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 2,
+      "promptChars": 10930,
+      "modelCalls": 1,
+      "mode": "after",
+      "runs": 1,
+      "avgScore": 100,
+      "passRate": "1/1"
+    },
+    {
+      "id": "duct-transition-400x200-to-300",
+      "group": "mep-general",
+      "supportsMacro": false,
+      "usedMacro": false,
+      "ok": true,
+      "totalScore": 100,
+      "breakdown": {
+        "valid": 30,
+        "bounds": 25,
+        "params": 20,
+        "features": 25
+      },
+      "counts": {
+        "parts": 2,
+        "resolvedParts": 2,
+        "parameters": 4,
+        "connectors": 2,
+        "errors": 0,
+        "warnings": 1
+      },
+      "bounds": [
+        400,
+        300,
+        430
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 400,
+          "expected": [
+            380,
+            440
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "y": {
+          "actual": 300,
+          "expected": [
+            280,
+            340
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "z": {
+          "actual": 430,
+          "expected": [
+            380,
+            460
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 0,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 3,
+      "promptChars": 10735,
+      "modelCalls": 1,
+      "mode": "after",
+      "runs": 1,
+      "avgScore": 100,
+      "passRate": "1/1"
+    },
+    {
+      "id": "pipe-y-strainer-dn80",
+      "group": "mep-general",
+      "supportsMacro": false,
+      "usedMacro": false,
+      "ok": true,
+      "totalScore": 94,
+      "breakdown": {
+        "valid": 30,
+        "bounds": 25,
+        "params": 18,
+        "features": 21
+      },
+      "counts": {
+        "parts": 4,
+        "resolvedParts": 4,
+        "parameters": 4,
+        "connectors": 2,
+        "errors": 0,
+        "warnings": 0
+      },
+      "bounds": [
+        310,
+        200,
+        261
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 310,
+          "expected": [
+            290,
+            330
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "y": {
+          "actual": 200,
+          "expected": [
+            180,
+            230
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "z": {
+          "actual": 261,
+          "expected": [
+            210,
+            310
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 0,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": false,
+          "actual": true,
+          "ok": false
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 1,
+      "promptChars": 10923,
+      "modelCalls": 1,
+      "mode": "after",
+      "runs": 1,
+      "avgScore": 94,
+      "passRate": "1/1"
+    },
+    {
+      "id": "strut-channel-p1000-1000",
+      "group": "mep-general",
+      "supportsMacro": false,
+      "usedMacro": false,
+      "ok": true,
+      "totalScore": 99,
+      "breakdown": {
+        "valid": 30,
+        "bounds": 25,
+        "params": 19,
+        "features": 25
+      },
+      "counts": {
+        "parts": 1,
+        "resolvedParts": 1,
+        "parameters": 3,
+        "connectors": 0,
+        "errors": 0,
+        "warnings": 1
+      },
+      "bounds": [
+        1000,
+        41,
+        41
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 1000,
+          "expected": [
+            980,
+            1020
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "y": {
+          "actual": 41,
+          "expected": [
+            38,
+            45
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "z": {
+          "actual": 41,
+          "expected": [
+            38,
+            45
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 0,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": true,
+          "actual": true,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 4,
+      "promptChars": 10931,
+      "modelCalls": 2,
+      "mode": "after",
+      "runs": 1,
+      "avgScore": 99,
+      "passRate": "1/1"
+    },
+    {
+      "id": "ahu-compact-1200x700x600",
+      "group": "mep-general",
+      "supportsMacro": false,
+      "usedMacro": false,
+      "ok": true,
+      "totalScore": 96,
+      "breakdown": {
+        "valid": 30,
+        "bounds": 25,
+        "params": 16,
+        "features": 25
+      },
+      "counts": {
+        "parts": 6,
+        "resolvedParts": 6,
+        "parameters": 4,
+        "connectors": 2,
+        "errors": 0,
+        "warnings": 2
+      },
+      "bounds": [
+        1260,
+        700,
+        600
+      ],
+      "axisResults": {
+        "x": {
+          "actual": 1260,
+          "expected": [
+            1150,
+            1300
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "y": {
+          "actual": 700,
+          "expected": [
+            660,
+            820
+          ],
+          "ok": true,
+          "delta": 0
+        },
+        "z": {
+          "actual": 600,
+          "expected": [
+            580,
+            680
+          ],
+          "ok": true,
+          "delta": 0
+        }
+      },
+      "maxDeltaMm": 0,
+      "featureChecks": [
+        {
+          "name": "foldedFlange",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        },
+        {
+          "name": "miteredOrChamfer",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        },
+        {
+          "name": "holesOrSlots",
+          "expected": false,
+          "actual": false,
+          "ok": true
+        }
+      ],
+      "elapsedMs": 4,
+      "promptChars": 10706,
+      "modelCalls": 2,
+      "mode": "after",
+      "runs": 1,
+      "avgScore": 96,
+      "passRate": "1/1"
+    }
+  ]
+}

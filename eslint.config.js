@@ -17,11 +17,12 @@ export default [
       ".commandcode/**",
       "cloud/**",
       "connector/**",
+      "bench/results/**",
     ],
   },
   js.configs.recommended,
   {
-    files: ["server/**/*.js", "scripts/**/*.mjs"],
+    files: ["server/**/*.js", "scripts/**/*.mjs", "bench/**/*.{js,mjs}"],
     languageOptions: {
       ecmaVersion: 2023,
       sourceType: "module",

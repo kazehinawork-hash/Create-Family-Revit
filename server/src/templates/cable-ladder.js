@@ -34,7 +34,8 @@ const RUNG_MATERIAL = MATERIALS[1].name;
 
 /** Which template family a request belongs to, or null. */
 export function matchTemplateFamily(prompt) {
-  const text = String(prompt ?? "")
+  const raw = String(prompt ?? "");
+  const text = raw
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/đ/gi, "d")
@@ -43,6 +44,13 @@ export function matchTemplateFamily(prompt) {
   if (/nga\s*tu|cross|chu\s*thap|four\s*way/.test(text)) return "cross";
   if (/nga\s*ba|\btee\b|three\s*way/.test(text)) return "tee";
   if (/\belbow\b|\bbend\b|khuyu|co\s*90|90\s*do/.test(text)) return "elbow";
+  if (
+    /\bstraight\b|thẳng|reducer|côn\s*thu|offset|chữ\s*z|chữ\s*u|u-turn|splice|tấm\s*nối|riser|co\s*lên|co\s*xuống|perforated|đục\s*lỗ|45/i.test(
+      raw,
+    )
+  ) {
+    return null;
+  }
   if (/thang\s*cap|cable\s*ladder|cable\s*tray|mitered/.test(text)) return "cross";
   return null;
 }

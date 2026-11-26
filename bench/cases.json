@@ -1,0 +1,386 @@
+[
+  {
+    "id": "tray-straight-400x100",
+    "group": "tray-macro",
+    "supportsMacro": true,
+    "prompt": "Tạo máng cáp thẳng (Cable Tray Straight) rộng 400 mm, cao 100 mm, dài 1000 mm, dày tôn 1.8 mm, có mép gập trên (Flange Width) 15 mm và 2 connector 2 đầu.",
+    "lod": 300,
+    "criteria": {
+      "category": "Cable Tray Fitting",
+      "minParts": 5,
+      "minConnectors": 2,
+      "bounds": { "x": [950, 1050], "y": [395, 420], "z": [95, 110], "toleranceMm": 15 },
+      "requiredParams": ["width|rộng", "height|cao", "thickness|dày", "length|dài", "flange|mép"],
+      "requiredParts": ["bottom|đáy", "wall|thành", "flange|mép"],
+      "features": { "foldedFlange": true, "miteredOrChamfer": false, "holesOrSlots": false }
+    }
+  },
+  {
+    "id": "tray-elbow-90-400x100",
+    "group": "tray-macro",
+    "supportsMacro": true,
+    "prompt": "Tạo cút máng cáp 90 độ nằm ngang (Horizontal Elbow 90°) rộng 400 mm, cao 100 mm, dày 1.8 mm, mép gập 15 mm, hai nhánh dài 500 mm, vát góc 45 độ khép kín.",
+    "lod": 350,
+    "criteria": {
+      "category": "Cable Tray Fitting",
+      "minParts": 8,
+      "minConnectors": 2,
+      "bounds": { "x": [650, 750], "y": [650, 750], "z": [95, 110], "toleranceMm": 20 },
+      "requiredParams": ["width|rộng", "height|cao", "thickness|dày", "flange|mép"],
+      "requiredParts": ["bottom|đáy", "wall|thành", "flange|mép"],
+      "features": { "foldedFlange": true, "miteredOrChamfer": true, "holesOrSlots": false }
+    }
+  },
+  {
+    "id": "ladder-elbow-90-500x100",
+    "group": "tray-macro",
+    "supportsMacro": true,
+    "prompt": "Tạo khuỷu thang cáp 90° vát góc (Cable Ladder Mitered Elbow) rộng 500 mm, cao 100 mm, dày 1.8 mm, mép gập 15 mm, hai nhánh dài 600 mm, 2 connector.",
+    "lod": 350,
+    "criteria": {
+      "category": "Cable Tray Fitting",
+      "minParts": 8,
+      "minConnectors": 2,
+      "bounds": { "x": [1040, 1160], "y": [1040, 1160], "z": [95, 110], "toleranceMm": 30 },
+      "requiredParams": ["width|rộng", "height|cao", "thickness|dày", "flange|mép"],
+      "requiredParts": ["bottom|đáy", "wall|thành"],
+      "features": { "foldedFlange": true, "miteredOrChamfer": true, "holesOrSlots": false }
+    }
+  },
+  {
+    "id": "tray-elbow-45-300x100",
+    "group": "tray-macro",
+    "supportsMacro": true,
+    "prompt": "Tạo cút máng cáp 45 độ nằm ngang (Horizontal Elbow 45°) rộng 300 mm, cao 100 mm, dày 1.5 mm, mép gập 15 mm, mỗi đoạn thẳng 450 mm.",
+    "lod": 350,
+    "criteria": {
+      "category": "Cable Tray Fitting",
+      "minParts": 8,
+      "minConnectors": 2,
+      "bounds": { "x": [750, 920], "y": [400, 560], "z": [95, 110], "toleranceMm": 25 },
+      "requiredParams": ["width|rộng", "height|cao", "thickness|dày", "flange|mép"],
+      "requiredParts": ["bottom|đáy", "wall|thành", "flange|mép"],
+      "features": { "foldedFlange": true, "miteredOrChamfer": true, "holesOrSlots": false }
+    }
+  },
+  {
+    "id": "tray-z-offset-400x100",
+    "group": "tray-macro",
+    "supportsMacro": true,
+    "prompt": "Tạo máng cáp chữ Z nằm ngang (Horizontal Z-Offset) rộng 400 mm, cao 100 mm, dày 1.8 mm, mép gập 15 mm, đoạn vào 400 mm, đoạn lệch ngang 500 mm, đoạn ra 400 mm.",
+    "lod": 350,
+    "criteria": {
+      "category": "Cable Tray Fitting",
+      "minParts": 12,
+      "minConnectors": 2,
+      "bounds": { "x": [760, 860], "y": [850, 980], "z": [95, 110], "toleranceMm": 25 },
+      "requiredParams": ["width|rộng", "height|cao", "thickness|dày", "flange|mép"],
+      "requiredParts": ["bottom|đáy", "wall|thành", "flange|mép"],
+      "features": { "foldedFlange": true, "miteredOrChamfer": true, "holesOrSlots": false }
+    }
+  },
+  {
+    "id": "tray-elbow-90-lid-400x100",
+    "group": "tray-macro",
+    "supportsMacro": true,
+    "prompt": "Tạo cút máng cáp 90 độ có nắp đậy (Cover/Lid) rộng 400 mm, cao 100 mm, dày 1.8 mm, mép gập 15 mm, hai đoạn 500 mm.",
+    "lod": 400,
+    "criteria": {
+      "category": "Cable Tray Fitting",
+      "minParts": 10,
+      "minConnectors": 2,
+      "bounds": { "x": [650, 750], "y": [650, 750], "z": [98, 110], "toleranceMm": 20 },
+      "requiredParams": ["width|rộng", "height|cao", "thickness|dày"],
+      "requiredParts": ["bottom|đáy", "wall|thành", "lid|nắp"],
+      "features": { "foldedFlange": true, "miteredOrChamfer": true, "holesOrSlots": false }
+    }
+  },
+  {
+    "id": "tray-elbow-no-flange-200x50",
+    "group": "tray-macro",
+    "supportsMacro": true,
+    "prompt": "Tạo cút máng cáp 90 độ không mép gập (flange 0 mm), rộng 200 mm, cao 50 mm, dày 1.5 mm, hai nhánh dài 350 mm.",
+    "lod": 300,
+    "criteria": {
+      "category": "Cable Tray Fitting",
+      "minParts": 6,
+      "minConnectors": 2,
+      "bounds": { "x": [420, 490], "y": [420, 490], "z": [48, 55], "toleranceMm": 15 },
+      "requiredParams": ["width|rộng", "height|cao", "thickness|dày"],
+      "requiredParts": ["bottom|đáy", "wall|thành"],
+      "features": { "foldedFlange": false, "miteredOrChamfer": true, "holesOrSlots": false }
+    }
+  },
+  {
+    "id": "tray-s-offset-45-300x75",
+    "group": "tray-macro",
+    "supportsMacro": true,
+    "prompt": "Tạo phụ kiện máng cáp chuyển hướng 45° song song (45° trái rồi 45° phải), rộng 300 mm, cao 75 mm, dày 1.5 mm, mép gập 12 mm, đoạn 400 / 350 / 400 mm.",
+    "lod": 350,
+    "criteria": {
+      "category": "Cable Tray Fitting",
+      "minParts": 12,
+      "minConnectors": 2,
+      "bounds": { "x": [1050, 1250], "y": [500, 650], "z": [72, 82], "toleranceMm": 30 },
+      "requiredParams": ["width|rộng", "height|cao", "thickness|dày", "flange|mép"],
+      "requiredParts": ["bottom|đáy", "wall|thành", "flange|mép"],
+      "features": { "foldedFlange": true, "miteredOrChamfer": true, "holesOrSlots": false }
+    }
+  },
+  {
+    "id": "tray-u-turn-180-400x100",
+    "group": "tray-macro",
+    "supportsMacro": true,
+    "prompt": "Tạo máng cáp uốn chữ U 180 độ nằm ngang (90° trái, đoạn nối 500 mm, 90° trái), rộng 400 mm, cao 100 mm, dày 1.8 mm, mép gập 15 mm.",
+    "lod": 350,
+    "criteria": {
+      "category": "Cable Tray Fitting",
+      "minParts": 12,
+      "minConnectors": 2,
+      "bounds": { "x": [550, 720], "y": [850, 960], "z": [95, 110], "toleranceMm": 30 },
+      "requiredParams": ["width|rộng", "height|cao", "thickness|dày", "flange|mép"],
+      "requiredParts": ["bottom|đáy", "wall|thành", "flange|mép"],
+      "features": { "foldedFlange": true, "miteredOrChamfer": true, "holesOrSlots": false }
+    }
+  },
+  {
+    "id": "tray-step-45-elbow-500x100",
+    "group": "tray-macro",
+    "supportsMacro": true,
+    "prompt": "Tạo khuỷu máng cáp 45 độ rẽ phải rộng 500 mm, cao 100 mm, dày 2 mm, mép gập 15 mm, hai nhánh dài 600 mm và 500 mm.",
+    "lod": 350,
+    "criteria": {
+      "category": "Cable Tray Fitting",
+      "minParts": 8,
+      "minConnectors": 2,
+      "bounds": { "x": [950, 1200], "y": [750, 960], "z": [95, 110], "toleranceMm": 35 },
+      "requiredParams": ["width|rộng", "height|cao", "thickness|dày", "flange|mép"],
+      "requiredParts": ["bottom|đáy", "wall|thành", "flange|mép"],
+      "features": { "foldedFlange": true, "miteredOrChamfer": true, "holesOrSlots": false }
+    }
+  },
+  {
+    "id": "ladder-mitered-tee-400x300",
+    "group": "ladder-fitting",
+    "supportsMacro": false,
+    "prompt": "Tạo ngã ba thang cáp vát góc (Mitered Tee) trục chính rộng 400 mm, nhánh rẽ 300 mm, cao 100 mm, dày 1.8 mm, có 6 bậc thang và 3 connector.",
+    "lod": 400,
+    "criteria": {
+      "category": "Cable Tray Fitting",
+      "minParts": 10,
+      "minConnectors": 3,
+      "bounds": { "x": [880, 1020], "y": [460, 560], "z": [95, 110], "toleranceMm": 30 },
+      "requiredParams": ["width|rộng", "height|cao", "thickness|dày"],
+      "requiredParts": ["corner|rail|thành", "rung|bậc"],
+      "features": { "foldedFlange": true, "miteredOrChamfer": true, "holesOrSlots": true }
+    }
+  },
+  {
+    "id": "ladder-mitered-cross-400x400",
+    "group": "ladder-fitting",
+    "supportsMacro": false,
+    "prompt": "Tạo ngã tư thang cáp vát góc (Mitered Cross) 400x400x100 mm, 4 thành góc vát 45°, 6 bậc thang có lỗ rãnh và 4 connector.",
+    "lod": 400,
+    "criteria": {
+      "category": "Cable Tray Fitting",
+      "minParts": 14,
+      "minConnectors": 4,
+      "bounds": { "x": [900, 1000], "y": [900, 1000], "z": [95, 110], "toleranceMm": 30 },
+      "requiredParams": ["width|rộng", "height|cao", "thickness|dày"],
+      "requiredParts": ["corner|rail|thành", "rung|bậc"],
+      "features": { "foldedFlange": true, "miteredOrChamfer": true, "holesOrSlots": true }
+    }
+  },
+  {
+    "id": "tray-tee-equal-400x100",
+    "group": "tray-fitting",
+    "supportsMacro": false,
+    "prompt": "Tạo tê máng cáp đều 400x100 mm vát góc 45°, đáy tấm liền, thành có mép gập 15 mm và lỗ bulong M8 tại 3 đầu nối.",
+    "lod": 400,
+    "criteria": {
+      "category": "Cable Tray Fitting",
+      "minParts": 6,
+      "minConnectors": 3,
+      "bounds": { "x": [850, 1020], "y": [510, 620], "z": [95, 110], "toleranceMm": 30 },
+      "requiredParams": ["width|rộng", "height|cao", "thickness|dày", "flange|mép"],
+      "requiredParts": ["bottom|đáy|base", "wall|thành|flange"],
+      "features": { "foldedFlange": true, "miteredOrChamfer": true, "holesOrSlots": true }
+    }
+  },
+  {
+    "id": "tray-cross-unequal-400x200",
+    "group": "tray-fitting",
+    "supportsMacro": false,
+    "prompt": "Tạo thập máng cáp thu nhánh (Unequal Cross) trục chính 400 mm, nhánh phụ 200 mm, cao 100 mm, dày 1.8 mm, 4 connector.",
+    "lod": 350,
+    "criteria": {
+      "category": "Cable Tray Fitting",
+      "minParts": 8,
+      "minConnectors": 4,
+      "bounds": { "x": [850, 1000], "y": [680, 820], "z": [95, 110], "toleranceMm": 35 },
+      "requiredParams": ["width|rộng", "height|cao", "thickness|dày"],
+      "requiredParts": ["corner|wall|thành", "bottom|đáy"],
+      "features": { "foldedFlange": true, "miteredOrChamfer": true, "holesOrSlots": false }
+    }
+  },
+  {
+    "id": "tray-reducer-concentric-400x200",
+    "group": "tray-fitting",
+    "supportsMacro": false,
+    "prompt": "Tạo côn thu máng cáp đồng tâm (Concentric Reducer) từ 400 mm xuống 200 mm, cao 100 mm, dài tổng 350 mm, dày 1.8 mm, mép gập 15 mm.",
+    "lod": 350,
+    "criteria": {
+      "category": "Cable Tray Fitting",
+      "minParts": 4,
+      "minConnectors": 2,
+      "bounds": { "x": [320, 380], "y": [395, 425], "z": [95, 110], "toleranceMm": 20 },
+      "requiredParams": ["width|rộng", "height|cao", "thickness|dày", "length|dài"],
+      "requiredParts": ["bottom|đáy", "wall|thành|side"],
+      "features": { "foldedFlange": true, "miteredOrChamfer": true, "holesOrSlots": false }
+    }
+  },
+  {
+    "id": "tray-reducer-eccentric-500x300",
+    "group": "tray-fitting",
+    "supportsMacro": false,
+    "prompt": "Tạo côn thu máng cáp lệch tâm một bên (Eccentric Reducer) từ 500 mm xuống 300 mm, cao 100 mm, dài 350 mm, dày 2 mm.",
+    "lod": 350,
+    "criteria": {
+      "category": "Cable Tray Fitting",
+      "minParts": 4,
+      "minConnectors": 2,
+      "bounds": { "x": [320, 380], "y": [495, 525], "z": [95, 110], "toleranceMm": 20 },
+      "requiredParams": ["width|rộng", "height|cao", "thickness|dày"],
+      "requiredParts": ["bottom|đáy", "wall|thành|side"],
+      "features": { "foldedFlange": true, "miteredOrChamfer": true, "holesOrSlots": false }
+    }
+  },
+  {
+    "id": "tray-vertical-inside-riser-400x100",
+    "group": "tray-vertical",
+    "supportsMacro": false,
+    "prompt": "Tạo co lên đứng 90 độ cho máng cáp (Vertical Inside Riser 90°) rộng 400 mm, cao thành 100 mm, dày 1.8 mm, 2 connector.",
+    "lod": 350,
+    "criteria": {
+      "category": "Cable Tray Fitting",
+      "minParts": 4,
+      "minConnectors": 2,
+      "bounds": { "x": [380, 520], "y": [395, 420], "z": [380, 520], "toleranceMm": 35 },
+      "requiredParams": ["width|rộng", "height|cao", "thickness|dày"],
+      "requiredParts": ["bottom|đáy|plate", "wall|thành|side"],
+      "features": { "foldedFlange": false, "miteredOrChamfer": true, "holesOrSlots": false }
+    }
+  },
+  {
+    "id": "tray-vertical-outside-elbow-400x100",
+    "group": "tray-vertical",
+    "supportsMacro": false,
+    "prompt": "Tạo co xuống đứng 90 độ cho máng cáp (Vertical Outside Elbow 90°) rộng 400 mm, cao thành 100 mm, dày 1.8 mm, có lỗ nối M8.",
+    "lod": 400,
+    "criteria": {
+      "category": "Cable Tray Fitting",
+      "minParts": 4,
+      "minConnectors": 2,
+      "bounds": { "x": [380, 520], "y": [395, 420], "z": [380, 520], "toleranceMm": 35 },
+      "requiredParams": ["width|rộng", "height|cao", "thickness|dày"],
+      "requiredParts": ["bottom|đáy|plate", "wall|thành|side"],
+      "features": { "foldedFlange": false, "miteredOrChamfer": true, "holesOrSlots": true }
+    }
+  },
+  {
+    "id": "tray-straight-slotted-600x100",
+    "group": "tray-macro",
+    "supportsMacro": true,
+    "prompt": "Tạo máng cáp đục lỗ đáy (Perforated Cable Tray) rộng 600 mm, cao 100 mm, dài 1000 mm, dày 2 mm, mép gập 15 mm, có dãy lỗ thoát nhiệt ở đáy.",
+    "lod": 400,
+    "criteria": {
+      "category": "Cable Tray Fitting",
+      "minParts": 5,
+      "minConnectors": 2,
+      "bounds": { "x": [950, 1050], "y": [595, 620], "z": [95, 110], "toleranceMm": 20 },
+      "requiredParams": ["width|rộng", "height|cao", "thickness|dày", "flange|mép"],
+      "requiredParts": ["bottom|đáy", "wall|thành", "flange|mép"],
+      "features": { "foldedFlange": true, "miteredOrChamfer": false, "holesOrSlots": true }
+    }
+  },
+  {
+    "id": "tray-splice-plate-h100",
+    "group": "tray-accessory",
+    "supportsMacro": false,
+    "prompt": "Tạo tấm nối máng cáp (Splice Plate) cao 100 mm, dài 200 mm, dày 2 mm bằng thép mạ kẽm, có 4 lỗ bulong M8 và mép gập tăng cứng.",
+    "lod": 400,
+    "criteria": {
+      "category": "Cable Tray Fitting",
+      "minParts": 1,
+      "minConnectors": 0,
+      "bounds": { "x": [190, 210], "y": [10, 35], "z": [95, 105], "toleranceMm": 10 },
+      "requiredParams": ["length|dài", "height|cao", "thickness|dày"],
+      "requiredParts": ["plate|tấm|splice"],
+      "features": { "foldedFlange": true, "miteredOrChamfer": false, "holesOrSlots": true }
+    }
+  },
+  {
+    "id": "duct-transition-400x200-to-300",
+    "group": "mep-general",
+    "supportsMacro": false,
+    "prompt": "Tạo côn chuyển ống gió chữ nhật sang tròn (Rect-to-Round Transition) 400x200 mm sang D300 mm, dài 400 mm, có 2 connector.",
+    "lod": 300,
+    "criteria": {
+      "category": "Duct Transition",
+      "minParts": 2,
+      "minConnectors": 2,
+      "bounds": { "x": [380, 440], "y": [280, 340], "z": [380, 460], "toleranceMm": 40 },
+      "requiredParams": ["width|rộng", "height|cao", "diameter|đường kính|d"],
+      "requiredParts": ["transition|body|côn", "collar|bích|flange"],
+      "features": { "foldedFlange": false, "miteredOrChamfer": false, "holesOrSlots": false }
+    }
+  },
+  {
+    "id": "pipe-y-strainer-dn80",
+    "group": "mep-general",
+    "supportsMacro": false,
+    "prompt": "Tạo lọc rác chữ Y (Y-Strainer) mặt bích DN80 PN16 dài 310 mm, có 2 mặt bích lỗ bulong M16 và nhánh lọc 45 độ có nắp xả.",
+    "lod": 400,
+    "criteria": {
+      "category": "Pipe Fitting",
+      "minParts": 4,
+      "minConnectors": 2,
+      "bounds": { "x": [290, 330], "y": [180, 230], "z": [210, 310], "toleranceMm": 30 },
+      "requiredParams": ["diameter|nominal|dn", "length|face", "flange|bích"],
+      "requiredParts": ["body|thân", "flange|bích", "strainer|branch|nhánh"],
+      "features": { "foldedFlange": false, "miteredOrChamfer": false, "holesOrSlots": true }
+    }
+  },
+  {
+    "id": "strut-channel-p1000-1000",
+    "group": "mep-general",
+    "supportsMacro": false,
+    "prompt": "Tạo thanh chống đa năng Unistrut P1000T kích thước 41x41x2.5 mm, dài 1000 mm, có mép uốn C-channel và dãy lỗ oval ở lưng thanh.",
+    "lod": 400,
+    "criteria": {
+      "category": "Structural Framing",
+      "minParts": 1,
+      "minConnectors": 0,
+      "bounds": { "x": [980, 1020], "y": [38, 45], "z": [38, 45], "toleranceMm": 5 },
+      "requiredParams": ["length|dài", "width|rộng", "thickness|dày"],
+      "requiredParts": ["channel|thanh|strut"],
+      "features": { "foldedFlange": true, "miteredOrChamfer": false, "holesOrSlots": true }
+    }
+  },
+  {
+    "id": "ahu-compact-1200x700x600",
+    "group": "mep-general",
+    "supportsMacro": false,
+    "prompt": "Tạo AHU nằm ngang 1200x700x600 mm có vỏ thép 2 lớp, cửa thăm mặt trước, dàn coil + máng nước ngưng, lọc gió, quạt thổi và 2 cổ gió cấp/hồi.",
+    "lod": 350,
+    "criteria": {
+      "category": "Mechanical Equipment",
+      "minParts": 6,
+      "minConnectors": 2,
+      "bounds": { "x": [1150, 1300], "y": [660, 820], "z": [580, 680], "toleranceMm": 50 },
+      "requiredParams": ["length|width|rộng|dài", "height|cao"],
+      "requiredParts": ["casing|vỏ", "coil|dàn", "fan|quạt", "pan|máng"],
+      "features": { "foldedFlange": false, "miteredOrChamfer": false, "holesOrSlots": false }
+    }
+  }
+]
