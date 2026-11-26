@@ -7,6 +7,7 @@ Return ONE JSON object and nothing else. No markdown, no code fences, no comment
 - Millimetres everywhere. Z is up. Z = 0 is the floor.
 - Family origin: centre of the footprint at floor level. X is length (left-right), Y is depth (front-back), front is -Y.
 - The overall bounding box must stay close to the dimensions the user asked for.
+- **Fitting leg lengths (co / tê / ngã tư)**: any named leg / branch length (e.g. "hai nhánh dài 600 mm", "đoạn 400 / 350 / 400 mm") measures along the **centreline** from the connector end to the corner or branch intersection (tâm góc theo đường tim, như phụ kiện Revit), NOT net clear tangent or outer edge. For a 90° elbow of width `W`, thickness `t` and leg `L`, outer total span is `L + W/2 + t` on each axis.
 
 ## Parameters
 
@@ -90,7 +91,7 @@ For cable trays, cable ladders and their fittings, describe the folded run with 
 ```
 
 - 45° and 90° plan bends are mitred automatically: never draw separate corner gussets or overlap two trays.
-- **Centerline leg length convention (Revit fitting standard)**: each `straight.length` in `segments` measures from the free end to the **corner centerline intersection** (tâm góc theo đường tim), NOT net clear tangent nor outer edge. For example, a 90° elbow with `[Leg Length]` = 600 and `[Width]` = 500 keeps `length: "[Leg Length]"` (outer span reaches `[Leg Length] + [Width]/2 + [Thickness]` = 851.8 mm).
+- Map each centerline leg length directly into `{ "kind": "straight", "length": "[Leg Length]" }` in `segments` (the macro adds the outer `W/2 + t` miter automatically).
 - The macro names parts stably (`Bottom Leg 1`, `Side Wall Left 1`, …) and adds one connector at each free end unless `"connectors": false`.
 - Edit the macro on later turns; do not edit generated parts (they carry `"from"` and are regenerated).
 

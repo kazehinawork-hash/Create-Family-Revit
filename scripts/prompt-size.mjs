@@ -29,3 +29,18 @@ for (const [name, brief] of Object.entries(briefs)) {
 
 const wanted = selectBlocks({ text: briefs["cable-ladder"] });
 console.log("cable-ladder selected:", [...wanted].join(" | "));
+
+for (const macros of [false, true]) {
+  const { prompt, blocks: used, dropped } = buildSystemPrompt(md, {
+    text: briefs["cable-ladder"],
+    options: { macros },
+  });
+  const hasCenterlineRule = /tâm góc theo đường tim/i.test(prompt);
+  const hasTrayRun = /\btrayRun\b/.test(prompt);
+  console.log(
+    `AGENT_MACROS=${macros ? "1" : "0"} (cable-ladder) -> ${prompt.length} chars | ${used.length} blocks | centerlineRule=${hasCenterlineRule} | trayRun=${hasTrayRun} | dropped: ${dropped.join(", ")}`,
+  );
+  if (!hasCenterlineRule) {
+    throw new Error(`Missing centerline leg-length rule when AGENT_MACROS=${macros ? "1" : "0"}`);
+  }
+}

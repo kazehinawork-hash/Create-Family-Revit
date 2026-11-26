@@ -51,10 +51,12 @@ test("production systemPrompt keeps trayRun instructions under default LOD 350/4
     macros: true,
   });
   assert.ok(on.includes("trayRun"), "systemPrompt must retain trayRun block under default budget");
+  assert.ok(on.includes("tâm góc theo đường tim"), "centerline leg-length rule must be present when macros=true");
 
   const off = systemPrompt(350, null, {
     text: "Tạo khuỷu máng cáp 90 độ rộng 400 mm, cao 100 mm",
     macros: false,
   });
   assert.equal(/\b(trayRun|slotPattern)\b/i.test(off), false);
+  assert.ok(off.includes("tâm góc theo đường tim"), "centerline leg-length rule must remain present when macros=false");
 });
