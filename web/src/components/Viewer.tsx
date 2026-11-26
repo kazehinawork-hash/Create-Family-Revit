@@ -172,8 +172,21 @@ export function Viewer({
   showDimensionsRef.current = showDimensions;
   const explodeDirsRef = useRef(new WeakMap<THREE.Object3D, THREE.Vector3>());
   const explodeFitRef = useRef<{ pos: THREE.Vector3; look: THREE.Vector3 } | null>(null);
+  const prevExplodeRef = useRef(0);
   const dimensionsRef = useRef<THREE.Group | null>(null);
   const ghostCutsRef = useRef<THREE.Group | null>(null);
+  const {
+    pickingSectionRef,
+    sectionArrowRef,
+    sectionDragRef,
+    sectionDragMovedRef,
+    sectionDragDataRef,
+    sectionCapRef,
+    setSectionCustom,
+    setSectionAxis,
+    setSectionT,
+    setPickingSection,
+  } = section;
   const hoverBlockedRef = useRef(false);
   hoverBlockedRef.current = measuring || section.pickingSection || section.sectionAxis !== "off";
 
@@ -403,7 +416,7 @@ export function Viewer({
 
     const sectionCap = createSectionCap();
     scene.add(sectionCap);
-    section.sectionCapRef.current = sectionCap;
+    sectionCapRef.current = sectionCap;
 
     const shadowPlane = new THREE.Mesh(
       new THREE.PlaneGeometry(1, 1),
@@ -440,16 +453,16 @@ export function Viewer({
       formatNumberRef,
       renderDirtyRef,
       measuringRef,
-      pickingSectionRef: section.pickingSectionRef,
+      pickingSectionRef,
       hoverBlockedRef,
       measurePointsRef,
       measureSegmentsRef,
       measureMarkersRef,
       measurePreviewGroupRef,
-      sectionArrowRef: section.sectionArrowRef,
-      sectionDragRef: section.sectionDragRef,
-      sectionDragMovedRef: section.sectionDragMovedRef,
-      sectionDragDataRef: section.sectionDragDataRef,
+      sectionArrowRef,
+      sectionDragRef,
+      sectionDragMovedRef,
+      sectionDragDataRef,
       pickedPartIdsRef,
       onSelectPartRef,
       onUpdateParameterRef,
@@ -461,10 +474,10 @@ export function Viewer({
       setPickedPartIds,
       setMeasureLabel,
       setMeasureCount,
-      setSectionCustom: section.setSectionCustom,
-      setSectionAxis: section.setSectionAxis,
-      setSectionT: section.setSectionT,
-      setPickingSection: section.setPickingSection,
+      setSectionCustom,
+      setSectionAxis,
+      setSectionT,
+      setPickingSection,
     });
 
     const animStartPos = new THREE.Vector3();
@@ -592,7 +605,7 @@ export function Viewer({
       scene.remove(sectionCap);
       sectionCap.geometry.dispose();
       (sectionCap.material as THREE.Material).dispose();
-      section.sectionCapRef.current = null;
+      sectionCapRef.current = null;
       for (const entry of partCache.values()) {
         for (const item of entry.disposables) item.dispose();
       }
@@ -601,7 +614,19 @@ export function Viewer({
       if (statsEl && statsEl.parentElement === host) host.removeChild(statsEl);
       stateRef.current = null;
     };
-  }, [positionNotePins]);
+  }, [
+    positionNotePins,
+    pickingSectionRef,
+    sectionArrowRef,
+    sectionDragRef,
+    sectionDragMovedRef,
+    sectionDragDataRef,
+    sectionCapRef,
+    setSectionCustom,
+    setSectionAxis,
+    setSectionT,
+    setPickingSection,
+  ]);
 
   useEffect(() => {
     const state = stateRef.current;
@@ -716,7 +741,10 @@ export function Viewer({
     state.renderer.shadowMap.needsUpdate = true;
     renderDirtyRef.current = true;
 
-    if (bounds) {
+    const explodeChanged = prevExplodeRef.current !== explode;
+    prevExplodeRef.current = explode;
+
+    if (explodeChanged && bounds) {
       const box = new THREE.Box3().setFromObject(state.content);
       if (!box.isEmpty()) {
         const boxCenter = box.getCenter(new THREE.Vector3());

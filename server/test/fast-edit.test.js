@@ -229,6 +229,52 @@ test("Vietnamese dictionary resolves unique parameters with/without diacritics a
   }
 });
 
+test("Vietnamese 'lên X' / 'xuống X' sets target value while 'thêm/bớt' and bare 'tăng/giảm' stay relative", () => {
+  const absoluteCases = [
+    ["tăng chiều cao lên 150", "Tray Height", 150],
+    ["tang chieu cao len 150 mm", "Tray Height", 150],
+    ["nâng chiều dài nhánh lên 0.45 m", "Leg Length", 450],
+    ["giảm chiều rộng xuống 300", "Tray Width", 300],
+    ["giam chieu cao xuong 80 mm", "Tray Height", 80],
+    ["hạ góc xuống 30 độ", "Bend Angle", 30],
+    ["chỉnh chiều cao lên 120", "Tray Height", 120],
+  ];
+
+  for (const [prompt, expectedName, expectedValue] of absoluteCases) {
+    const edit = parseFastParameterEdit(prompt, trayCrossSpec());
+    assert.ok(edit, `expected target-level edit for: ${prompt}`);
+    assert.equal(edit.name, expectedName, prompt);
+    assert.equal(edit.value, expectedValue, prompt);
+  }
+
+  const relativeCases = [
+    ["tăng chiều cao thêm 50", "Tray Height", 150],
+    ["tăng chiều cao 50", "Tray Height", 150],
+    ["giảm chiều cao bớt 20", "Tray Height", 80],
+    ["giảm chiều cao 20", "Tray Height", 80],
+    ["giảm chiều rộng 100 mm", "Tray Width", 300],
+  ];
+
+  for (const [prompt, expectedName, expectedValue] of relativeCases) {
+    const edit = parseFastParameterEdit(prompt, trayCrossSpec());
+    assert.ok(edit, `expected relative edit for: ${prompt}`);
+    assert.equal(edit.name, expectedName, prompt);
+    assert.equal(edit.value, expectedValue, prompt);
+  }
+
+  const multi = parseFastParameterEdit(
+    "tăng chiều cao lên 150 và giảm chiều rộng xuống 300",
+    trayCrossSpec(),
+  );
+  assert.deepEqual(
+    multi?.changes?.map((c) => [c.name, c.value]),
+    [
+      ["Tray Height", 150],
+      ["Tray Width", 300],
+    ],
+  );
+});
+
 test("Vietnamese dictionary resolves compound multi-edit and numbered suffixes", () => {
   const multi = parseFastParameterEdit(
     "doi chieu rong thanh 600 mm va chieu cao thanh 120, day = 2",
@@ -254,6 +300,48 @@ test("Vietnamese dictionary escalates to model when parameter target is ambiguou
   // teeSpec has both "Ladder Width 1" and "Ladder Width 2"
   assert.equal(parseFastParameterEdit("Đổi chiều rộng thành 600 mm", teeSpec()), null);
   assert.equal(parseFastParameterEdit("doi chieu rong thanh 600", teeSpec()), null);
+
+  // AHU spec with both Casing Width and Coil Width -> generic "chiều rộng" must escalate to model
+  const ahuSpec = {
+    schemaVersion: "1.0",
+    name: "AHU",
+    category: "Mechanical Equipment",
+    units: "mm",
+    parameters: [
+      { name: "Casing Width", type: "Length", value: 1200 },
+      { name: "Coil Width", type: "Length", value: 900 },
+      { name: "Casing Height", type: "Length", value: 1000 },
+      { name: "Coil Height", type: "Length", value: 700 },
+    ],
+    materials: [],
+    parts: [{ id: "casing", name: "Casing", solid: { kind: "box" } }],
+  };
+  assert.equal(parseFastParameterEdit("đổi chiều rộng thành 1400 mm", ahuSpec), null);
+  assert.equal(parseFastParameterEdit("tăng chiều rộng lên 1400", ahuSpec), null);
+  assert.equal(parseFastParameterEdit("giảm chiều rộng xuống 800", ahuSpec), null);
+  assert.equal(parseFastParameterEdit("đổi chiều cao thành 1100", ahuSpec), null);
+  assert.deepEqual(parseFastParameterEdit("đổi Casing Width thành 1400", ahuSpec), {
+    name: "Casing Width",
+    type: "Length",
+    value: 1400,
+  });
+
+  // Cable tray with Tray Width, Flange Width (claimed by "mép gập"), and derived Half Width -> "chiều rộng" still resolves Tray Width
+  assert.deepEqual(parseFastParameterEdit("đổi chiều rộng thành 600", trayCrossSpec()), {
+    name: "Tray Width",
+    type: "Length",
+    value: 600,
+  });
+  assert.deepEqual(parseFastParameterEdit("giảm chiều rộng xuống 300", trayCrossSpec()), {
+    name: "Tray Width",
+    type: "Length",
+    value: 300,
+  });
+  assert.deepEqual(parseFastParameterEdit("đổi mép gập thành 20 mm", trayCrossSpec()), {
+    name: "Flange Width",
+    type: "Length",
+    value: 20,
+  });
 
   // Spec with two equally primary heights -> ambiguous
   const twoHeights = {

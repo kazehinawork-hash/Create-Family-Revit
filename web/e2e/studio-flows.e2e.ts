@@ -245,18 +245,26 @@ test("save, load, and delete family from library UI", async ({ page, request }) 
     createdId = savedJson.id ?? null;
     expect(createdId).toBeTruthy();
 
-    // 2. Pan the camera sideways so the center pixel misses the plate, reload from Library,
-    //    then confirm the camera automatically framed ("Vừa khung") back onto the loaded family.
+    // 2. Confirm the framed plate fills the viewport (an off-center click hits it),
+    //    zoom far out until that point misses, reload from Library, and confirm auto-fit frames it again.
     const canvas = page.locator(".viewer canvas").first();
     const box = (await canvas.boundingBox())!;
     const cx = box.x + box.width * 0.5;
     const cy = box.y + box.height * 0.5;
+    const offCenterX = box.x + box.width * 0.6;
+
+    await page.waitForTimeout(450);
+    await page.mouse.click(offCenterX, cy);
+    await expect(page.locator(".viewer-selected-chip")).toContainText("Bottom Plate");
+    await page.keyboard.press("Escape");
+    await expect(page.locator(".viewer-selected-chip")).toHaveCount(0);
+
     await page.mouse.move(cx, cy);
-    await page.mouse.down({ button: "right" });
-    await page.mouse.move(cx + 320, cy, { steps: 10 });
-    await page.mouse.up({ button: "right" });
-    await page.waitForTimeout(200);
-    await page.mouse.click(cx, cy);
+    for (let i = 0; i < 60; i += 1) {
+      await page.mouse.wheel(0, 300);
+    }
+    await page.waitForTimeout(350);
+    await page.mouse.click(offCenterX, cy);
     await expect(page.locator(".viewer-selected-chip")).toHaveCount(0);
 
     await page.locator("header.topbar button", { hasText: "Thư viện" }).first().click();
@@ -264,9 +272,9 @@ test("save, load, and delete family from library UI", async ({ page, request }) 
     await expect(card).toBeVisible();
     await card.click();
     await expect(page.locator(".project-name")).toHaveText(uniqueName);
-    await page.waitForTimeout(300);
+    await page.waitForTimeout(400);
 
-    await page.mouse.click(cx, cy);
+    await page.mouse.click(offCenterX, cy);
     await expect(page.locator(".viewer-selected-chip")).toContainText("Bottom Plate");
 
     // 3. Re-open Library and move the model to Trash.

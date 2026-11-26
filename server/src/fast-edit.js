@@ -60,7 +60,7 @@ function convertValue(value, unit, type) {
   return null;
 }
 
-const UNIT = '(mm|cm|m|inch|in|")';
+const UNIT = '(mm|cm|m|inch|in|"|deg|°|do)';
 const SET_VERB = "(?:doi|thay\\s+doi|chinh|sua|dat|gan|set|change|update|adjust|make)";
 const UP_VERB = "(?:tang|cong\\s+them|cong|nang|increase|raise|bump|add)";
 const DOWN_VERB = "(?:giam|tru|bot|ha|decrease|reduce|lower|subtract)";
@@ -78,49 +78,82 @@ function stripViDiacritics(value) {
     .toLowerCase();
 }
 
-const PRIMARY_DOMAIN_PREFIXES = new Set([
-  "tray",
-  "ladder",
-  "duct",
-  "pipe",
-  "casing",
-  "body",
-  "frame",
-  "panel",
-  "rack",
-  "unit",
-  "cabinet",
-  "main",
-  "overall",
-  "nominal",
-  "channel",
-  "fitting",
-  "housing",
-  "enclosure",
-]);
-
 /**
  * Ordered longest-phrase-first so specific compound phrases ("dai nhanh", "duong kinh ngoai")
  * resolve before generic suffixes ("dai", "duong kinh").
  */
 const VI_PARAM_ALIASES = [
-  { phrases: ["duong kinh danh nghia"], exact: ["nominal diameter"], primary: ["nominal diameter"], suffix: [] },
-  { phrases: ["duong kinh ngoai"], exact: ["outer diameter", "body od", "od"], primary: ["outer diameter", "od"], suffix: ["od"] },
-  { phrases: ["duong kinh trong"], exact: ["inner diameter", "bore diameter", "id"], primary: ["inner diameter"], suffix: ["id"] },
-  { phrases: ["chieu dai nhanh", "do dai nhanh", "dai nhanh", "doan nhanh", "chieu dai canh", "dai canh"], exact: ["leg length", "arm length", "branch length", "run length"], primary: ["leg length", "arm length", "branch length", "run length"], suffix: ["leg length", "arm length", "branch length"] },
-  { phrases: ["chieu rong mep gap", "be rong mep gap", "do rong mep gap", "mep gap", "canh gap", "tai gap", "vien gap"], exact: ["flange", "flange width", "lip", "lip width", "hem width"], primary: ["flange", "flange width", "lip width", "lip", "hem width"], suffix: ["flange", "flange width", "lip"] },
-  { phrases: ["chieu rong", "be rong", "do rong", "rong"], exact: ["width"], primaryDomainSuffix: "width", suffix: ["width"] },
-  { phrases: ["chieu cao", "be cao", "do cao", "cao"], exact: ["height"], primaryDomainSuffix: "height", suffix: ["height"] },
-  { phrases: ["chieu dai", "be dai", "do dai", "dai"], exact: ["length"], primaryDomainSuffix: "length", suffix: ["length"] },
-  { phrases: ["chieu sau", "be sau", "do sau", "sau"], exact: ["depth"], primaryDomainSuffix: "depth", suffix: ["depth"] },
-  { phrases: ["chieu day", "be day", "do day", "day ton", "day tam", "day thanh", "day vach", "day"], exact: ["thickness", "sheet thickness", "wall thickness", "plate thickness", "panel thickness"], primary: ["thickness", "sheet thickness", "wall thickness", "plate thickness", "panel thickness"], suffix: ["thickness"] },
-  { phrases: ["duong kinh", "co ong", "phi"], exact: ["diameter", "nominal diameter"], primaryDomainSuffix: "diameter", suffix: ["diameter"] },
-  { phrases: ["ban kinh uon", "ban kinh cong"], exact: ["bend radius", "center radius", "radius"], primary: ["bend radius", "center radius"], suffix: ["radius"] },
-  { phrases: ["ban kinh"], exact: ["radius", "bend radius", "center radius"], primary: ["radius", "bend radius", "center radius"], suffix: ["radius"] },
-  { phrases: ["goc uon", "goc re", "goc co", "goc"], exact: ["bend angle", "angle"], primary: ["bend angle", "angle"], suffix: ["angle"] },
-  { phrases: ["buoc bac", "khoang cach bac"], exact: ["rung pitch", "rung spacing"], primary: ["rung pitch", "rung spacing"], suffix: ["pitch", "spacing"] },
-  { phrases: ["so bac", "so luong bac"], exact: ["rung count"], primary: ["rung count"], suffix: [] },
-  { phrases: ["kich thuoc vat", "do vat"], exact: ["chamfer size", "chamfer"], primary: ["chamfer size", "chamfer", "miter offset"], suffix: ["chamfer"] },
+  { phrases: ["duong kinh danh nghia"], exact: ["nominal diameter"], suffix: [] },
+  {
+    phrases: ["duong kinh ngoai"],
+    exact: ["outer diameter", "body od", "od"],
+    suffix: ["outer diameter", "od"],
+    subfeature: true,
+  },
+  {
+    phrases: ["duong kinh trong"],
+    exact: ["inner diameter", "bore diameter", "id"],
+    suffix: ["inner diameter", "bore diameter", "id"],
+    subfeature: true,
+  },
+  {
+    phrases: [
+      "chieu dai nhanh",
+      "do dai nhanh",
+      "dai nhanh",
+      "doan nhanh",
+      "chieu dai canh",
+      "dai canh",
+    ],
+    exact: ["leg length", "arm length", "branch length", "run length"],
+    suffix: ["leg length", "arm length", "branch length", "run length"],
+    subfeature: true,
+  },
+  {
+    phrases: [
+      "chieu rong mep gap",
+      "be rong mep gap",
+      "do rong mep gap",
+      "mep gap",
+      "canh gap",
+      "tai gap",
+      "vien gap",
+    ],
+    exact: ["flange", "flange width", "lip", "lip width", "hem width"],
+    suffix: ["flange", "flange width", "lip width", "lip", "hem width"],
+    subfeature: true,
+  },
+  { phrases: ["chieu rong", "be rong", "do rong", "rong"], exact: ["width"], suffix: ["width"] },
+  { phrases: ["chieu cao", "be cao", "do cao", "cao"], exact: ["height"], suffix: ["height"] },
+  { phrases: ["chieu dai", "be dai", "do dai", "dai"], exact: ["length"], suffix: ["length"] },
+  { phrases: ["chieu sau", "be sau", "do sau", "sau"], exact: ["depth"], suffix: ["depth"] },
+  {
+    phrases: ["day ton", "day tam"],
+    exact: ["sheet thickness", "plate thickness"],
+    suffix: ["sheet thickness", "plate thickness"],
+  },
+  {
+    phrases: ["day thanh", "day vach"],
+    exact: ["wall thickness", "panel thickness"],
+    suffix: ["wall thickness", "panel thickness"],
+  },
+  { phrases: ["chieu day", "be day", "do day", "day"], exact: ["thickness"], suffix: ["thickness"] },
+  { phrases: ["duong kinh", "co ong", "phi"], exact: ["diameter", "nominal diameter"], suffix: ["diameter"] },
+  {
+    phrases: ["ban kinh uon", "ban kinh cong"],
+    exact: ["bend radius", "center radius", "radius"],
+    suffix: ["bend radius", "center radius"],
+  },
+  { phrases: ["ban kinh"], exact: ["radius"], suffix: ["radius"] },
+  { phrases: ["goc uon", "goc re", "goc co"], exact: ["bend angle", "angle"], suffix: ["bend angle"] },
+  { phrases: ["goc"], exact: ["angle"], suffix: ["angle"] },
+  { phrases: ["buoc bac", "khoang cach bac"], exact: ["rung pitch", "rung spacing"], suffix: ["pitch", "spacing"] },
+  { phrases: ["so bac", "so luong bac"], exact: ["rung count"], suffix: ["rung count"] },
+  {
+    phrases: ["kich thuoc vat", "do vat"],
+    exact: ["chamfer size", "chamfer", "miter offset"],
+    suffix: ["chamfer size", "chamfer"],
+  },
 ];
 
 export { VI_PARAM_ALIASES };
@@ -217,22 +250,20 @@ export function matchTarget(text, candidates, { minScore = 0.8 } = {}) {
   return { match: best.candidate, ambiguous: false };
 }
 
-function isPrimaryDomainName(nameNorm, baseSuffix) {
-  const words = nameNorm.split(" ").filter(Boolean);
-  if (words[words.length - 1] !== baseSuffix) return false;
-  if (words.length === 1) return true;
-  if (words.length === 2 && PRIMARY_DOMAIN_PREFIXES.has(words[0])) return true;
-  if (words.length === 3 && PRIMARY_DOMAIN_PREFIXES.has(words[0]) && /^\d+$/.test(words[2])) {
-    return true;
-  }
-  return false;
-}
-
 function matchVietnameseAlias(text, candidates) {
   const clauseNorm = normalizeName(text);
   if (!clauseNorm) return { match: null, ambiguous: false, matchedPhrase: null };
 
-  for (const entry of VI_PARAM_ALIASES) {
+  for (let entryIndex = 0; entryIndex < VI_PARAM_ALIASES.length; entryIndex += 1) {
+    const entry = VI_PARAM_ALIASES[entryIndex];
+    const earlierSubfeatures = VI_PARAM_ALIASES.slice(0, entryIndex).filter((e) => e.subfeature);
+    const isClaimedBySubfeature = (base) =>
+      earlierSubfeatures.some(
+        (sub) =>
+          sub.exact?.includes(base) ||
+          sub.suffix?.some((sfx) => base === sfx || base.endsWith(` ${sfx}`)),
+      );
+
     for (const phrase of entry.phrases) {
       const hit = clauseNorm.match(new RegExp(`(?:^| )(${escapeRegExp(phrase)})(?: (\\d+))?(?: |$)`, "u"));
       if (!hit) continue;
@@ -250,9 +281,9 @@ function matchVietnameseAlias(text, candidates) {
 
       const scoped = suffixNum
         ? candidates.filter((c) => {
-            const words = normalizeName(c.name).split(" ").filter(Boolean);
-            return words[words.length - 1] === suffixNum;
-          })
+          const words = normalizeName(c.name).split(" ").filter(Boolean);
+          return words[words.length - 1] === suffixNum;
+        })
         : candidates;
 
       const stripTrailingNum = (nameNorm) =>
@@ -260,19 +291,19 @@ function matchVietnameseAlias(text, candidates) {
 
       const tier1 = scoped.filter((c) => {
         const base = stripTrailingNum(normalizeName(c.name));
-        if (entry.exact?.includes(base) || entry.primary?.includes(base)) return true;
-        if (entry.primaryDomainSuffix && isPrimaryDomainName(base, entry.primaryDomainSuffix)) {
-          return true;
-        }
-        return false;
+        return Boolean(entry.exact?.includes(base));
       });
       if (tier1.length === 1) return { match: tier1[0], ambiguous: false, matchedPhrase };
       if (tier1.length > 1) return { match: null, ambiguous: true, matchedPhrase };
 
-      const tier2 = scoped.filter((c) => {
+      const rawTier2 = scoped.filter((c) => {
         const base = stripTrailingNum(normalizeName(c.name));
+        if (isClaimedBySubfeature(base)) return false;
         return entry.suffix?.some((sfx) => base === sfx || base.endsWith(` ${sfx}`));
       });
+      // Ignore derived formula helpers when editable numeric matches exist (e.g. "Half Width" vs "Tray Width").
+      const editableTier2 = rawTier2.filter((c) => !c.formula && NUMERIC_TYPES.has(c.type));
+      const tier2 = editableTier2.length > 0 ? editableTier2 : rawTier2;
       if (tier2.length === 1) return { match: tier2[0], ambiguous: false, matchedPhrase };
       if (tier2.length > 1) return { match: null, ambiguous: true, matchedPhrase };
     }
@@ -445,6 +476,17 @@ function parseClause(rawClause, spec) {
     if (blocked || !param) return blocked ? null : undefined;
     const factor = halve ? 0.5 : /(ba|triple|x3|×3)/i.test(multiply[0]) ? 3 : 2;
     return { name: param.name, type: param.type, value: roundFor(param, param.value * factor) };
+  }
+
+  // 2b. target-level ("lên X" / "xuống X"): "tăng chiều cao lên 150", "giảm chiều rộng xuống 300" -> absolute X
+  const levelTarget = clause.match(
+    new RegExp(
+      `^(?:(?:${UP_VERB}|${DOWN_VERB}|${SET_VERB})\\s+)?(?:tham\\s+so\\s+)?(.+?)(?:\\s+(?:${UP_VERB}|${DOWN_VERB}))?\\s+(?:len|xuong)(?!\\s+(?:them|bot))(?:\\s+(?:thanh|con|toi|den))?\\s+${NUMBER}\\s*${UNIT}?$`,
+      "iu",
+    ),
+  );
+  if (levelTarget) {
+    return applyAbsoluteMatch(levelTarget[1], levelTarget[2], levelTarget[3], spec);
   }
 
   // 3. relative delta: "tăng chiều cao thêm 100mm", "giảm X 50", "add 10 mm to X"
