@@ -165,15 +165,6 @@ function evaluateGeometryQuality(analysis) {
 
       const overlapVol = ox * oy * oz;
       const minVol = Math.min(a.vol, b.vol);
-      const maxVol = Math.max(a.vol, b.vol);
-      // Enclosure containment (e.g. coil/fan housed strictly inside an AHU casing) is not a collision.
-      if (maxVol >= minVol * 3 && overlapVol / minVol >= 0.85) continue;
-      // Tubular pipe/duct unions (coaxial flange collar on pipe, Y/T branch junction) unless duplicate solid.
-      const tubular = (k) => k === "cylinder" || k === "tube";
-      if (tubular(a.part.solid?.kind) && tubular(b.part.solid?.kind)) {
-        const isDuplicateSolid = overlapVol / minVol > 0.9 && maxVol / minVol < 1.2;
-        if (!isDuplicateSolid) continue;
-      }
       if (Math.min(ox, oy, oz) > 2.5 && overlapVol > 200 && overlapVol / minVol > 0.12) {
         severeOverlaps += 1;
       }
@@ -254,17 +245,6 @@ function hasMiterOrChamferGeometry(analysis) {
   return false;
 }
 
-function xyPolygonArea(pts) {
-  if (!Array.isArray(pts) || pts.length < 3) return 0;
-  let sum = 0;
-  for (let i = 0; i < pts.length; i += 1) {
-    const [x1, y1] = pts[i];
-    const [x2, y2] = pts[(i + 1) % pts.length];
-    sum += x1 * y2 - x2 * y1;
-  }
-  return Math.abs(sum) / 2;
-}
-
 function hasFoldedFlangeGeometry(analysis) {
   const model = analysis?.model;
   const parts = Array.isArray(model?.parts) ? model.parts : [];
@@ -285,18 +265,10 @@ function hasFoldedFlangeGeometry(analysis) {
     const sy = b.max.y - b.min.y;
     const horizSpan = Math.max(sx, sy);
     const minHoriz = Math.min(sx, sy);
-    const isLShapedPerimeterStrip =
-      part.solid?.kind === "prism" &&
-      part.solid.plane === "xy" &&
-      (part.solid.points?.length ?? 0) >= 6 &&
-      xyPolygonArea(part.solid.points) < Math.max(1, sx * sy) * 0.45;
-    const isThinPlateZ =
-      sz > 0.4 && sz <= 8 && horizSpan > sz * 2 && (minHoriz <= 60 || isLShapedPerimeterStrip);
+    const isThinPlateZ = sz > 0.4 && sz <= 8 && horizSpan > sz * 2 && minHoriz <= 60;
     const nearTop = b.max.z >= modelMaxZ - Math.max(12, modelSizeZ * 0.2);
     const notFullWidthLid =
-      isLShapedPerimeterStrip ||
-      minHoriz < Math.min(modelBounds.size.x, modelBounds.size.y) * 0.45 ||
-      parts.length <= 2;
+      minHoriz < Math.min(modelBounds.size.x, modelBounds.size.y) * 0.45 || parts.length <= 2;
 
     if (isThinPlateZ && nearTop && notFullWidthLid) {
       topThinHorizPlates += 1;

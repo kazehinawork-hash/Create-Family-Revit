@@ -111,7 +111,7 @@ export function lodStandard(lod) {
 Mức LOD ${level} đã nằm trong trường \`lod\`; không cần lặp lại trong \`notes\`.`;
 }
 
-const DEFAULT_SYSTEM_BUDGET = 10000;
+const DEFAULT_SYSTEM_BUDGET = 15500;
 
 export function systemPrompt(
   lod,

@@ -5,6 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { buildSystemPrompt, selectBlocks } from "../src/prompt-blocks.js";
+import { systemPrompt } from "../src/designer/prompts.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const designerPrompt = fs.readFileSync(path.join(ROOT, "prompts", "designer.md"), "utf8");
@@ -42,4 +43,18 @@ test("buildSystemPrompt and selectBlocks exclude trayRun/slotPattern when macros
   });
   assert.equal(built.blocks.includes("Sheet-metal macros (trayRun)"), false);
   assert.equal(/\b(trayRun|slotPattern)\b/i.test(built.prompt), false);
+});
+
+test("production systemPrompt keeps trayRun instructions under default LOD 350/400 budget when enabled", () => {
+  const on = systemPrompt(350, null, {
+    text: "Tạo khuỷu máng cáp 90 độ rộng 400 mm, cao 100 mm",
+    macros: true,
+  });
+  assert.ok(on.includes("trayRun"), "systemPrompt must retain trayRun block under default budget");
+
+  const off = systemPrompt(350, null, {
+    text: "Tạo khuỷu máng cáp 90 độ rộng 400 mm, cao 100 mm",
+    macros: false,
+  });
+  assert.equal(/\b(trayRun|slotPattern)\b/i.test(off), false);
 });

@@ -37,10 +37,10 @@ const CONDITIONAL = {
   "Output shape": "build",
 };
 
-/** Target size of the system prompt; a cable-ladder brief must fit under 10 KB. */
-export const DEFAULT_BUDGET = 10000;
+/** Target size of the system prompt; leaves room for core + triggered family blocks. */
+export const DEFAULT_BUDGET = 14000;
 
-/** When over budget, drop in this order (least harmful first). */
+/** When over budget, drop in this order (least harmful first). Triggered family blocks stay kept. */
 const TRIM_ORDER = [
   "Build parity (studio ↔ .rfa)",
   "Notes",
@@ -48,7 +48,6 @@ const TRIM_ORDER = [
   "Geometry quality checklist (self-check before returning)",
   "Missing information",
   "Orientation and hosting",
-  "Sheet-metal macros (trayRun)",
 ];
 
 export function splitPromptBlocks(markdown) {
