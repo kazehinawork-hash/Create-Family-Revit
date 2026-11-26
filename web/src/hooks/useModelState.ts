@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import {
   analyzeSpec,
   paramKey,
@@ -39,6 +39,7 @@ export function useModelState({ setToast, setMobileTab }: UseModelStateOptions) 
   } = state;
 
   const [building, setBuilding] = useState(false);
+  const exportRfaPendingRef = useRef(false);
   const [exportingTypes, setExportingTypes] = useState(false);
   const [previewTypeValues, setPreviewTypeValues] = useState<Record<string, number> | null>(null);
   const [exportingPortable, setExportingPortable] = useState(false);
@@ -401,13 +402,21 @@ export function useModelState({ setToast, setMobileTab }: UseModelStateOptions) 
 
   const handleExportRfa = async (fallbackBridgeConnected = false) => {
     if (!spec || !analysis?.ok || building || exportingPortable) return;
-    const latest = await fetchHealth();
-    const bridgeUp = latest ? Boolean(latest.revit?.connected) : fallbackBridgeConnected;
-    if (bridgeUp) {
-      await handleBuild();
-      return;
+    // `building` is only set inside handleBuild, after the health check; a second click
+    // during that await would otherwise start a second Revit build.
+    if (exportRfaPendingRef.current) return;
+    exportRfaPendingRef.current = true;
+    try {
+      const latest = await fetchHealth();
+      const bridgeUp = latest ? Boolean(latest.revit?.connected) : fallbackBridgeConnected;
+      if (bridgeUp) {
+        await handleBuild();
+        return;
+      }
+      await handleExportPortable();
+    } finally {
+      exportRfaPendingRef.current = false;
     }
-    await handleExportPortable();
   };
 
   return {

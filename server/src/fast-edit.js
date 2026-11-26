@@ -448,6 +448,9 @@ function applyAbsoluteMatch(targetText, rawNumber, unitText, spec) {
 function parseClause(rawClause, spec) {
   const clause = stripViDiacritics(rawClause);
 
+  // Fractions ("xuống còn 1/2") would otherwise be read as the number 1.
+  if (/\d\s*\/\s*\d/.test(clause)) return null;
+
   // 1. percentage: "tăng 10%", "giảm Ladder Height 5 %", "increase by 20 percent"
   const percent = clause.match(
     new RegExp(
@@ -583,11 +586,12 @@ export function parseFastParameterEdit(prompt, spec) {
   if (material) return material;
 
   const clauses = text
-    .split(/\s*[,;]\s+|\s+(?:và|va|and|then)\s+/iu)
+    .split(/\s*[,;]\s+|\s+(?:và|va|and|then|sau\s+đó|sau\s+do|rồi|roi)\s+/iu)
     .map((clause) => clause.trim())
     .filter(Boolean);
 
   const edits = [];
+  let skippedProse = false;
   for (const clause of clauses) {
     // A clause that touches a formula/non-numeric parameter cannot be applied locally.
     const clauseNorm = normalizeName(clause);
@@ -601,9 +605,16 @@ export function parseFastParameterEdit(prompt, spec) {
 
     const edit = parseClause(clause, spec);
     if (edit === null) return null; // explicit edit we cannot do deterministically
-    if (edit === undefined) continue; // prose without a concrete edit
+    if (edit === undefined) {
+      skippedProse = true; // prose without a concrete edit
+      continue;
+    }
     edits.push(edit);
   }
+
+  // "đổi chiều rộng thành 600 và thêm 1 lỗ": applying only the width would silently drop
+  // the rest of the request, so let the model handle the whole message.
+  if (skippedProse && edits.length > 0) return null;
 
   if (edits.length === 0) {
     // "tăng 10%" with no name anywhere: ambiguous, let the model read the request.
