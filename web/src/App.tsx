@@ -1,101 +1,61 @@
-import {
-  lazy,
-  Suspense,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type CSSProperties,
-} from "react";
+import { lazy, Suspense, useRef, useState, type CSSProperties } from "react";
 import { migrateSpec, type FamilySpec } from "@family/spec-core";
 import { ChatPanel, type ChatEntry } from "./components/ChatPanel";
 import { ParameterPanel } from "./components/ParameterPanel";
 import { TopBar } from "./components/TopBar";
 import { Viewer } from "./components/Viewer";
-import { newId, type ToastState } from "./hooks/types";
+import { newId } from "./hooks/types";
 import { useDesignChat } from "./hooks/useDesignChat";
 import { useLibrary } from "./hooks/useLibrary";
 import { useModelState } from "./hooks/useModelState";
-import {
-  fetchHealth,
-  fetchSavedModelDetail,
-  pingServer,
-  type Health,
-} from "./lib/api";
+import { usePanelLayout } from "./hooks/usePanelLayout";
+import { useServerConnection } from "./hooks/useServerConnection";
+import { useTheme } from "./hooks/useTheme";
+import { useToast } from "./hooks/useToast";
+import { fetchSavedModelDetail } from "./lib/api";
 import { useI18n } from "./lib/i18n";
-import {
-  applyTheme,
-  readTheme,
-  resolveTheme,
-  systemPrefersDark,
-  writeTheme,
-  type ThemeMode,
-} from "./lib/theme";
 
 const LibraryPanel = lazy(() =>
   import("./components/LibraryPanel").then((m) => ({ default: m.LibraryPanel })),
 );
-
-const DEFAULT_LEFT_WIDTH = 322;
-const DEFAULT_RIGHT_WIDTH = 342;
-const MIN_LEFT_WIDTH = 240;
-const MAX_LEFT_WIDTH = 560;
-const MIN_RIGHT_WIDTH = 270;
-const MAX_RIGHT_WIDTH = 620;
-const MIN_VIEWER_WIDTH = 420;
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
-
-function readStoredWidth(key: string, fallback: number): number {
-  try {
-    const stored = Number(window.localStorage.getItem(key));
-    return Number.isFinite(stored) && stored > 0 ? stored : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-function storeWidth(key: string, value: number): void {
-  try {
-    window.localStorage.setItem(key, String(Math.round(value)));
-  } catch {
-    /* private mode, ignore */
-  }
-}
 
 export function App() {
   const { t, formatDate, formatDateTime, formatNumber, language } = useI18n();
   const [entries, setEntries] = useState<ChatEntry[]>([
     { id: "seed", role: "agent", text: t.appChatGreeting },
   ]);
-  const [toast, setToast] = useState<ToastState | null>(null);
   const [currentModelId, setCurrentModelId] = useState<string | null>(null);
   const [showGrid, setShowGrid] = useState(true);
   const [showPlanes, setShowPlanes] = useState(false);
   const [showConnectors, setShowConnectors] = useState(false);
   const [showHandles, setShowHandles] = useState(false);
-  const [health, setHealth] = useState<Health | null>(null);
-  const [serverOnline, setServerOnline] = useState<boolean | null>(null);
-  const serverOnlineRef = useRef<boolean | null>(null);
-  const [themeMode, setThemeMode] = useState<ThemeMode>(() => readTheme());
-  const [systemDark, setSystemDark] = useState(() => systemPrefersDark());
-  const [mobileTab, setMobileTab] = useState<"chat" | "viewer" | "params">("chat");
-  const [paramsOpen, setParamsOpen] = useState(false);
   const viewerCaptureRef = useRef<(() => string | null) | null>(null);
-  const resolvedTheme = resolveTheme(themeMode, systemDark);
 
-  const [leftWidth, setLeftWidth] = useState(() =>
-    readStoredWidth("fa.leftWidth", DEFAULT_LEFT_WIDTH),
-  );
-  const [rightWidth, setRightWidth] = useState(() =>
-    readStoredWidth("fa.rightWidth", DEFAULT_RIGHT_WIDTH),
-  );
+  const { toast, setToast } = useToast();
+  const { themeMode, setThemeMode, resolvedTheme } = useTheme();
+  const {
+    mobileTab,
+    setMobileTab,
+    paramsOpen,
+    setParamsOpen,
+    leftWidth,
+    rightWidth,
+    beginResize,
+    nudgeWidth,
+    resetWidth,
+  } = usePanelLayout();
 
   const pushEntry = (entry: Omit<ChatEntry, "id">) => {
     setEntries((current) => [...current, { ...entry, id: newId() }]);
   };
+
+  const syncDefaultModelRef = useRef<(availableIds: string[], serverDefaultModel?: string | null) => void>(
+    () => {},
+  );
+  const { health, serverOnline, setServerOnline } = useServerConnection((result) => {
+    const available = (result.models ?? []).map((entry) => entry.id);
+    syncDefaultModelRef.current(available, result.agent?.model);
+  });
 
   const modelState = useModelState({
     t,
@@ -126,6 +86,7 @@ export function App() {
     setMobileTab,
     pushEntry,
   });
+  syncDefaultModelRef.current = chat.syncDefaultModel;
 
   const library = useLibrary({
     t,
@@ -145,157 +106,6 @@ export function App() {
     viewerCaptureRef,
     setToast,
   });
-
-  useEffect(() => {
-    applyTheme(resolvedTheme);
-  }, [resolvedTheme]);
-
-  useEffect(() => {
-    writeTheme(themeMode);
-  }, [themeMode]);
-
-  useEffect(() => {
-    try {
-      const media = window.matchMedia("(prefers-color-scheme: dark)");
-      const onChange = (event: MediaQueryListEvent) => setSystemDark(event.matches);
-      media.addEventListener("change", onChange);
-      return () => media.removeEventListener("change", onChange);
-    } catch {
-      return undefined;
-    }
-  }, []);
-
-  useEffect(() => {
-    storeWidth("fa.leftWidth", leftWidth);
-  }, [leftWidth]);
-
-  useEffect(() => {
-    storeWidth("fa.rightWidth", rightWidth);
-  }, [rightWidth]);
-
-  useEffect(() => {
-    if (!toast) return;
-    const timer = setTimeout(() => setToast(null), toast.action ? 6000 : 9000);
-    return () => clearTimeout(timer);
-  }, [toast]);
-
-  const { syncDefaultModel } = chat;
-  const applyHealth = useCallback(
-    (result: Health) => {
-      setHealth(result);
-      const available = (result.models ?? []).map((entry) => entry.id);
-      syncDefaultModel(available, result.agent?.model);
-    },
-    [syncDefaultModel],
-  );
-
-  const refreshHealth = useCallback(async () => {
-    const result = await fetchHealth();
-    if (result) applyHealth(result);
-    return result;
-  }, [applyHealth]);
-
-  useEffect(() => {
-    let alive = true;
-    let timer: number | null = null;
-    let delay = 2000;
-
-    const attempt = async () => {
-      if (!alive) return;
-      const result = await refreshHealth();
-      if (!alive) return;
-
-      if (result) {
-        delay = 2000;
-        timer = window.setTimeout(attempt, 60000);
-        return;
-      }
-
-      timer = window.setTimeout(attempt, delay);
-      delay = Math.min(delay * 2, 30000);
-    };
-
-    void attempt();
-
-    return () => {
-      alive = false;
-      if (timer) window.clearTimeout(timer);
-    };
-  }, [refreshHealth]);
-
-  useEffect(() => {
-    let alive = true;
-
-    const probe = async () => {
-      const ping = await pingServer();
-      if (!alive) return;
-
-      const online = Boolean(ping?.ok);
-      const wasOnline = serverOnlineRef.current;
-      serverOnlineRef.current = online;
-      setServerOnline(online);
-
-      if (online && wasOnline === false) {
-        void refreshHealth();
-      }
-    };
-
-    void probe();
-    const timer = window.setInterval(probe, 5000);
-    const onFocus = () => void probe();
-    window.addEventListener("focus", onFocus);
-
-    return () => {
-      alive = false;
-      window.clearInterval(timer);
-      window.removeEventListener("focus", onFocus);
-    };
-  }, [refreshHealth]);
-
-  const beginResize = (
-    side: "left" | "right",
-    event: { clientX: number; button: number; preventDefault: () => void },
-  ) => {
-    if (event.button !== 0) return;
-    event.preventDefault();
-
-    const startX = event.clientX;
-    const startLeft = leftWidth;
-    const startRight = rightWidth;
-
-    const onMove = (moveEvent: PointerEvent) => {
-      const delta = moveEvent.clientX - startX;
-
-      if (side === "left") {
-        const available = window.innerWidth - startRight - MIN_VIEWER_WIDTH - 12;
-        setLeftWidth(clamp(startLeft + delta, MIN_LEFT_WIDTH, Math.min(MAX_LEFT_WIDTH, available)));
-      } else {
-        const available = window.innerWidth - startLeft - MIN_VIEWER_WIDTH - 12;
-        setRightWidth(
-          clamp(startRight - delta, MIN_RIGHT_WIDTH, Math.min(MAX_RIGHT_WIDTH, available)),
-        );
-      }
-    };
-
-    const onUp = () => {
-      document.removeEventListener("pointermove", onMove);
-      document.removeEventListener("pointerup", onUp);
-      document.body.classList.remove("resizing");
-    };
-
-    document.body.classList.add("resizing");
-    document.addEventListener("pointermove", onMove);
-    document.addEventListener("pointerup", onUp);
-  };
-
-  const nudgeWidth = (side: "left" | "right", key: "ArrowLeft" | "ArrowRight") => {
-    const step = key === "ArrowRight" ? 16 : -16;
-    if (side === "left") {
-      setLeftWidth((width) => clamp(width + step, MIN_LEFT_WIDTH, MAX_LEFT_WIDTH));
-    } else {
-      setRightWidth((width) => clamp(width - step, MIN_RIGHT_WIDTH, MAX_RIGHT_WIDTH));
-    }
-  };
 
   return (
     <div className="app" lang={language}>
@@ -451,7 +261,7 @@ export function App() {
           tabIndex={0}
           title={t.resizePanel}
           onPointerDown={(event) => beginResize("left", event)}
-          onDoubleClick={() => setLeftWidth(DEFAULT_LEFT_WIDTH)}
+          onDoubleClick={() => resetWidth("left")}
           onKeyDown={(event) => {
             if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
             event.preventDefault();
@@ -509,7 +319,7 @@ export function App() {
           tabIndex={0}
           title={t.resizePanel}
           onPointerDown={(event) => beginResize("right", event)}
-          onDoubleClick={() => setRightWidth(DEFAULT_RIGHT_WIDTH)}
+          onDoubleClick={() => resetWidth("right")}
           onKeyDown={(event) => {
             if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
             event.preventDefault();
