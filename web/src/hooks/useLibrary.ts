@@ -104,80 +104,90 @@ export function useLibrary({ viewerCaptureRef, setToast }: UseLibraryOptions) {
     const missing = savedList.filter((item) => !item.thumbUrl);
     if (missing.length === 0) return;
 
-    thumbStartedRef.current = true;
-    thumbAbortRef.current = false;
+    let cancelled = false;
+    // Let the library modal render its cards before mounting an offscreen WebGL thumbnail renderer.
+    const startTimer = window.setTimeout(() => {
+      if (cancelled || thumbStartedRef.current) return;
+      thumbStartedRef.current = true;
+      thumbAbortRef.current = false;
 
-    const captureJob = (job: ThumbJob) =>
-      new Promise<string | null>((resolve) => {
-        thumbCaptureRef.current = null;
-        setThumbJob(job);
-        const startedAt = Date.now();
-        let timer = 0;
-        let done = false;
-        const finish = (value: string | null) => {
-          if (done) return;
-          done = true;
-          window.clearTimeout(timer);
-          resolve(value);
-        };
-        const tick = () => {
-          if (thumbAbortRef.current) {
-            finish(null);
-            return;
-          }
-          const image = thumbCaptureRef.current?.() ?? null;
-          if (image) {
-            finish(image);
-            return;
-          }
-          if (Date.now() - startedAt > 6000) {
-            finish(null);
-            return;
-          }
-          timer = window.setTimeout(tick, 250);
-        };
-        timer = window.setTimeout(tick, 150);
-      });
-
-    void (async () => {
-      for (const item of missing) {
-        if (thumbAbortRef.current) break;
-        const detail = await fetchSavedModelDetail(item.id).catch(() => null);
-        const savedSpec = detail?.spec;
-        if (!savedSpec) continue;
-
-        let thumbAnalysis;
-        try {
-          thumbAnalysis = analyzeSpec(savedSpec);
-        } catch {
-          continue;
-        }
-        if (!thumbAnalysis.model) continue;
-
-        const image = await captureJob({
-          id: item.id,
-          model: thumbAnalysis.model,
-          parameters: savedSpec.parameters ?? [],
-          materials: savedSpec.materials ?? [],
+      const captureJob = (job: ThumbJob) =>
+        new Promise<string | null>((resolve) => {
+          thumbCaptureRef.current = null;
+          setThumbJob(job);
+          const startedAt = Date.now();
+          let timer = 0;
+          let done = false;
+          const finish = (value: string | null) => {
+            if (done) return;
+            done = true;
+            window.clearTimeout(timer);
+            resolve(value);
+          };
+          const tick = () => {
+            if (thumbAbortRef.current) {
+              finish(null);
+              return;
+            }
+            const image = thumbCaptureRef.current?.() ?? null;
+            if (image) {
+              finish(image);
+              return;
+            }
+            if (Date.now() - startedAt > 6000) {
+              finish(null);
+              return;
+            }
+            timer = window.setTimeout(tick, 250);
+          };
+          timer = window.setTimeout(tick, 150);
         });
-        if (thumbAbortRef.current) break;
 
-        if (image) {
+      void (async () => {
+        for (const item of missing) {
+          if (thumbAbortRef.current) break;
+          const detail = await fetchSavedModelDetail(item.id).catch(() => null);
+          const savedSpec = detail?.spec;
+          if (!savedSpec) continue;
+
+          let thumbAnalysis;
           try {
-            await uploadModelThumbnail(item.id, image);
-            const thumbUrl = `/api/models/${encodeURIComponent(item.id)}/thumb?t=${Date.now()}`;
-            setSavedList((current) =>
-              current.map((entry) => (entry.id === item.id ? { ...entry, thumbUrl } : entry)),
-            );
+            thumbAnalysis = analyzeSpec(savedSpec);
           } catch {
-            /* a failed preview must not block the library */
+            continue;
           }
+          if (!thumbAnalysis.model) continue;
+
+          const image = await captureJob({
+            id: item.id,
+            model: thumbAnalysis.model,
+            parameters: savedSpec.parameters ?? [],
+            materials: savedSpec.materials ?? [],
+          });
+          if (thumbAbortRef.current) break;
+
+          if (image) {
+            try {
+              await uploadModelThumbnail(item.id, image);
+              const thumbUrl = `/api/models/${encodeURIComponent(item.id)}/thumb?t=${Date.now()}`;
+              setSavedList((current) =>
+                current.map((entry) => (entry.id === item.id ? { ...entry, thumbUrl } : entry)),
+              );
+            } catch {
+              /* a failed preview must not block the library */
+            }
+          }
+          setThumbJob(null);
+          await new Promise((resolve) => window.setTimeout(resolve, 50));
         }
         setThumbJob(null);
-        await new Promise((resolve) => window.setTimeout(resolve, 50));
-      }
-      setThumbJob(null);
-    })();
+      })();
+    }, 450);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(startTimer);
+    };
   }, [libraryOpen, libraryLoading, savedList]);
 
   const handleSaveModel = async () => {

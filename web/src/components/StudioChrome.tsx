@@ -1,12 +1,9 @@
-import { lazy, Suspense, type MutableRefObject, type PointerEvent } from "react";
+import { type MutableRefObject, type PointerEvent } from "react";
 import type { useLibrary } from "../hooks/useLibrary";
 import type { ThumbJob, ToastState } from "../hooks/types";
 import type { Strings } from "../lib/strings";
+import { LibraryPanel } from "./LibraryPanel";
 import { Viewer } from "./Viewer";
-
-const LibraryPanel = lazy(() =>
-  import("./LibraryPanel").then((m) => ({ default: m.LibraryPanel })),
-);
 
 interface PanelResizerProps {
   side: "left" | "right";
@@ -195,38 +192,36 @@ export function LibraryModal({
 }) {
   if (!library.libraryOpen) return null;
   return (
-    <Suspense fallback={null}>
-      <LibraryPanel
-        models={library.savedList}
-        groups={library.libraryGroups}
-        loading={library.libraryLoading}
-        currentModelId={currentModelId}
-        activeGroup={library.libraryGroup}
-        historyModelId={library.historyModelId}
-        revisions={library.revisions}
-        revisionsLoading={library.revisionsLoading}
-        historyKeep={library.historyKeep}
-        onClose={() => {
-          library.setLibraryOpen(false);
-          library.setHistoryModelId(null);
-        }}
-        onActiveGroup={library.setLibraryGroup}
-        onLoadModel={(id) => void library.handleLoadModel(id)}
-        onNewModel={library.handleNewModel}
-        onOpenHistory={(id) => void library.handleOpenHistory(id)}
-        onCloseHistory={() => library.setHistoryModelId(null)}
-        onRestoreRevision={(stamp) => void library.handleRestoreRevision(stamp)}
-        onRenameModel={(id, name) => void library.handleRenameModel(id, name)}
-        onDeleteModel={(id) => void library.handleDeleteModel(id)}
-        onCreateGroup={(name) => void library.handleCreateGroup(name)}
-        onRenameGroup={(from, to) => void library.handleRenameGroup(from, to)}
-        onDeleteGroup={(name) => void library.handleDeleteGroup(name)}
-        onMoveModel={(id, group) => void library.handleMoveModel(id, group)}
-        trashItems={library.trashItems}
-        onRestoreTrash={(id) => void library.handleRestoreTrash(id)}
-        onPurgeTrash={(id) => void library.handlePurgeTrash(id)}
-        onEmptyTrash={() => void library.handleEmptyTrash()}
-      />
-    </Suspense>
+    <LibraryPanel
+      models={library.savedList}
+      groups={library.libraryGroups}
+      loading={library.libraryLoading}
+      currentModelId={currentModelId}
+      activeGroup={library.libraryGroup}
+      historyModelId={library.historyModelId}
+      revisions={library.revisions}
+      revisionsLoading={library.revisionsLoading}
+      historyKeep={library.historyKeep}
+      onClose={() => {
+        library.setLibraryOpen(false);
+        library.setHistoryModelId(null);
+      }}
+      onActiveGroup={library.setLibraryGroup}
+      onLoadModel={(id) => void library.handleLoadModel(id)}
+      onNewModel={library.handleNewModel}
+      onOpenHistory={(id) => void library.handleOpenHistory(id)}
+      onCloseHistory={() => library.setHistoryModelId(null)}
+      onRestoreRevision={(stamp) => void library.handleRestoreRevision(stamp)}
+      onRenameModel={(id, name) => void library.handleRenameModel(id, name)}
+      onDeleteModel={(id) => void library.handleDeleteModel(id)}
+      onCreateGroup={(name) => void library.handleCreateGroup(name)}
+      onRenameGroup={(from, to) => void library.handleRenameGroup(from, to)}
+      onDeleteGroup={(name) => void library.handleDeleteGroup(name)}
+      onMoveModel={(id, group) => void library.handleMoveModel(id, group)}
+      trashItems={library.trashItems}
+      onRestoreTrash={(id) => void library.handleRestoreTrash(id)}
+      onPurgeTrash={(id) => void library.handlePurgeTrash(id)}
+      onEmptyTrash={() => void library.handleEmptyTrash()}
+    />
   );
 }

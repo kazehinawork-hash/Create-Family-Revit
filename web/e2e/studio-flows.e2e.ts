@@ -270,7 +270,13 @@ test("save, load, and delete family from library UI", async ({ page, request }) 
     await page.locator("header.topbar button", { hasText: "Thư viện" }).first().click();
     const card = page.locator(".saved-model-card", { hasText: uniqueName }).first();
     await expect(card).toBeVisible();
+    const loadResponse = page.waitForResponse(
+      (res) =>
+        res.url().includes(`/api/models/${createdId}`) && res.request().method() === "GET",
+    );
     await card.click();
+    await loadResponse;
+    await expect(page.locator(".library-modal")).toHaveCount(0);
     await expect(page.locator(".project-name")).toHaveText(uniqueName);
     await page.waitForTimeout(400);
 
