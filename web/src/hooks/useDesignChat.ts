@@ -4,16 +4,15 @@ import {
   useRef,
   useState,
   type Dispatch,
-  type MutableRefObject,
   type SetStateAction,
 } from "react";
-import { validateSpec, type FamilySpec } from "@family/spec-core";
-import type { ChatEntry } from "../components/ChatPanel";
+import { migrateSpec, validateSpec, type FamilySpec } from "@family/spec-core";
 import type { ChatTarget, ModelNote } from "../lib/annotations";
 import { targetFromNote } from "../lib/annotations";
 import {
   fetchDesignJob,
   fetchLatestExternalSpec,
+  fetchSavedModelDetail,
   pingServer,
   streamDesign,
   subscribeExternalSpecStream,
@@ -25,30 +24,12 @@ import {
   type UploadedDocument,
 } from "../lib/api";
 import { isModelId } from "../lib/api-key";
+import { useI18n } from "../lib/i18n";
 import { describeOutcome, errorAdvice, splitErrorMessage } from "../lib/outcome";
 import { translateServerMessage } from "../lib/server-messages";
 import { diffNotes, diffSpecs } from "../lib/spec-diff";
-import type { Language, Strings } from "../lib/strings";
+import { useStudio } from "./StudioContext";
 import { durationText, type StageState, type ToastState } from "./types";
-
-const LOD_LEVELS: Lod[] = [200, 300, 350, 400];
-
-function readStoredLod(): Lod {
-  try {
-    const stored = Number(window.localStorage.getItem("fa.lod"));
-    return LOD_LEVELS.includes(stored as Lod) ? (stored as Lod) : 300;
-  } catch {
-    return 300;
-  }
-}
-
-function readStoredModel(): string {
-  try {
-    return window.localStorage.getItem("fa.model") ?? "";
-  } catch {
-    return "";
-  }
-}
 
 async function waitForDesignJob(
   jobId: string,
@@ -76,58 +57,27 @@ async function waitForDesignJob(
 }
 
 interface UseDesignChatOptions {
-  t: Strings;
-  formatDate: (date: number | Date, options?: Intl.DateTimeFormatOptions) => string;
-  formatNumber: (n: number) => string;
-  language: Language;
-  spec: FamilySpec | null;
-  specRef: MutableRefObject<FamilySpec | null>;
-  applySpec: (next: FamilySpec | null, options?: { record?: boolean; reset?: boolean }) => void;
-  setNative: Dispatch<SetStateAction<boolean>>;
-  modelNotes: ModelNote[];
-  setModelNotes: Dispatch<SetStateAction<ModelNote[]>>;
-  setFocusNote: Dispatch<SetStateAction<ModelNote | null>>;
-  setSelectedPartId: Dispatch<SetStateAction<string | null>>;
-  setHiddenPartIds: Dispatch<SetStateAction<string[]>>;
-  setTransparentPartIds: Dispatch<SetStateAction<string[]>>;
-  setCurrentModelId: Dispatch<SetStateAction<string | null>>;
   setServerOnline: Dispatch<SetStateAction<boolean | null>>;
   setToast: Dispatch<SetStateAction<ToastState | null>>;
   setMobileTab: Dispatch<SetStateAction<"chat" | "viewer" | "params">>;
-  pushEntry: (entry: Omit<ChatEntry, "id">) => void;
 }
 
 export function useDesignChat({
-  t,
-  formatDate,
-  formatNumber,
-  language,
-  spec,
-  applySpec,
-  setNative,
-  modelNotes,
-  setModelNotes,
-  setFocusNote,
-  setSelectedPartId,
-  setHiddenPartIds,
-  setTransparentPartIds,
-  setCurrentModelId,
   setServerOnline,
   setToast,
   setMobileTab,
-  pushEntry,
 }: UseDesignChatOptions) {
+  const { t, formatDate, formatNumber, language } = useI18n();
+  const { state, dispatch } = useStudio();
+  const { spec, modelNotes, chatTargets, chatFocusSignal, model, lod } = state;
+
   const [stage, setStage] = useState<StageState | null>(null);
   const [running, setRunning] = useState(false);
   const [runStartedAt, setRunStartedAt] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
-  const [lod, setLod] = useState<Lod>(readStoredLod);
-  const [model, setModel] = useState<string>(readStoredModel);
   const [sessionUsage, setSessionUsage] = useState<Record<string, number>>({});
   const [incomplete, setIncomplete] = useState<string[] | null>(null);
   const [attachments, setAttachments] = useState<UploadedDocument[]>([]);
-  const [chatTargets, setChatTargets] = useState<ChatTarget[]>([]);
-  const [chatFocusSignal, setChatFocusSignal] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [lastBeatAt, setLastBeatAt] = useState<number | null>(null);
   void lastBeatAt;
@@ -152,15 +102,8 @@ export function useDesignChat({
 
   // Real-time synchronization with MCP / External Agents
   const lastExternalHashRef = useRef<string>("");
-  const liveStringsRef = useRef({
-    t,
-    formatNumber,
-    applySpec,
-    setNative,
-    pushEntry,
-    setToast,
-  });
-  liveStringsRef.current = { t, formatNumber, applySpec, setNative, pushEntry, setToast };
+  const liveRef = useRef({ t, formatNumber, dispatch, setToast });
+  liveRef.current = { t, formatNumber, dispatch, setToast };
 
   useEffect(() => {
     let alive = true;
@@ -172,14 +115,10 @@ export function useDesignChat({
       const {
         t: strings,
         formatNumber: fmtNum,
-        applySpec: apply,
-        setNative: markNative,
-        pushEntry: push,
+        dispatch: emit,
         setToast: showToast,
-      } = liveStringsRef.current;
+      } = liveRef.current;
       lastExternalHashRef.current = data.spec_hash;
-      apply(data.spec);
-      markNative(false);
 
       const partsCount = data.geometry_summary?.parts_count ?? (data.spec.parts?.length || 0);
       const paramsCount =
@@ -190,16 +129,20 @@ export function useDesignChat({
         : "";
       const summary = strings.appPartsParams(fmtNum(partsCount), fmtNum(paramsCount));
 
-      push({
-        role: "agent",
-        text: strings.appMcpSpecReceived(data.spec.name || "Family", `${summary}${dims}`),
-        notes: data.spec.notes,
-        meta: "⚡ MCP Real-time Sync",
-        issues: (data.warnings || []).map((w) => ({
-          message: w,
-          severity: "warning",
-          path: "spec",
-        })),
+      emit({
+        type: "APPLY_DESIGN_RESULT",
+        spec: data.spec,
+        entry: {
+          role: "agent",
+          text: strings.appMcpSpecReceived(data.spec.name || "Family", `${summary}${dims}`),
+          notes: data.spec.notes,
+          meta: "⚡ MCP Real-time Sync",
+          issues: (data.warnings || []).map((w) => ({
+            message: w,
+            severity: "warning",
+            path: "spec",
+          })),
+        },
       });
 
       showToast({
@@ -242,10 +185,13 @@ export function useDesignChat({
       }
       setAttachments((current) => [...current, ...uploaded]);
     } catch (error) {
-      pushEntry({
-        role: "agent",
-        text: t.appAttachFailed(error instanceof Error ? error.message : String(error)),
-        tone: "error",
+      dispatch({
+        type: "PUSH_ENTRY",
+        entry: {
+          role: "agent",
+          text: t.appAttachFailed(error instanceof Error ? error.message : String(error)),
+          tone: "error",
+        },
       });
     } finally {
       setUploading(false);
@@ -256,36 +202,22 @@ export function useDesignChat({
     setAttachments((current) => current.filter((_, idx) => idx !== index));
   };
 
-  const handleModel = useCallback((value: string) => {
-    setModel(value);
-    try {
-      window.localStorage.setItem("fa.model", value);
-    } catch {
-      /* private mode, ignore */
-    }
-  }, []);
+  const handleModel = useCallback(
+    (value: string) => {
+      dispatch({ type: "SET_MODEL", model: value });
+    },
+    [dispatch],
+  );
 
   const syncDefaultModel = useCallback(
     (availableIds: string[], serverDefaultModel?: string | null) => {
-      setModel((current) => {
-        if (current && availableIds.includes(current)) return current;
-        if (serverDefaultModel && availableIds.includes(serverDefaultModel)) {
-          return serverDefaultModel;
-        }
-        return availableIds[0] ?? "";
-      });
+      dispatch({ type: "SYNC_DEFAULT_MODEL", availableIds, serverDefaultModel });
     },
-    [],
+    [dispatch],
   );
 
   const handleLod = (value: Lod) => {
-    setLod(value);
-    try {
-      window.localStorage.setItem("fa.lod", String(value));
-    } catch {
-      /* private mode, ignore */
-    }
-
+    dispatch({ type: "SET_LOD", lod: value });
     if (spec) {
       setToast({
         text: t.appLodSelected(formatNumber(value)),
@@ -308,19 +240,21 @@ export function useDesignChat({
     const outgoingTargets = sendOptions?.targets ?? chatTargets;
     const outgoingNoteIds = sendOptions?.noteIds ?? [];
     if (!baseSpec) {
-      setModelNotes([]);
-      setFocusNote(null);
+      dispatch({ type: "CLEAR_NOTES" });
     }
     lastTargetsRef.current = outgoingTargets;
     lastNoteIdsRef.current = outgoingNoteIds;
     pendingNoteIdsRef.current = outgoingNoteIds;
-    pushEntry({
-      role: "user",
-      text,
-      attachments: docs.length > 0 ? docs : undefined,
-      targets: outgoingTargets.length > 0 ? outgoingTargets : undefined,
+    dispatch({
+      type: "PUSH_ENTRY",
+      entry: {
+        role: "user",
+        text,
+        attachments: docs.length > 0 ? docs : undefined,
+        targets: outgoingTargets.length > 0 ? outgoingTargets : undefined,
+      },
     });
-    setChatTargets([]);
+    dispatch({ type: "SET_CHAT_TARGETS", targets: [] });
     setRunning(true);
     setRunStartedAt(Date.now());
     setNow(Date.now());
@@ -346,7 +280,7 @@ export function useDesignChat({
       }
     }, 5000);
 
-    const pushSpecEntry = (
+    const buildAndApplyResult = (
       specValue: FamilySpec,
       stats: DesignStats,
       prefix = "",
@@ -375,15 +309,11 @@ export function useDesignChat({
       );
       const errorList = copy.outcome === "has-errors" ? (errors as never[]) : [];
 
-      if (copy.outcome === "ok" && pendingNoteIdsRef.current.length > 0) {
-        const resolved = new Set(pendingNoteIdsRef.current);
-        setModelNotes((current) =>
-          current.map((note) =>
-            resolved.has(note.id)
-              ? { ...note, status: "resolved", resolvedAt: Date.now() }
-              : note,
-          ),
-        );
+      const resolvedNoteIds =
+        copy.outcome === "ok" && pendingNoteIdsRef.current.length > 0
+          ? [...pendingNoteIdsRef.current]
+          : undefined;
+      if (resolvedNoteIds) {
         pendingNoteIdsRef.current = [];
         lastNoteIdsRef.current = [];
       }
@@ -429,58 +359,63 @@ export function useDesignChat({
         return next;
       });
 
-      pushEntry({
-        role: "agent",
-        tone: copy.tone === "normal" ? "normal" : "error",
-        text: `${prefix}${answer}`,
-        warnings: warningList.length > 0 ? warningList : undefined,
-        notes: notes.fresh.length > 0 ? notes.fresh : undefined,
-        oldNotes: notes.old.length > 0 ? notes.old : undefined,
-        changes: diff,
-        check: {
-          ok: errorList.length === 0 && warningList.length === 0 && !missing?.length,
-          errors: errorList.length,
-          warnings: warningList.length,
-          missing,
-        },
-        undoSpec: previousSpec,
-        issues: errorList,
-        action: stats.cached
-          ? { label: t.runFresh, kind: "fresh" as const }
-          : copy.outcome === "unchanged"
-            ? { label: t.appResend }
+      dispatch({
+        type: "APPLY_DESIGN_RESULT",
+        spec: specValue,
+        resolvedNoteIds,
+        entry: {
+          role: "agent",
+          tone: copy.tone === "normal" ? "normal" : "error",
+          text: `${prefix}${answer}`,
+          warnings: warningList.length > 0 ? warningList : undefined,
+          notes: notes.fresh.length > 0 ? notes.fresh : undefined,
+          oldNotes: notes.old.length > 0 ? notes.old : undefined,
+          changes: diff,
+          check: {
+            ok: errorList.length === 0 && warningList.length === 0 && !missing?.length,
+            errors: errorList.length,
+            warnings: warningList.length,
+            missing,
+          },
+          undoSpec: previousSpec,
+          issues: errorList,
+          action: stats.cached
+            ? { label: t.runFresh, kind: "fresh" as const }
+            : copy.outcome === "unchanged"
+              ? { label: t.appResend }
+              : undefined,
+          resolution: Array.isArray(stats.resolution)
+            ? (stats.resolution as {
+                name: string;
+                value: unknown;
+                level?: number;
+                source?: string;
+              }[])
             : undefined,
-        resolution: Array.isArray(stats.resolution)
-          ? (stats.resolution as {
-              name: string;
-              value: unknown;
-              level?: number;
-              source?: string;
-            }[])
-          : undefined,
-        metaInfo: fast
-          ? {
-              elapsed: durationText(stats.elapsedMs, t),
-              inChars,
-              outChars,
-              local: true,
-            }
-          : stats.cached
+          metaInfo: fast
             ? {
                 elapsed: durationText(stats.elapsedMs, t),
-                model: usedModel,
-                calls,
                 inChars,
                 outChars,
-                cached: t.cachedResult(cachedAt),
+                local: true,
               }
-            : {
-                elapsed: durationText(stats.elapsedMs, t),
-                model: usedModel,
-                calls,
-                inChars,
-                outChars,
-              },
+            : stats.cached
+              ? {
+                  elapsed: durationText(stats.elapsedMs, t),
+                  model: usedModel,
+                  calls,
+                  inChars,
+                  outChars,
+                  cached: t.cachedResult(cachedAt),
+                }
+              : {
+                  elapsed: durationText(stats.elapsedMs, t),
+                  model: usedModel,
+                  calls,
+                  inChars,
+                  outChars,
+                },
+        },
       });
     };
 
@@ -525,16 +460,19 @@ export function useDesignChat({
           }
 
           if (event.type === "suggestion") {
-            pushEntry({
-              role: "agent",
-              text: t.appSimilarSaved(
-                event.sample.name,
-                formatNumber(Math.round(event.sample.score * 100)),
-              ),
-              action: {
-                label: t.appSimilarSavedAction,
-                kind: "use-sample",
-                sampleId: event.sample.id,
+            dispatch({
+              type: "PUSH_ENTRY",
+              entry: {
+                role: "agent",
+                text: t.appSimilarSaved(
+                  event.sample.name,
+                  formatNumber(Math.round(event.sample.score * 100)),
+                ),
+                action: {
+                  label: t.appSimilarSavedAction,
+                  kind: "use-sample",
+                  sampleId: event.sample.id,
+                },
               },
             });
             return;
@@ -555,29 +493,30 @@ export function useDesignChat({
             const advice = errorAdvice(event.kind, t);
             const shown = translateServerMessage(language, event.code, event.params, event.message);
             const { text: errText, details } = splitErrorMessage(shown);
-            pushEntry({
-              role: "agent",
-              tone: "error",
-              text: `⛔ ${errText}\n${advice.hint}`,
-              details:
-                [event.details, event.message !== shown ? event.message : details]
-                  .filter(Boolean)
-                  .join("\n\n") || undefined,
-              action:
-                advice.action === "retry"
-                  ? { label: t.appResend }
-                  : advice.action === "open-api"
-                    ? { label: t.appOpenApiConfig, kind: "open-api" }
-                    : undefined,
+            dispatch({
+              type: "PUSH_ENTRY",
+              entry: {
+                role: "agent",
+                tone: "error",
+                text: `⛔ ${errText}\n${advice.hint}`,
+                details:
+                  [event.details, event.message !== shown ? event.message : details]
+                    .filter(Boolean)
+                    .join("\n\n") || undefined,
+                action:
+                  advice.action === "retry"
+                    ? { label: t.appResend }
+                    : advice.action === "open-api"
+                      ? { label: t.appOpenApiConfig, kind: "open-api" }
+                      : undefined,
+              },
             });
             return;
           }
 
           const { stats } = event;
-          applySpec(event.spec);
-          setNative(false);
-
           if (stats.step?.partial) {
+            dispatch({ type: "APPLY_SPEC", spec: event.spec, native: false });
             setStage({
               stage: "step",
               message: t.appStepProgress(
@@ -590,7 +529,7 @@ export function useDesignChat({
           }
 
           receivedSpec = true;
-          pushSpecEntry(
+          buildAndApplyResult(
             event.spec,
             stats,
             "",
@@ -612,26 +551,30 @@ export function useDesignChat({
         const recovered = await waitForDesignJob(jobId, controller.signal);
         if (recovered === "missing") {
           setStage(null);
-          pushEntry({
-            role: "agent",
-            tone: "error",
-            text: t.appErrorJobLost,
-            action: { label: t.appResend },
+          dispatch({
+            type: "PUSH_ENTRY",
+            entry: {
+              role: "agent",
+              tone: "error",
+              text: t.appErrorJobLost,
+              action: { label: t.appResend },
+            },
           });
         } else if (recovered === "timeout") {
           setStage(null);
-          pushEntry({
-            role: "agent",
-            tone: "error",
-            text: t.appErrorJobTimeout,
-            action: { label: t.appResend },
+          dispatch({
+            type: "PUSH_ENTRY",
+            entry: {
+              role: "agent",
+              tone: "error",
+              text: t.appErrorJobTimeout,
+              action: { label: t.appResend },
+            },
           });
         } else if (recovered.spec) {
           receivedSpec = true;
           setStage(null);
-          applySpec(recovered.spec);
-          setNative(false);
-          pushSpecEntry(
+          buildAndApplyResult(
             recovered.spec,
             recovered.stats ?? {
               parameters: recovered.spec.parameters?.length ?? 0,
@@ -656,43 +599,55 @@ export function useDesignChat({
             recovered.error ?? t.appUnknownReason,
           );
           const { text: errText, details } = splitErrorMessage(stored);
-          pushEntry({
-            role: "agent",
-            tone: "error",
-            text: t.appErrorJobFailed(errText, errorAdvice("unknown", t).hint),
-            details,
-            action: { label: t.appResend },
+          dispatch({
+            type: "PUSH_ENTRY",
+            entry: {
+              role: "agent",
+              tone: "error",
+              text: t.appErrorJobFailed(errText, errorAdvice("unknown", t).hint),
+              details,
+              action: { label: t.appResend },
+            },
           });
         }
       } else if (!receivedSpec && !stalled && !failed) {
         failed = true;
-        pushEntry({
-          role: "agent",
-          text: t.appErrorClosedNoSpec,
-          tone: "error",
-          action: { label: t.appResend },
+        dispatch({
+          type: "PUSH_ENTRY",
+          entry: {
+            role: "agent",
+            text: t.appErrorClosedNoSpec,
+            tone: "error",
+            action: { label: t.appResend },
+          },
         });
       }
     } catch (error) {
       if (stalled) {
         failed = true;
-        pushEntry({
-          role: "agent",
-          text: t.appErrorNoResponse,
-          tone: "error",
-          action: { label: t.appResend },
+        dispatch({
+          type: "PUSH_ENTRY",
+          entry: {
+            role: "agent",
+            text: t.appErrorNoResponse,
+            tone: "error",
+            action: { label: t.appResend },
+          },
         });
       } else if (error instanceof Error && error.name === "AbortError") {
-        pushEntry({ role: "agent", text: t.appStopped });
+        dispatch({ type: "PUSH_ENTRY", entry: { role: "agent", text: t.appStopped } });
       } else {
         const message = error instanceof Error ? error.message : String(error);
         const { text: errText, details } = splitErrorMessage(message);
-        pushEntry({
-          role: "agent",
-          tone: "error",
-          text: `⛔ ${errText}\n${errorAdvice(null, t).hint}`,
-          details,
-          action: { label: t.appResend },
+        dispatch({
+          type: "PUSH_ENTRY",
+          entry: {
+            role: "agent",
+            tone: "error",
+            text: `⛔ ${errText}\n${errorAdvice(null, t).hint}`,
+            details,
+            action: { label: t.appResend },
+          },
         });
         void pingServer().then((ping) => setServerOnline(Boolean(ping?.ok)));
       }
@@ -711,15 +666,53 @@ export function useDesignChat({
   };
 
   const handleSendPartsToChat = (incoming: ChatTarget[]) => {
-    setChatTargets((current) => {
-      const next = [...current];
-      for (const target of incoming) {
-        if (!next.some((item) => item.partId === target.partId)) next.push(target);
-      }
-      return next;
-    });
-    setChatFocusSignal((value) => value + 1);
+    dispatch({ type: "ADD_CHAT_TARGETS", targets: incoming });
     setMobileTab("chat");
+  };
+
+  const handleRemoveTarget = (index: number) => {
+    dispatch({ type: "REMOVE_CHAT_TARGET", index });
+  };
+
+  const handleUndoSpecEntry = (snapshot: FamilySpec | null) => {
+    dispatch({ type: "APPLY_SPEC", spec: snapshot, native: false });
+  };
+
+  const handleRetryLast = () => {
+    if (!lastPromptRef.current) return;
+    void handleSend(lastPromptRef.current, undefined, {
+      targets: lastTargetsRef.current,
+      noteIds: lastNoteIdsRef.current,
+    });
+  };
+
+  const handleEntryAction = (action: { kind?: string; sampleId?: string }) => {
+    if (action.kind === "fresh") {
+      if (!lastPromptRef.current) return;
+      void handleSend(lastPromptRef.current, undefined, {
+        fresh: true,
+        targets: lastTargetsRef.current,
+        noteIds: lastNoteIdsRef.current,
+      });
+      return;
+    }
+    if (action.kind === "use-sample" && action.sampleId) {
+      void (async () => {
+        const loaded = await fetchSavedModelDetail(action.sampleId!);
+        const rawSample = loaded?.spec ?? null;
+        if (!rawSample) return;
+        const sampleSpec = migrateSpec(rawSample).spec as unknown as FamilySpec;
+        dispatch({ type: "APPLY_SPEC", spec: sampleSpec });
+        void handleSend(lastPromptRef.current, sampleSpec);
+      })();
+      return;
+    }
+    if (lastPromptRef.current) void handleSend(lastPromptRef.current);
+  };
+
+  const handleLoadSampleChat = () => {
+    if (running) return;
+    void handleSend(t.chatSuggestion1);
   };
 
   const sendNotesToAgent = (notes: ModelNote[]) => {
@@ -843,20 +836,14 @@ export function useDesignChat({
     if (!demoRaw) return;
     const parsed = validateSpec(demoRaw).spec;
 
-    applySpec(null, { reset: true });
-    setSelectedPartId(null);
-    setHiddenPartIds([]);
-    setTransparentPartIds([]);
-    setCurrentModelId(null);
-    setModelNotes([]);
-    setFocusNote(null);
-    setChatTargets([]);
+    dispatch({
+      type: "START_DEMO_BUILD",
+      userEntry: { role: "user", text: userPromptText },
+    });
     setRunning(true);
     const startSimTime = Date.now();
     setRunStartedAt(startSimTime);
     setNow(startSimTime);
-
-    pushEntry({ role: "user", text: userPromptText });
     setStage({ stage: "reading", message: t.appDemoStageReading });
 
     setTimeout(() => {
@@ -876,7 +863,11 @@ export function useDesignChat({
           formatNumber(allParts.length),
         ),
       });
-      applySpec({ ...parsed, parts: allParts.slice(0, 1), connectors: [] }, { record: false });
+      dispatch({
+        type: "APPLY_SPEC",
+        spec: { ...parsed, parts: allParts.slice(0, 1), connectors: [] },
+        record: false,
+      });
     }, baseDelay);
 
     for (let i = 2; i <= allParts.length; i++) {
@@ -890,14 +881,15 @@ export function useDesignChat({
               formatNumber(allParts.length),
             ),
           });
-          applySpec(
-            {
+          dispatch({
+            type: "APPLY_SPEC",
+            spec: {
               ...parsed,
               parts: allParts.slice(0, i),
               connectors: i === allParts.length ? parsed.connectors : [],
             },
-            { record: false },
-          );
+            record: false,
+          });
         },
         baseDelay + (i - 1) * partStep,
       );
@@ -913,15 +905,22 @@ export function useDesignChat({
       setRunning(false);
       setRunStartedAt(null);
       setStage(null);
-      applySpec(parsed, { record: false });
+      dispatch({
+        type: "APPLY_SPEC",
+        spec: parsed,
+        record: false,
+      });
 
       const partCount = parsed.parts?.length ?? 0;
       const paramCount = parsed.parameters?.length ?? 0;
-      pushEntry({
-        role: "agent",
-        text: t.appDemoDone(parsed.name, formatNumber(partCount), formatNumber(paramCount)),
-        notes: Array.isArray(parsed.notes) ? parsed.notes : [parsed.notes || t.appDemoNote],
-        meta: `${((totalBuildTime + 600) / 1000).toFixed(1)}s · Simulated pass`,
+      dispatch({
+        type: "PUSH_ENTRY",
+        entry: {
+          role: "agent",
+          text: t.appDemoDone(parsed.name, formatNumber(partCount), formatNumber(paramCount)),
+          notes: Array.isArray(parsed.notes) ? parsed.notes : [parsed.notes || t.appDemoNote],
+          meta: `${((totalBuildTime + 600) / 1000).toFixed(1)}s · Simulated pass`,
+        },
       });
 
       setToast({ text: t.appDemoToastDone(parsed.name), tone: "ok" });
@@ -938,12 +937,8 @@ export function useDesignChat({
     incomplete,
     attachments,
     chatTargets,
-    setChatTargets,
     chatFocusSignal,
     uploading,
-    lastPromptRef,
-    lastTargetsRef,
-    lastNoteIdsRef,
     handleAttach,
     handleRemoveAttachment,
     handleModel,
@@ -952,6 +947,11 @@ export function useDesignChat({
     handleSend,
     handleStop,
     handleSendPartsToChat,
+    handleRemoveTarget,
+    handleUndoSpecEntry,
+    handleRetryLast,
+    handleEntryAction,
+    handleLoadSampleChat,
     handleSendNote,
     handleSendAllNotes,
     handleLoadDemo,

@@ -7,8 +7,6 @@ import {
   type SetStateAction,
 } from "react";
 import { analyzeSpec, migrateSpec, type FamilySpec } from "@family/spec-core";
-import type { ChatEntry } from "../components/ChatPanel";
-import type { ChatTarget, ModelNote } from "../lib/annotations";
 import {
   createLibraryGroup,
   deleteLibraryGroup,
@@ -28,52 +26,24 @@ import {
   saveModel,
   uploadModelThumbnail,
   type LibraryGroupSummary,
-  type Lod,
   type SavedModelMeta,
   type SavedModelRevision,
   type TrashItem,
 } from "../lib/api";
 import { ALL_GROUPS, UNGROUPED, readLibraryState } from "../lib/library";
-import type { Strings } from "../lib/strings";
+import { useI18n } from "../lib/i18n";
+import { useStudio } from "./StudioContext";
 import { newId, type ThumbJob, type ToastState } from "./types";
 
 interface UseLibraryOptions {
-  t: Strings;
-  formatDateTime: (date: number | Date) => string;
-  spec: FamilySpec | null;
-  setSpec: Dispatch<SetStateAction<FamilySpec | null>>;
-  applySpec: (next: FamilySpec | null, options?: { record?: boolean; reset?: boolean }) => void;
-  entries: ChatEntry[];
-  setEntries: Dispatch<SetStateAction<ChatEntry[]>>;
-  modelNotes: ModelNote[];
-  setModelNotes: Dispatch<SetStateAction<ModelNote[]>>;
-  setFocusNote: Dispatch<SetStateAction<ModelNote | null>>;
-  setChatTargets: Dispatch<SetStateAction<ChatTarget[]>>;
-  currentModelId: string | null;
-  setCurrentModelId: Dispatch<SetStateAction<string | null>>;
-  handleLod: (value: Lod) => void;
   viewerCaptureRef: MutableRefObject<(() => string | null) | null>;
   setToast: Dispatch<SetStateAction<ToastState | null>>;
 }
 
-export function useLibrary({
-  t,
-  formatDateTime,
-  spec,
-  setSpec,
-  applySpec,
-  entries,
-  setEntries,
-  modelNotes,
-  setModelNotes,
-  setFocusNote,
-  setChatTargets,
-  currentModelId,
-  setCurrentModelId,
-  handleLod,
-  viewerCaptureRef,
-  setToast,
-}: UseLibraryOptions) {
+export function useLibrary({ viewerCaptureRef, setToast }: UseLibraryOptions) {
+  const { t, formatDateTime } = useI18n();
+  const { state, dispatch } = useStudio();
+  const { spec, entries, modelNotes, currentModelId } = state;
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [savedList, setSavedList] = useState<SavedModelMeta[]>([]);
   const [libraryGroups, setLibraryGroups] = useState<LibraryGroupSummary[]>([]);
@@ -223,7 +193,7 @@ export function useLibrary({
         thumbnail: captureThumbnail(),
       });
       if (res.ok && res.id) {
-        setCurrentModelId(res.id);
+        dispatch({ type: "SET_CURRENT_MODEL_ID", id: res.id });
         setToast({ text: t.appSaveDone, sub: `ID: ${res.id}`, tone: "ok" });
         if (libraryOpen) void refreshLibrary();
       }
@@ -252,8 +222,8 @@ export function useLibrary({
         thumbnail: captureThumbnail(),
       });
       if (res.ok && res.id) {
-        applySpec(copySpec);
-        setCurrentModelId(res.id);
+        dispatch({ type: "APPLY_SPEC", spec: copySpec });
+        dispatch({ type: "SET_CURRENT_MODEL_ID", id: res.id });
         setToast({ text: t.appSaveAsDone, sub: t.appSaveAsSub(name), tone: "ok" });
         if (libraryOpen) void refreshLibrary();
       }
@@ -344,11 +314,12 @@ export function useLibrary({
       return;
     }
     const migratedSpec = migrateSpec(revision.spec).spec as unknown as FamilySpec;
-    applySpec(migratedSpec, { reset: true });
-    setCurrentModelId(historyModelId);
-    setModelNotes(Array.isArray(revision.annotations) ? revision.annotations : []);
-    setFocusNote(null);
-    setChatTargets([]);
+    dispatch({
+      type: "LOAD_FAMILY",
+      spec: migratedSpec,
+      modelId: historyModelId,
+      annotations: Array.isArray(revision.annotations) ? revision.annotations : [],
+    });
     setHistoryModelId(null);
     setLibraryOpen(false);
     setToast({
@@ -363,23 +334,23 @@ export function useLibrary({
       const detail = await fetchSavedModelDetail(id);
       if (detail && detail.spec) {
         const migratedSpec = migrateSpec(detail.spec).spec as unknown as FamilySpec;
-        applySpec(migratedSpec, { reset: true });
-        setCurrentModelId(detail.id);
-        setModelNotes(Array.isArray(detail.annotations) ? detail.annotations : []);
-        setFocusNote(null);
-        setChatTargets([]);
-        if (migratedSpec.lod) handleLod(migratedSpec.lod);
-        if (Array.isArray(detail.entries) && detail.entries.length > 0) {
-          setEntries(detail.entries);
-        } else {
-          setEntries([
-            {
-              id: newId(),
-              role: "agent",
-              text: t.appModelReloaded(migratedSpec.name),
-            },
-          ]);
-        }
+        const nextEntries =
+          Array.isArray(detail.entries) && detail.entries.length > 0
+            ? detail.entries
+            : [
+                {
+                  id: newId(),
+                  role: "agent" as const,
+                  text: t.appModelReloaded(migratedSpec.name),
+                },
+              ];
+        dispatch({
+          type: "LOAD_FAMILY",
+          spec: migratedSpec,
+          modelId: detail.id,
+          annotations: Array.isArray(detail.annotations) ? detail.annotations : [],
+          entries: nextEntries,
+        });
         setLibraryOpen(false);
         setToast({ text: t.appModelOpened(detail.name), tone: "ok" });
       }
@@ -403,16 +374,12 @@ export function useLibrary({
         current.map((entry) => (entry.id === id ? { ...entry, name: renamed } : entry)),
       );
 
-      if (currentModelId === id) {
-        setSpec((current) => {
-          if (!current) return current;
-          const next: FamilySpec = { ...current, name: renamed };
-          if (current.typeName && current.typeName.trim() === item.name.trim()) {
-            next.typeName = renamed;
-          }
-          return next;
-        });
-      }
+      dispatch({
+        type: "RENAME_ACTIVE_MODEL",
+        modelId: id,
+        name: renamed,
+        previousListName: item.name,
+      });
 
       setToast({ text: t.appModelRenamed, tone: "ok" });
     } catch (error) {
@@ -440,10 +407,7 @@ export function useLibrary({
         })),
       );
       if (currentModelId === id) {
-        setCurrentModelId(null);
-        setModelNotes([]);
-        setFocusNote(null);
-        setChatTargets([]);
+        dispatch({ type: "CLEAR_MODEL_LINK" });
       }
       setToast({
         text: t.trashMoved,
@@ -499,12 +463,10 @@ export function useLibrary({
 
   const handleNewModel = () => {
     if (spec && !window.confirm(t.appConfirmNewModel)) return;
-    applySpec(null, { reset: true });
-    setCurrentModelId(null);
-    setModelNotes([]);
-    setFocusNote(null);
-    setChatTargets([]);
-    setEntries([{ id: "seed", role: "agent", text: t.appChatGreeting }]);
+    dispatch({
+      type: "RESET_SESSION",
+      greetingEntry: { id: "seed", role: "agent", text: t.appChatGreeting },
+    });
   };
 
   return {

@@ -1,12 +1,4 @@
-import {
-  useDeferredValue,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type Dispatch,
-  type SetStateAction,
-} from "react";
+import { useDeferredValue, useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import {
   analyzeSpec,
   paramKey,
@@ -15,53 +7,44 @@ import {
   type FamilyTypeEntry,
   type ParameterType,
 } from "@family/spec-core";
-import type { ChatEntry } from "../components/ChatPanel";
 import type { ModelNote, NoteDraft } from "../lib/annotations";
 import { buildFamily, downloadPortablePackage, exportMultiType } from "../lib/api";
 import type { Units } from "../lib/format";
-import type { Strings } from "../lib/strings";
-import { newId, type ToastState } from "./types";
+import { useI18n } from "../lib/i18n";
+import { useStudio } from "./StudioContext";
+import type { ToastState } from "./types";
 
 interface UseModelStateOptions {
-  t: Strings;
-  formatNumber: (n: number) => string;
-  pushEntry: (entry: Omit<ChatEntry, "id">) => void;
   setToast: Dispatch<SetStateAction<ToastState | null>>;
   setMobileTab: Dispatch<SetStateAction<"chat" | "viewer" | "params">>;
 }
 
-export function useModelState({
-  t,
-  formatNumber,
-  pushEntry,
-  setToast,
-  setMobileTab,
-}: UseModelStateOptions) {
-  const [spec, setSpec] = useState<FamilySpec | null>(null);
+export function useModelState({ setToast, setMobileTab }: UseModelStateOptions) {
+  const { t, formatNumber } = useI18n();
+  const { state, specRef, dispatch } = useStudio();
+  const {
+    spec,
+    past,
+    future,
+    native,
+    units,
+    revitVersion,
+    modelNotes,
+    focusNote,
+    selectedPartId,
+    highlightPartIds,
+    focusPartId,
+    hiddenPartIds,
+    transparentPartIds,
+  } = state;
+
   const [building, setBuilding] = useState(false);
   const [exportingTypes, setExportingTypes] = useState(false);
   const [previewTypeValues, setPreviewTypeValues] = useState<Record<string, number> | null>(null);
   const [exportingPortable, setExportingPortable] = useState(false);
-  const [native, setNative] = useState(false);
-  const [units, setUnits] = useState<Units>("mm");
-  const [revitVersion, setRevitVersion] = useState("2024");
-  const [modelNotes, setModelNotes] = useState<ModelNote[]>([]);
-  const [focusNote, setFocusNote] = useState<ModelNote | null>(null);
-  const [selectedPartId, setSelectedPartId] = useState<string | null>(null);
-  const [highlightPartIds, setHighlightPartIds] = useState<string[]>([]);
-  const [focusPartId, setFocusPartId] = useState<string | null>(null);
-  const [hiddenPartIds, setHiddenPartIds] = useState<string[]>([]);
-  const [transparentPartIds, setTransparentPartIds] = useState<string[]>([]);
 
-  const specRef = useRef<FamilySpec | null>(null);
-  specRef.current = spec;
-  const pastRef = useRef<FamilySpec[]>([]);
-  const futureRef = useRef<FamilySpec[]>([]);
-  const lastRecordRef = useRef(0);
-  const [historyVersion, setHistoryVersion] = useState(0);
-  const canUndo = pastRef.current.length > 0;
-  const canRedo = futureRef.current.length > 0;
-  void historyVersion;
+  const canUndo = past.length > 0;
+  const canRedo = future.length > 0;
 
   const analysis = useMemo(() => (spec ? analyzeSpec(spec) : null), [spec]);
 
@@ -78,10 +61,6 @@ export function useModelState({
   }, [spec, previewTypeValues]);
 
   const previewModel = useDeferredValue(previewAnalysis?.model ?? null);
-
-  useEffect(() => {
-    setHighlightPartIds([]);
-  }, [spec]);
 
   const issuePartIds = useMemo(() => {
     const ids = new Set<string>();
@@ -105,56 +84,15 @@ export function useModelState({
   const deferredModel = useDeferredValue(analysis?.model ?? null);
   const deferredParameters = useDeferredValue(spec?.parameters);
 
-  /**
-   * Single entry point for spec changes so undo/redo sees every edit.
-   * Rapid changes (typing in a parameter) coalesce into one history step.
-   */
   const applySpec = (
     next: FamilySpec | null,
-    options: { record?: boolean; reset?: boolean } = {},
+    options: { record?: boolean; reset?: boolean; native?: boolean } = {},
   ) => {
-    const { record = true, reset = false } = options;
-    const current = specRef.current;
-
-    if (reset) {
-      pastRef.current = [];
-      futureRef.current = [];
-      lastRecordRef.current = 0;
-    } else if (record && current && next && current !== next) {
-      const now = Date.now();
-      if (now - lastRecordRef.current > 400 || pastRef.current.length === 0) {
-        pastRef.current.push(current);
-        if (pastRef.current.length > 60) pastRef.current.shift();
-      }
-      lastRecordRef.current = now;
-      futureRef.current = [];
-    }
-
-    setSpec(next);
-    setHistoryVersion((version) => version + 1);
+    dispatch({ type: "APPLY_SPEC", spec: next, ...options });
   };
 
-  const undoSpec = () => {
-    const previous = pastRef.current.pop();
-    const current = specRef.current;
-    if (!previous) return;
-    if (current) futureRef.current.push(current);
-    lastRecordRef.current = 0;
-    setSpec(previous);
-    setNative(false);
-    setHistoryVersion((version) => version + 1);
-  };
-
-  const redoSpec = () => {
-    const next = futureRef.current.pop();
-    const current = specRef.current;
-    if (!next) return;
-    if (current) pastRef.current.push(current);
-    lastRecordRef.current = 0;
-    setSpec(next);
-    setNative(false);
-    setHistoryVersion((version) => version + 1);
-  };
+  const undoSpec = () => dispatch({ type: "UNDO_SPEC" });
+  const redoSpec = () => dispatch({ type: "REDO_SPEC" });
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -170,101 +108,67 @@ export function useModelState({
       const key = event.key.toLowerCase();
       if (key === "z" && !event.shiftKey) {
         event.preventDefault();
-        undoSpec();
+        dispatch({ type: "UNDO_SPEC" });
       } else if ((key === "z" && event.shiftKey) || key === "y") {
         event.preventDefault();
-        redoSpec();
+        dispatch({ type: "REDO_SPEC" });
       }
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [dispatch]);
 
-  const handleToggleHidePart = (partId: string) => {
-    setHiddenPartIds((current) =>
-      current.includes(partId) ? current.filter((id) => id !== partId) : [...current, partId],
-    );
-  };
+  const handleToggleHidePart = (partId: string) =>
+    dispatch({ type: "TOGGLE_HIDE_PART", partId });
 
-  const handleUnhideAll = () => {
-    setHiddenPartIds([]);
-  };
+  const handleUnhideAll = () => dispatch({ type: "UNHIDE_ALL_PARTS" });
 
   const handleIsolatePart = (partId: string) => {
-    const all = analysis?.model.parts.map((part) => part.id) ?? [];
-    setHiddenPartIds(all.filter((id) => id !== partId));
-    setSelectedPartId(partId);
+    const allPartIds = analysis?.model.parts.map((part) => part.id) ?? [];
+    dispatch({ type: "ISOLATE_PART", partId, allPartIds });
   };
 
   const handleFocusPart = (partId: string) => {
-    setSelectedPartId(partId);
-    setFocusPartId(partId);
-    setFocusNote(null);
+    dispatch({ type: "FOCUS_PART", partId });
     setMobileTab("viewer");
   };
 
   const handleAddNote = (draft: NoteDraft) => {
-    const note: ModelNote = {
-      id: newId(),
-      partId: draft.partId,
-      partName: draft.partName,
-      point: draft.point,
-      normal: draft.normal,
-      text: draft.text,
-      status: "open",
-      createdAt: Date.now(),
-    };
-    setModelNotes((current) => [...current, note]);
-    setSelectedPartId(note.partId);
+    dispatch({ type: "ADD_NOTE", draft });
     setMobileTab("viewer");
   };
 
   const handleFocusNote = (note: ModelNote) => {
-    setSelectedPartId(note.partId);
-    setFocusPartId(note.partId);
-    setFocusNote(note);
+    dispatch({ type: "FOCUS_NOTE", note });
     setMobileTab("viewer");
   };
 
-  const handleUpdateNote = (id: string, text: string) => {
-    setModelNotes((current) => current.map((note) => (note.id === id ? { ...note, text } : note)));
-  };
+  const handleUpdateNote = (id: string, text: string) =>
+    dispatch({ type: "UPDATE_NOTE", id, text });
 
-  const handleDeleteNote = (id: string) => {
-    setModelNotes((current) => current.filter((note) => note.id !== id));
-    setFocusNote((current) => (current?.id === id ? null : current));
-  };
+  const handleDeleteNote = (id: string) => dispatch({ type: "DELETE_NOTE", id });
 
-  const handleToggleNoteResolved = (id: string) => {
-    setModelNotes((current) =>
-      current.map((note) =>
-        note.id === id
-          ? {
-              ...note,
-              status: note.status === "resolved" ? "open" : "resolved",
-              resolvedAt: note.status === "resolved" ? undefined : Date.now(),
-            }
-          : note,
-      ),
-    );
-  };
+  const handleToggleNoteResolved = (id: string) =>
+    dispatch({ type: "TOGGLE_NOTE_RESOLVED", id });
 
-  const handleToggleTransparentPart = (partId: string) => {
-    setTransparentPartIds((current) =>
-      current.includes(partId) ? current.filter((id) => id !== partId) : [...current, partId],
-    );
-  };
+  const handleToggleTransparentPart = (partId: string) =>
+    dispatch({ type: "TOGGLE_TRANSPARENT_PART", partId });
 
-  const handleResetTransparent = () => {
-    setTransparentPartIds([]);
-  };
+  const handleResetTransparent = () => dispatch({ type: "RESET_TRANSPARENT_PARTS" });
+
+  const setUnits = (next: Units) => dispatch({ type: "SET_UNITS", units: next });
+  const setRevitVersion = (version: string) =>
+    dispatch({ type: "SET_REVIT_VERSION", version });
+  const setSelectedPartId = (partId: string | null) =>
+    dispatch({ type: "SELECT_PART", partId });
+  const setHighlightPartIds = (partIds: string[]) =>
+    dispatch({ type: "HIGHLIGHT_PARTS", partIds });
 
   const handleChangeTypes = (types: FamilyTypeEntry[]) => {
     const current = specRef.current;
     if (!current) return;
-    applySpec({ ...current, types });
-    setNative(false);
+    applySpec({ ...current, types }, { native: false });
   };
 
   const handlePreviewType = (values: Record<string, number> | null) => {
@@ -305,25 +209,29 @@ export function useModelState({
   const handleUpdateParameter = (name: string, value: number | string) => {
     const current = specRef.current;
     if (!current) return;
-    applySpec({
-      ...current,
-      parameters: current.parameters.map((param) =>
-        param.name === name ? { ...param, value, formula: undefined } : param,
-      ),
-    });
-    setNative(false);
+    applySpec(
+      {
+        ...current,
+        parameters: current.parameters.map((param) =>
+          param.name === name ? { ...param, value, formula: undefined } : param,
+        ),
+      },
+      { native: false },
+    );
   };
 
   const handleUpdateConnectorHost = (connectorId: string, host: "solid" | "reference-plane") => {
     const current = specRef.current;
     if (!current) return;
-    applySpec({
-      ...current,
-      connectors: (current.connectors ?? []).map((connector) =>
-        connector.id === connectorId ? { ...connector, host } : connector,
-      ),
-    });
-    setNative(false);
+    applySpec(
+      {
+        ...current,
+        connectors: (current.connectors ?? []).map((connector) =>
+          connector.id === connectorId ? { ...connector, host } : connector,
+        ),
+      },
+      { native: false },
+    );
   };
 
   const handleAddParameter = (draft: {
@@ -347,8 +255,7 @@ export function useModelState({
       group: draft.type === "Length" || draft.type === "Angle" ? "Dimensions" : "Data",
       value: draft.value,
     };
-    applySpec({ ...current, parameters: [...current.parameters, parameter] });
-    setNative(false);
+    applySpec({ ...current, parameters: [...current.parameters, parameter] }, { native: false });
   };
 
   const handleExportPortable = async () => {
@@ -389,7 +296,7 @@ export function useModelState({
     try {
       const result = await buildFamily({ ...spec, revitVersion });
       if (result.ok && result.path) {
-        setNative(true);
+        dispatch({ type: "SET_NATIVE", native: true });
 
         const driving = result.stats?.driving ?? [];
         const unlabelled = result.stats?.unlabelled ?? [];
@@ -410,18 +317,21 @@ export function useModelState({
           ...inert.map((name) => t.appBuildInert(name)),
         ].slice(0, 14);
 
-        pushEntry({
-          role: "agent",
-          text:
-            `${t.appBuildResultTitle(spec.name, result.revitVersion ?? revitVersion)}\n` +
-            `${t.appBuildDriving(formatNumber(driving.length), formatNumber(result.stats?.locks ?? 0))}` +
-            `${result.stats?.refPlanes ? ` · ${formatNumber(result.stats.refPlanes)} reference plane` : ""}` +
-            `${result.stats?.joins ? ` · ${formatNumber(result.stats.joins)} join` : ""}` +
-            `${result.stats?.totalForms !== undefined ? ` · ${formatNumber(result.stats.totalForms)} form` : ""}` +
-            `${qa ? ` · QA ${qa.ok ? "pass" : t.appBuildQaWarnings(formatNumber(qa.warnings.length))}` : ""}`,
-          notes: notes.length > 0 ? notes : undefined,
-          meta: result.path,
-          tone: (driving.length === 0 && !rebuildMode) || missingForms > 0 ? "error" : undefined,
+        dispatch({
+          type: "PUSH_ENTRY",
+          entry: {
+            role: "agent",
+            text:
+              `${t.appBuildResultTitle(spec.name, result.revitVersion ?? revitVersion)}\n` +
+              `${t.appBuildDriving(formatNumber(driving.length), formatNumber(result.stats?.locks ?? 0))}` +
+              `${result.stats?.refPlanes ? ` · ${formatNumber(result.stats.refPlanes)} reference plane` : ""}` +
+              `${result.stats?.joins ? ` · ${formatNumber(result.stats.joins)} join` : ""}` +
+              `${result.stats?.totalForms !== undefined ? ` · ${formatNumber(result.stats.totalForms)} form` : ""}` +
+              `${qa ? ` · QA ${qa.ok ? "pass" : t.appBuildQaWarnings(formatNumber(qa.warnings.length))}` : ""}`,
+            notes: notes.length > 0 ? notes : undefined,
+            meta: result.path,
+            tone: (driving.length === 0 && !rebuildMode) || missingForms > 0 ? "error" : undefined,
+          },
         });
 
         setToast({
@@ -482,7 +392,6 @@ export function useModelState({
 
   return {
     spec,
-    setSpec,
     specRef,
     analysis,
     previewTypeValues,
@@ -492,7 +401,6 @@ export function useModelState({
     issuePartIds,
     skippedCutPartIds,
     native,
-    setNative,
     units,
     setUnits,
     revitVersion,
@@ -501,19 +409,14 @@ export function useModelState({
     exportingTypes,
     exportingPortable,
     modelNotes,
-    setModelNotes,
     focusNote,
-    setFocusNote,
     selectedPartId,
     setSelectedPartId,
     highlightPartIds,
     setHighlightPartIds,
     focusPartId,
-    setFocusPartId,
     hiddenPartIds,
-    setHiddenPartIds,
     transparentPartIds,
-    setTransparentPartIds,
     canUndo,
     canRedo,
     applySpec,

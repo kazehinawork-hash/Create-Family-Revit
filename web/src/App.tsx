@@ -1,10 +1,9 @@
 import { lazy, Suspense, useRef, useState, type CSSProperties } from "react";
-import { migrateSpec, type FamilySpec } from "@family/spec-core";
-import { ChatPanel, type ChatEntry } from "./components/ChatPanel";
+import { ChatPanel } from "./components/ChatPanel";
 import { ParameterPanel } from "./components/ParameterPanel";
 import { TopBar } from "./components/TopBar";
 import { Viewer } from "./components/Viewer";
-import { newId } from "./hooks/types";
+import { StudioProvider, useStudio } from "./hooks/StudioContext";
 import { useDesignChat } from "./hooks/useDesignChat";
 import { useLibrary } from "./hooks/useLibrary";
 import { useModelState } from "./hooks/useModelState";
@@ -12,7 +11,6 @@ import { usePanelLayout } from "./hooks/usePanelLayout";
 import { useServerConnection } from "./hooks/useServerConnection";
 import { useTheme } from "./hooks/useTheme";
 import { useToast } from "./hooks/useToast";
-import { fetchSavedModelDetail } from "./lib/api";
 import { useI18n } from "./lib/i18n";
 
 const LibraryPanel = lazy(() =>
@@ -20,11 +18,16 @@ const LibraryPanel = lazy(() =>
 );
 
 export function App() {
-  const { t, formatDate, formatDateTime, formatNumber, language } = useI18n();
-  const [entries, setEntries] = useState<ChatEntry[]>([
-    { id: "seed", role: "agent", text: t.appChatGreeting },
-  ]);
-  const [currentModelId, setCurrentModelId] = useState<string | null>(null);
+  return (
+    <StudioProvider>
+      <StudioWorkspace />
+    </StudioProvider>
+  );
+}
+
+function StudioWorkspace() {
+  const { t, language } = useI18n();
+  const { state } = useStudio();
   const [showGrid, setShowGrid] = useState(true);
   const [showPlanes, setShowPlanes] = useState(false);
   const [showConnectors, setShowConnectors] = useState(false);
@@ -45,67 +48,19 @@ export function App() {
     resetWidth,
   } = usePanelLayout();
 
-  const pushEntry = (entry: Omit<ChatEntry, "id">) => {
-    setEntries((current) => [...current, { ...entry, id: newId() }]);
-  };
-
-  const syncDefaultModelRef = useRef<(availableIds: string[], serverDefaultModel?: string | null) => void>(
-    () => {},
-  );
+  const syncDefaultModelRef = useRef<
+    (availableIds: string[], serverDefaultModel?: string | null) => void
+  >(() => {});
   const { health, serverOnline, setServerOnline } = useServerConnection((result) => {
     const available = (result.models ?? []).map((entry) => entry.id);
     syncDefaultModelRef.current(available, result.agent?.model);
   });
 
-  const modelState = useModelState({
-    t,
-    formatNumber,
-    pushEntry,
-    setToast,
-    setMobileTab,
-  });
-
-  const chat = useDesignChat({
-    t,
-    formatDate,
-    formatNumber,
-    language,
-    spec: modelState.spec,
-    specRef: modelState.specRef,
-    applySpec: modelState.applySpec,
-    setNative: modelState.setNative,
-    modelNotes: modelState.modelNotes,
-    setModelNotes: modelState.setModelNotes,
-    setFocusNote: modelState.setFocusNote,
-    setSelectedPartId: modelState.setSelectedPartId,
-    setHiddenPartIds: modelState.setHiddenPartIds,
-    setTransparentPartIds: modelState.setTransparentPartIds,
-    setCurrentModelId,
-    setServerOnline,
-    setToast,
-    setMobileTab,
-    pushEntry,
-  });
+  const modelState = useModelState({ setToast, setMobileTab });
+  const chat = useDesignChat({ setServerOnline, setToast, setMobileTab });
   syncDefaultModelRef.current = chat.syncDefaultModel;
 
-  const library = useLibrary({
-    t,
-    formatDateTime,
-    spec: modelState.spec,
-    setSpec: modelState.setSpec,
-    applySpec: modelState.applySpec,
-    entries,
-    setEntries,
-    modelNotes: modelState.modelNotes,
-    setModelNotes: modelState.setModelNotes,
-    setFocusNote: modelState.setFocusNote,
-    setChatTargets: chat.setChatTargets,
-    currentModelId,
-    setCurrentModelId,
-    handleLod: chat.handleLod,
-    viewerCaptureRef,
-    setToast,
-  });
+  const library = useLibrary({ viewerCaptureRef, setToast });
 
   return (
     <div className="app" lang={language}>
@@ -174,7 +129,7 @@ export function App() {
         }
       >
         <ChatPanel
-          entries={entries}
+          entries={state.entries}
           running={chat.running}
           stageMessage={
             chat.stage
@@ -200,54 +155,19 @@ export function App() {
           onFocusPart={modelState.handleFocusPart}
           partIds={modelState.spec?.parts.map((part) => part.id) ?? []}
           targets={chat.chatTargets}
-          onRemoveTarget={(index) =>
-            chat.setChatTargets((current) => current.filter((_, position) => position !== index))
-          }
+          onRemoveTarget={chat.handleRemoveTarget}
           focusSignal={chat.chatFocusSignal}
           onHighlightParts={(partIds) => {
             modelState.setHighlightPartIds(partIds);
             setMobileTab("viewer");
           }}
-          onUndoSpec={(snapshot) => {
-            modelState.applySpec(snapshot);
-            modelState.setNative(false);
-          }}
+          onUndoSpec={chat.handleUndoSpecEntry}
           attachments={chat.attachments}
           uploading={chat.uploading}
           onAttach={chat.handleAttach}
           onRemoveAttachment={chat.handleRemoveAttachment}
-          onRetry={() => {
-            if (chat.lastPromptRef.current) {
-              void chat.handleSend(chat.lastPromptRef.current, undefined, {
-                targets: chat.lastTargetsRef.current,
-                noteIds: chat.lastNoteIdsRef.current,
-              });
-            }
-          }}
-          onAction={(action) => {
-            if (action.kind === "fresh") {
-              if (chat.lastPromptRef.current) {
-                void chat.handleSend(chat.lastPromptRef.current, undefined, {
-                  fresh: true,
-                  targets: chat.lastTargetsRef.current,
-                  noteIds: chat.lastNoteIdsRef.current,
-                });
-              }
-              return;
-            }
-            if (action.kind === "use-sample" && action.sampleId) {
-              void (async () => {
-                const loaded = await fetchSavedModelDetail(action.sampleId!);
-                const rawSample = loaded?.spec ?? null;
-                if (!rawSample) return;
-                const sampleSpec = migrateSpec(rawSample).spec as unknown as FamilySpec;
-                modelState.applySpec(sampleSpec);
-                void chat.handleSend(chat.lastPromptRef.current, sampleSpec);
-              })();
-              return;
-            }
-            if (chat.lastPromptRef.current) void chat.handleSend(chat.lastPromptRef.current);
-          }}
+          onRetry={chat.handleRetryLast}
+          onAction={chat.handleEntryAction}
           sessionUsage={chat.sessionUsage}
           incomplete={chat.incomplete}
           serverOnline={serverOnline}
@@ -277,10 +197,7 @@ export function App() {
           onCaptureReady={(capture) => {
             viewerCaptureRef.current = capture;
           }}
-          onLoadSample={() => {
-            if (chat.running) return;
-            void chat.handleSend(t.chatSuggestion1);
-          }}
+          onLoadSample={chat.handleLoadSampleChat}
           parameters={modelState.deferredParameters}
           materials={modelState.spec?.materials ?? []}
           units={modelState.units}
@@ -425,7 +342,7 @@ export function App() {
             models={library.savedList}
             groups={library.libraryGroups}
             loading={library.libraryLoading}
-            currentModelId={currentModelId}
+            currentModelId={state.currentModelId}
             activeGroup={library.libraryGroup}
             historyModelId={library.historyModelId}
             revisions={library.revisions}
