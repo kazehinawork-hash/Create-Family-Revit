@@ -72,6 +72,27 @@ Each part needs `id`, `name`, `material`, one `solid`, optional `cuts` (primitiv
 
 Optional `anchor` pins which face the builder locks to the reference planes on each axis: `{"x":"min","y":"max","z":"min"}`. Use it when a part must grow from a known side (a door hinged on the left, a panel that follows the right cheek). Leave it out to let the builder use the outermost face.
 
+## Sheet-metal macros (trayRun)
+
+For cable trays, cable ladders and their fittings, describe the folded run with a `trayRun` macro instead of hand-assembling boxes/prisms. The macro is expanded into ordinary prism parts before validation; the viewer and the Revit add-in only see the expanded parts. Keep every size as a formula over parameters. `parts` may be `[]` when the spec uses macros.
+
+```json
+"macros": [{
+  "kind": "trayRun", "id": "run-main", "material": "Galvanized",
+  "width": "[Ladder Width 1]", "height": "[Ladder Height]",
+  "thickness": "[Sheet Thickness]", "flange": "[Flange Width]",
+  "segments": [
+    { "kind": "straight", "length": "[Run A]" },
+    { "kind": "bend", "angle": 90, "direction": "left" },
+    { "kind": "straight", "length": "[Run B]" }
+  ]
+}]
+```
+
+- 45° and 90° plan bends are mitred automatically: never draw separate corner gussets or overlap two trays.
+- The macro names parts stably (`Bottom Leg 1`, `Side Wall Left 1`, …) and adds one connector at each free end unless `"connectors": false`.
+- Edit the macro on later turns; do not edit generated parts (they carry `"from"` and are regenerated).
+
 ## Geometry quality checklist (self-check before returning)
 
 - Casing, access doors, top deck or mounting rails, duct collars, electrical box, pipe stubs and internal equipment must all be modelled when the brief implies them.

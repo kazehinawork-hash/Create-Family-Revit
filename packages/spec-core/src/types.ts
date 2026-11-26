@@ -187,6 +187,11 @@ export interface FamilyPart {
   array?: PartArray;
   /** Pins which face the builder locks to the reference planes, per axis. */
   anchor?: PartAnchor;
+  /**
+   * Id of the sheet-metal macro that generated this part. Such parts are
+   * regenerated on every expansion and must not be hand-edited.
+   */
+  from?: string;
 }
 
 export interface MaterialDef {
@@ -237,6 +242,8 @@ export interface MepConnector {
   flow?: Numeric;
   flowUnit?: "L/s" | "m3/h" | "CFM";
   pressureDrop?: Numeric;
+  /** Id of the macro that generated this connector; regenerated on expansion. */
+  from?: string;
 }
 
 export interface FamilySpec {
@@ -254,12 +261,53 @@ export interface FamilySpec {
   description?: string;
   parameters: FamilyParameter[];
   parts: FamilyPart[];
+  /** Compact sheet-metal macros expanded into ordinary parts before analysis. */
+  macros?: SpecMacro[];
   connectors?: MepConnector[];
   materials?: MaterialDef[];
   /** Family types exported together with the family, one row per size. */
   types?: FamilyTypeEntry[];
   notes?: string[];
 }
+
+export interface TrayRunStraight {
+  kind: "straight";
+  /** Centreline length between the two miter joints. Number or formula. */
+  length: Numeric;
+}
+
+export interface TrayRunBend {
+  kind: "bend";
+  /** Plan turn in degrees. 45 and 90 are supported. */
+  angle: Numeric;
+  direction: "left" | "right";
+}
+
+export type TrayRunSegment = TrayRunStraight | TrayRunBend;
+
+/**
+ * A folded tray/ladder run. Each straight leg becomes a bottom plate, two mitred
+ * side walls and two top flanges; consecutive legs share the exact miter edge, so
+ * the run closes without gaps or overlaps. All sizes stay formulas.
+ */
+export interface TrayRunMacro {
+  kind: "trayRun";
+  /** Stable id prefix for generated parts, e.g. "run-main". */
+  id?: string;
+  material?: string;
+  width: Numeric;
+  height: Numeric;
+  thickness: Numeric;
+  /** Width of the folded top flange/lip; 0 disables it. */
+  flange?: Numeric;
+  lid?: boolean;
+  /** Adds one rectangular connector at each free end. Defaults to true. */
+  connectors?: boolean;
+  start?: { x: Numeric; y: Numeric; z: Numeric };
+  segments: TrayRunSegment[];
+}
+
+export type SpecMacro = TrayRunMacro;
 
 /** One row of the Types tab: a family type and the driver values it sets. */
 export interface FamilyTypeEntry {

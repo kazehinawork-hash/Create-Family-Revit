@@ -86,3 +86,42 @@ test("does not touch a loft that already has two sections", () => {
   assert.equal(healed.parts.length, 1);
   assert.equal(healed.parts[0].id, "transition");
 });
+
+test("expands trayRun macros into parts, connectors and default material during auto-heal", () => {
+  const healed = autoHealSpec({
+    schemaVersion: "1.0",
+    name: "Máng cáp vát góc",
+    category: "Cable Tray Fitting",
+    units: "mm",
+    parameters: [
+      { name: "Tray Width", type: "Length", value: 400 },
+      { name: "Tray Height", type: "Length", value: 100 },
+      { name: "Sheet Thickness", type: "Length", value: 1.5 },
+      { name: "Flange Width", type: "Length", value: 15 },
+    ],
+    parts: [],
+    macros: [
+      {
+        kind: "trayRun",
+        id: "tray-main",
+        material: "Galvanized",
+        width: "[Tray Width]",
+        height: "[Tray Height]",
+        thickness: "[Sheet Thickness]",
+        flange: "[Flange Width]",
+        segments: [
+          { kind: "straight", length: 800 },
+          { kind: "bend", angle: 90, direction: "left" },
+          { kind: "straight", length: 600 },
+        ],
+      },
+    ],
+  });
+
+  assert.equal(healed.parts.length, 10);
+  assert.equal(healed.connectors.length, 2);
+  assert.ok(healed.materials.some((m) => m.name === "Galvanized"));
+  const analysis = analyzeSpec(healed);
+  assert.equal(analysis.ok, true);
+  assert.equal(analysis.errors.length, 0);
+});

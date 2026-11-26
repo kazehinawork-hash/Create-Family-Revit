@@ -1,4 +1,5 @@
 import { expressionDependencies } from "./expr.js";
+import { expandMacros } from "./macros.js";
 import { paramKey } from "./parameters.js";
 import {
   CATEGORIES,
@@ -13,6 +14,7 @@ import {
   type Issue,
   type ParameterGroup,
   type ParameterType,
+  type SpecMacro,
 } from "./types.js";
 
 type Json = Record<string, unknown>;
@@ -684,8 +686,9 @@ export interface ValidationResult {
 }
 
 export function validateSpec(raw: unknown): ValidationResult {
-  const issues: Issue[] = [];
-  const root: Json = isObject(raw) ? raw : {};
+  const expanded = expandMacros(raw);
+  const issues: Issue[] = [...expanded.issues];
+  const root: Json = isObject(expanded.spec) ? expanded.spec : {};
 
   if (!isObject(raw)) {
     issues.push({ severity: "error", path: "$", message: "The spec must be a JSON object" });
@@ -880,7 +883,8 @@ export function validateSpec(raw: unknown): ValidationResult {
   }
 
   const rawParts = Array.isArray(root.parts) ? root.parts : [];
-  if (!Array.isArray(root.parts) || rawParts.length === 0) {
+  const macroCount = Array.isArray(root.macros) ? root.macros.length : 0;
+  if ((!Array.isArray(root.parts) || rawParts.length === 0) && macroCount === 0) {
     issues.push({ severity: "error", path: "parts", message: "parts must be a non-empty array" });
   }
   if (rawParts.length > LIMITS.maxParts) {
@@ -1012,6 +1016,7 @@ export function validateSpec(raw: unknown): ValidationResult {
       cuts: Array.isArray(entry.cuts) ? (entry.cuts as FamilyPart["cuts"]) : [],
       array,
       anchor,
+      from: text(entry.from) || undefined,
     });
   });
 
@@ -1074,6 +1079,7 @@ export function validateSpec(raw: unknown): ValidationResult {
         flow: conn.flow as any,
         flowUnit: conn.flowUnit as any,
         pressureDrop: conn.pressureDrop as any,
+        from: text(conn.from) || undefined,
       }))
     : undefined;
 
@@ -1114,6 +1120,7 @@ export function validateSpec(raw: unknown): ValidationResult {
     description: text(root.description) || undefined,
     parameters,
     parts,
+    macros: Array.isArray(root.macros) ? (root.macros as SpecMacro[]) : undefined,
     connectors,
     materials,
     types,

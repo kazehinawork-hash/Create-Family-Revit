@@ -5,6 +5,7 @@ import {
   buildParameterGraph,
   collectConnectorDependencies,
   collectPartDependencies,
+  expandMacros,
   formatIssues,
   parameterDependencySummary,
 } from "@family/spec-core";
@@ -204,6 +205,14 @@ export function autoHealSpec(spec) {
   };
   if (catMap[catLower]) {
     spec.category = catMap[catLower];
+  }
+
+  // Sheet-metal macros are compact in the model answer; materialise their prisms
+  // and connectors before part-level heal so materials/ids/colors/ports are repaired.
+  if (Array.isArray(spec.macros) && spec.macros.length > 0) {
+    const expanded = expandMacros(spec);
+    if (Array.isArray(expanded.spec?.parts)) spec.parts = expanded.spec.parts;
+    if (Array.isArray(expanded.spec?.connectors)) spec.connectors = expanded.spec.connectors;
   }
 
   // 2. Parameters normalization & clean-up

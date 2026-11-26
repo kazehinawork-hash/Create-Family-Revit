@@ -149,7 +149,7 @@
     },
     "parts": {
       "type": "array",
-      "minItems": 1,
+      "minItems": 0,
       "items": {
         "type": "object",
         "required": ["solid"],
@@ -186,9 +186,70 @@
         }
       }
     },
-    "notes": { "type": "array", "items": { "type": "string" } }
+    "notes": { "type": "array", "items": { "type": "string" } },
+    "macros": {
+      "type": "array",
+      "description": "Compact sheet-metal macros expanded into ordinary parts before validation. Use macros instead of hand-building mitred tray corners from boxes/prisms.",
+      "items": { "$ref": "#/$defs/macro" }
+    }
   },
   "$defs": {
+    "macro": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": ["kind", "width", "height", "thickness", "segments"],
+          "additionalProperties": true,
+          "properties": {
+            "kind": { "const": "trayRun" },
+            "id": {
+              "type": "string",
+              "description": "Stable id prefix for generated parts, e.g. main-run."
+            },
+            "material": { "type": "string" },
+            "width": { "$ref": "#/$defs/numeric" },
+            "height": { "$ref": "#/$defs/numeric" },
+            "thickness": { "$ref": "#/$defs/numeric" },
+            "flange": { "$ref": "#/$defs/numeric" },
+            "lid": { "type": "boolean" },
+            "connectors": { "type": "boolean" },
+            "start": {
+              "type": "object",
+              "properties": {
+                "x": { "$ref": "#/$defs/numeric" },
+                "y": { "$ref": "#/$defs/numeric" },
+                "z": { "$ref": "#/$defs/numeric" }
+              }
+            },
+            "segments": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "oneOf": [
+                  {
+                    "type": "object",
+                    "required": ["kind", "length"],
+                    "properties": {
+                      "kind": { "const": "straight" },
+                      "length": { "$ref": "#/$defs/numeric" }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "required": ["kind", "angle", "direction"],
+                    "properties": {
+                      "kind": { "const": "bend" },
+                      "angle": { "enum": [45, 90] },
+                      "direction": { "enum": ["left", "right"] }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    },
     "numeric": { "type": ["number", "string"] },
     "vec3": {
       "type": "object",

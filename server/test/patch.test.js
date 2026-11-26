@@ -137,3 +137,23 @@ test("mergeDeep keeps untouched nested fields", () => {
     { a: 1, nested: { b: 2, c: 9 } },
   );
 });
+
+test("macro patches update, add and remove macros cleanly", () => {
+  const withMacro = {
+    ...base(),
+    macros: [{ kind: "trayRun", id: "run-1", width: 400, height: 100, thickness: 1.5, segments: [{ kind: "straight", length: 500 }] }],
+  };
+
+  assert.equal(isSpecPatch({ updateMacros: [] }), true);
+  assert.equal(isSpecPatch({ macros: [] }), true);
+
+  const updated = applySpecPatch(withMacro, {
+    updateMacros: [{ id: "run-1", width: 600 }],
+    addMacros: [{ kind: "trayRun", id: "run-2", width: 300, height: 100, thickness: 1.5, segments: [{ kind: "straight", length: 400 }] }],
+  });
+  assert.equal(updated.macros.length, 2);
+  assert.equal(updated.macros[0].width, 600);
+
+  const removed = applySpecPatch(updated, { removeMacroIds: ["run-1"] });
+  assert.deepEqual(removed.macros.map((m) => m.id), ["run-2"]);
+});

@@ -19,12 +19,19 @@ const FAMILY_RULES = [
     pattern:
       /\belbow\b|\btee\b|\bcross\b|transition|reducer|branch|fitting|ống gió|cút|tê\b|chữ\s?y|ngã\s?(ba|tư)|thu\s?hẹp|côn|reducer/i,
   },
+  {
+    block: "Sheet-metal macros (trayRun)",
+    // Only cable-tray/ladder work benefits from the folded-run macro.
+    pattern:
+      /cable\s*(tray|ladder)|thang\s*cáp|máng\s*cáp|máng\s*thang|tray\s*run|folded\s*sheet|thép\s*tấm|tôn\s*chấn/i,
+  },
 ];
 
 /** Sections that only help when they apply. Everything else is always sent. */
 const CONDITIONAL = {
   "Physical layout rules": "family",
   "Duct and pipe fittings": "family",
+  "Sheet-metal macros (trayRun)": "family",
   "Datasheet handling": "datasheet",
   "Reasoning about a parameter change": "edit",
   "Output shape": "build",
@@ -41,6 +48,7 @@ const TRIM_ORDER = [
   "Geometry quality checklist (self-check before returning)",
   "Missing information",
   "Orientation and hosting",
+  "Sheet-metal macros (trayRun)",
 ];
 
 export function splitPromptBlocks(markdown) {

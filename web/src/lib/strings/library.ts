@@ -28,6 +28,13 @@ export const vi = {
   libGroupOptionsAria: (name: string) => `Tùy chọn cho nhóm ${name}`,
   libConfirmDeleteGroup: (name: string, ungrouped: string) =>
     `Xoá nhóm "${name}"? Các family trong nhóm sẽ chuyển về "${ungrouped}" và không bị xoá.`,
+  libDeleteGroupTitle: (name: string) => `Xoá nhóm "${name}"?`,
+  libDeleteGroupCount: (count: number, ungrouped: string) =>
+    `${count} family sẽ chuyển về "${ungrouped}", không có family nào bị xoá.`,
+  libGroupNameTaken: (name: string) =>
+    `Đã có nhóm "${name}" — chọn tên khác hoặc gộp hai nhóm thủ công.`,
+  libGroupRowHint: (name: string) =>
+    `Bấm để lọc · nhấp đúp hoặc chuột phải để đổi tên/xoá nhóm ${name}`,
   libNewGroupPrompt: "Tên nhóm mới:",
   libMoveNewGroupPrompt: "Chuyển family vào nhóm mới:",
 
@@ -57,6 +64,13 @@ export const en: Translation<typeof vi> = {
   libGroupOptionsAria: (name) => `Options for group ${name}`,
   libConfirmDeleteGroup: (name, ungrouped) =>
     `Delete group "${name}"? Its families move to "${ungrouped}" and are not deleted.`,
+  libDeleteGroupTitle: (name) => `Delete group "${name}"?`,
+  libDeleteGroupCount: (count, ungrouped) =>
+    `${count} ${count === 1 ? "family" : "families"} will move to "${ungrouped}"; nothing is deleted.`,
+  libGroupNameTaken: (name) =>
+    `A group named "${name}" already exists — pick another name or merge them by hand.`,
+  libGroupRowHint: (name) =>
+    `Click to filter · double-click or right-click to rename/delete ${name}`,
   libNewGroupPrompt: "New group name:",
   libMoveNewGroupPrompt: "Move the family into a new group:",
 
@@ -87,6 +101,11 @@ export const zh: Translation<typeof vi> = {
   libGroupOptionsAria: (name) => `分组 ${name} 的选项`,
   libConfirmDeleteGroup: (name, ungrouped) =>
     `删除分组“${name}”？组内的 family 将移到“${ungrouped}”，不会被删除。`,
+  libDeleteGroupTitle: (name) => `删除分组“${name}”？`,
+  libDeleteGroupCount: (count, ungrouped) =>
+    `${count} 个 family 将移到“${ungrouped}”，不会删除任何 family。`,
+  libGroupNameTaken: (name) => `已存在分组“${name}” — 请换一个名称或手动合并。`,
+  libGroupRowHint: (name) => `单击筛选 · 双击或右键重命名/删除分组 ${name}`,
   libNewGroupPrompt: "新分组名称：",
   libMoveNewGroupPrompt: "将 family 移到新分组：",
 
