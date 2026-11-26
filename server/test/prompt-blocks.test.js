@@ -4,7 +4,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { buildSystemPrompt, selectBlocks } from "../src/prompt-blocks.js";
+import { DEFAULT_BUDGET, REQUIRED_BLOCKS, buildSystemPrompt, selectBlocks } from "../src/prompt-blocks.js";
 import { systemPrompt } from "../src/designer/prompts.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -59,4 +59,41 @@ test("production systemPrompt keeps trayRun instructions under default LOD 350/4
   });
   assert.equal(/\b(trayRun|slotPattern)\b/i.test(off), false);
   assert.ok(off.includes("tâm góc theo đường tim"), "centerline leg-length rule must remain present when macros=false");
+});
+
+test("cable tray, AHU, and duct briefs fit default budget and retain Notes, Output shape, and Geometry quality checklist", () => {
+  const samples = [
+    ["cable-tray", "Ngã tư máng cáp 400x100 thép tấm tôn chấn, 4 nhánh 300mm, LOD 400"],
+    ["ahu", "AHU 12000 CFM có cooling coil, filter, fan, cửa thăm, LOD 350"],
+    ["duct", "Ống gió tê 45 độ 300x200 và côn thu chữ nhật, LOD 350"],
+  ];
+
+  for (const [label, brief] of samples) {
+    for (const options of [{}, { edit: true }, { datasheet: true }]) {
+      const built = buildSystemPrompt(designerPrompt, { text: brief, options });
+      assert.equal(built.dropped.length, 0, `${label} ${JSON.stringify(options)} dropped: ${built.dropped.join(", ")}`);
+      assert.ok(
+        built.prompt.length <= DEFAULT_BUDGET,
+        `${label} prompt ${built.prompt.length} exceeded budget ${DEFAULT_BUDGET}`,
+      );
+      for (const required of REQUIRED_BLOCKS) {
+        assert.ok(
+          built.blocks.includes(required),
+          `${label} ${JSON.stringify(options)} missing required block "${required}"`,
+        );
+      }
+      assert.ok(
+        built.blocks.includes("Build parity (studio ↔ .rfa)"),
+        `${label} missing Build parity block`,
+      );
+    }
+
+    const fullSystem = systemPrompt(400, null, { text: brief });
+    assert.ok(fullSystem.includes("## Notes"), `${label} systemPrompt missing ## Notes`);
+    assert.ok(fullSystem.includes("## Output shape"), `${label} systemPrompt missing ## Output shape`);
+    assert.ok(
+      fullSystem.includes("## Geometry quality checklist (self-check before returning)"),
+      `${label} systemPrompt missing ## Geometry quality checklist`,
+    );
+  }
 });

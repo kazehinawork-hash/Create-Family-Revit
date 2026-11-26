@@ -40,12 +40,16 @@ const CONDITIONAL = {
 /** Target size of the system prompt; leaves room for core + triggered family blocks. */
 export const DEFAULT_BUDGET = 14000;
 
-/** When over budget, drop in this order (least harmful first). Triggered family blocks stay kept. */
+/** Blocks that must stay in the prompt so format, notes and geometry self-checks remain intact. */
+export const REQUIRED_BLOCKS = [
+  "Notes",
+  "Geometry quality checklist (self-check before returning)",
+  "Output shape",
+];
+
+/** When over budget, drop only optional polish sections so required blocks stay intact. */
 const TRIM_ORDER = [
   "Build parity (studio ↔ .rfa)",
-  "Notes",
-  "Output shape",
-  "Geometry quality checklist (self-check before returning)",
   "Missing information",
   "Orientation and hosting",
 ];
@@ -139,10 +143,7 @@ export function buildSystemPrompt(markdown, { text = "", options = {} } = {}) {
   return {
     prompt,
     blocks: kept.map((block) => block.title),
-    dropped: [
-      ...blocks.filter((block) => !kept.includes(block)).map((block) => block.title),
-      ...dropped.filter((title) => blocks.some((block) => block.title === title)),
-    ].filter((title, index, all) => all.indexOf(title) === index),
+    dropped,
   };
 }
 
