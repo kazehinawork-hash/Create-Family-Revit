@@ -1,0 +1,1293 @@
+{
+  "name": "Ngã 4 Máng Cáp",
+  "schemaVersion": "1.0",
+  "category": "Cable Tray Fitting",
+  "partType": "Cross",
+  "units": "mm",
+  "lod": 400,
+  "parameters": [
+    {
+      "name": "Tray Width",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 300
+    },
+    {
+      "name": "Tray Height",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 100
+    },
+    {
+      "name": "Sheet Thickness",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 1.5
+    },
+    {
+      "name": "Arm Length",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 150
+    },
+    {
+      "name": "Chamfer Size",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 100
+    },
+    {
+      "name": "Flange Width",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 15
+    },
+    {
+      "name": "Half Width",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "formula": "[Tray Width] / 2"
+    },
+    {
+      "name": "Inner Corner",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "formula": "[Half Width] + [Chamfer Size]"
+    },
+    {
+      "name": "Half Span",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "formula": "[Inner Corner] + [Arm Length]"
+    },
+    {
+      "name": "Bolt Hole Diameter",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 9
+    },
+    {
+      "name": "Bolt Edge Offset",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 25
+    },
+    {
+      "name": "Bolt Row Spacing",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "formula": "[Tray Height] - 2 * [Bolt Edge Offset]"
+    },
+    {
+      "name": "Bolt Col Spacing",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 40
+    },
+    {
+      "name": "Perf Hole Radius",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 5
+    },
+    {
+      "name": "Perf Edge Offset",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 35
+    },
+    {
+      "name": "Perf Spacing",
+      "type": "Length",
+      "group": "Dimensions",
+      "instance": false,
+      "value": 45
+    },
+    {
+      "name": "Manufacturer",
+      "type": "Text",
+      "group": "Identity Data",
+      "instance": false,
+      "value": "Thinh Phat"
+    }
+  ],
+  "parts": [
+    {
+      "id": "base-plate",
+      "name": "Cross Base Plate",
+      "material": "Galvanized Steel",
+      "solid": {
+        "kind": "prism",
+        "plane": "xy",
+        "from": 0,
+        "to": "[Sheet Thickness]",
+        "points": [
+          [
+            "-[Half Width]",
+            "-[Half Span]"
+          ],
+          [
+            "[Half Width]",
+            "-[Half Span]"
+          ],
+          [
+            "[Half Width]",
+            "-[Inner Corner]"
+          ],
+          [
+            "[Inner Corner]",
+            "-[Half Width]"
+          ],
+          [
+            "[Half Span]",
+            "-[Half Width]"
+          ],
+          [
+            "[Half Span]",
+            "[Half Width]"
+          ],
+          [
+            "[Inner Corner]",
+            "[Half Width]"
+          ],
+          [
+            "[Half Width]",
+            "[Inner Corner]"
+          ],
+          [
+            "[Half Width]",
+            "[Half Span]"
+          ],
+          [
+            "-[Half Width]",
+            "[Half Span]"
+          ],
+          [
+            "-[Half Width]",
+            "[Inner Corner]"
+          ],
+          [
+            "-[Inner Corner]",
+            "[Half Width]"
+          ],
+          [
+            "-[Half Span]",
+            "[Half Width]"
+          ],
+          [
+            "-[Half Span]",
+            "-[Half Width]"
+          ],
+          [
+            "-[Inner Corner]",
+            "-[Half Width]"
+          ],
+          [
+            "-[Half Width]",
+            "-[Inner Corner]"
+          ]
+        ]
+      },
+      "cuts": [
+        {
+          "kind": "cylinder",
+          "axis": "z",
+          "base": {
+            "x": "-[Half Span] + [Perf Edge Offset]",
+            "y": "-[Half Width] + [Perf Edge Offset]",
+            "z": -1
+          },
+          "radius": "[Perf Hole Radius]",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "z",
+          "base": {
+            "x": "-[Half Span] + [Perf Edge Offset] + [Perf Spacing]",
+            "y": "-[Half Width] + [Perf Edge Offset]",
+            "z": -1
+          },
+          "radius": "[Perf Hole Radius]",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "z",
+          "base": {
+            "x": "-[Half Span] + [Perf Edge Offset] + 2 * [Perf Spacing]",
+            "y": "-[Half Width] + [Perf Edge Offset]",
+            "z": -1
+          },
+          "radius": "[Perf Hole Radius]",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "z",
+          "base": {
+            "x": "-[Half Span] + [Perf Edge Offset]",
+            "y": "[Half Width] - [Perf Edge Offset]",
+            "z": -1
+          },
+          "radius": "[Perf Hole Radius]",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "z",
+          "base": {
+            "x": "-[Half Span] + [Perf Edge Offset] + [Perf Spacing]",
+            "y": "[Half Width] - [Perf Edge Offset]",
+            "z": -1
+          },
+          "radius": "[Perf Hole Radius]",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "z",
+          "base": {
+            "x": "-[Half Span] + [Perf Edge Offset] + 2 * [Perf Spacing]",
+            "y": "[Half Width] - [Perf Edge Offset]",
+            "z": -1
+          },
+          "radius": "[Perf Hole Radius]",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "z",
+          "base": {
+            "x": "[Half Span] - [Perf Edge Offset]",
+            "y": "-[Half Width] + [Perf Edge Offset]",
+            "z": -1
+          },
+          "radius": "[Perf Hole Radius]",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "z",
+          "base": {
+            "x": "[Half Span] - [Perf Edge Offset] - [Perf Spacing]",
+            "y": "-[Half Width] + [Perf Edge Offset]",
+            "z": -1
+          },
+          "radius": "[Perf Hole Radius]",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "z",
+          "base": {
+            "x": "[Half Span] - [Perf Edge Offset] - 2 * [Perf Spacing]",
+            "y": "-[Half Width] + [Perf Edge Offset]",
+            "z": -1
+          },
+          "radius": "[Perf Hole Radius]",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "z",
+          "base": {
+            "x": "[Half Span] - [Perf Edge Offset]",
+            "y": "[Half Width] - [Perf Edge Offset]",
+            "z": -1
+          },
+          "radius": "[Perf Hole Radius]",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "z",
+          "base": {
+            "x": "[Half Span] - [Perf Edge Offset] - [Perf Spacing]",
+            "y": "[Half Width] - [Perf Edge Offset]",
+            "z": -1
+          },
+          "radius": "[Perf Hole Radius]",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "z",
+          "base": {
+            "x": "[Half Span] - [Perf Edge Offset] - 2 * [Perf Spacing]",
+            "y": "[Half Width] - [Perf Edge Offset]",
+            "z": -1
+          },
+          "radius": "[Perf Hole Radius]",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "z",
+          "base": {
+            "x": "-[Half Width] + [Perf Edge Offset]",
+            "y": "-[Half Span] + [Perf Edge Offset]",
+            "z": -1
+          },
+          "radius": "[Perf Hole Radius]",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "z",
+          "base": {
+            "x": "-[Half Width] + [Perf Edge Offset]",
+            "y": "-[Half Span] + [Perf Edge Offset] + [Perf Spacing]",
+            "z": -1
+          },
+          "radius": "[Perf Hole Radius]",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "z",
+          "base": {
+            "x": "-[Half Width] + [Perf Edge Offset]",
+            "y": "-[Half Span] + [Perf Edge Offset] + 2 * [Perf Spacing]",
+            "z": -1
+          },
+          "radius": "[Perf Hole Radius]",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "z",
+          "base": {
+            "x": "[Half Width] - [Perf Edge Offset]",
+            "y": "-[Half Span] + [Perf Edge Offset]",
+            "z": -1
+          },
+          "radius": "[Perf Hole Radius]",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "z",
+          "base": {
+            "x": "[Half Width] - [Perf Edge Offset]",
+            "y": "-[Half Span] + [Perf Edge Offset] + [Perf Spacing]",
+            "z": -1
+          },
+          "radius": "[Perf Hole Radius]",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "z",
+          "base": {
+            "x": "[Half Width] - [Perf Edge Offset]",
+            "y": "-[Half Span] + [Perf Edge Offset] + 2 * [Perf Spacing]",
+            "z": -1
+          },
+          "radius": "[Perf Hole Radius]",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "z",
+          "base": {
+            "x": "-[Half Width] + [Perf Edge Offset]",
+            "y": "[Half Span] - [Perf Edge Offset]",
+            "z": -1
+          },
+          "radius": "[Perf Hole Radius]",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "z",
+          "base": {
+            "x": "-[Half Width] + [Perf Edge Offset]",
+            "y": "[Half Span] - [Perf Edge Offset] - [Perf Spacing]",
+            "z": -1
+          },
+          "radius": "[Perf Hole Radius]",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "z",
+          "base": {
+            "x": "-[Half Width] + [Perf Edge Offset]",
+            "y": "[Half Span] - [Perf Edge Offset] - 2 * [Perf Spacing]",
+            "z": -1
+          },
+          "radius": "[Perf Hole Radius]",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "z",
+          "base": {
+            "x": "[Half Width] - [Perf Edge Offset]",
+            "y": "[Half Span] - [Perf Edge Offset]",
+            "z": -1
+          },
+          "radius": "[Perf Hole Radius]",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "z",
+          "base": {
+            "x": "[Half Width] - [Perf Edge Offset]",
+            "y": "[Half Span] - [Perf Edge Offset] - [Perf Spacing]",
+            "z": -1
+          },
+          "radius": "[Perf Hole Radius]",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "z",
+          "base": {
+            "x": "[Half Width] - [Perf Edge Offset]",
+            "y": "[Half Span] - [Perf Edge Offset] - 2 * [Perf Spacing]",
+            "z": -1
+          },
+          "radius": "[Perf Hole Radius]",
+          "height": "[Sheet Thickness] + 2"
+        }
+      ]
+    },
+    {
+      "id": "wall-ne",
+      "name": "Corner Wall NE",
+      "material": "Galvanized Steel",
+      "solid": {
+        "kind": "prism",
+        "plane": "xy",
+        "from": 0,
+        "to": "[Tray Height]",
+        "points": [
+          [
+            "[Half Width]",
+            "[Half Span]"
+          ],
+          [
+            "[Half Width]",
+            "[Inner Corner]"
+          ],
+          [
+            "[Inner Corner]",
+            "[Half Width]"
+          ],
+          [
+            "[Half Span]",
+            "[Half Width]"
+          ],
+          [
+            "[Half Span]",
+            "[Half Width] + [Sheet Thickness]"
+          ],
+          [
+            "[Inner Corner] + [Sheet Thickness]",
+            "[Half Width] + [Sheet Thickness]"
+          ],
+          [
+            "[Half Width] + [Sheet Thickness]",
+            "[Inner Corner] + [Sheet Thickness]"
+          ],
+          [
+            "[Half Width] + [Sheet Thickness]",
+            "[Half Span]"
+          ]
+        ]
+      },
+      "cuts": [
+        {
+          "kind": "cylinder",
+          "axis": "x",
+          "base": {
+            "x": "[Half Width] - 1",
+            "y": "[Half Span] - [Bolt Edge Offset]",
+            "z": "[Bolt Edge Offset]"
+          },
+          "radius": "[Bolt Hole Diameter] / 2",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "x",
+          "base": {
+            "x": "[Half Width] - 1",
+            "y": "[Half Span] - [Bolt Edge Offset] - [Bolt Col Spacing]",
+            "z": "[Bolt Edge Offset]"
+          },
+          "radius": "[Bolt Hole Diameter] / 2",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "x",
+          "base": {
+            "x": "[Half Width] - 1",
+            "y": "[Half Span] - [Bolt Edge Offset]",
+            "z": "[Bolt Edge Offset] + [Bolt Row Spacing]"
+          },
+          "radius": "[Bolt Hole Diameter] / 2",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "x",
+          "base": {
+            "x": "[Half Width] - 1",
+            "y": "[Half Span] - [Bolt Edge Offset] - [Bolt Col Spacing]",
+            "z": "[Bolt Edge Offset] + [Bolt Row Spacing]"
+          },
+          "radius": "[Bolt Hole Diameter] / 2",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "y",
+          "base": {
+            "x": "[Half Span] - [Bolt Edge Offset]",
+            "y": "[Half Width] - 1",
+            "z": "[Bolt Edge Offset]"
+          },
+          "radius": "[Bolt Hole Diameter] / 2",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "y",
+          "base": {
+            "x": "[Half Span] - [Bolt Edge Offset] - [Bolt Col Spacing]",
+            "y": "[Half Width] - 1",
+            "z": "[Bolt Edge Offset]"
+          },
+          "radius": "[Bolt Hole Diameter] / 2",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "y",
+          "base": {
+            "x": "[Half Span] - [Bolt Edge Offset]",
+            "y": "[Half Width] - 1",
+            "z": "[Bolt Edge Offset] + [Bolt Row Spacing]"
+          },
+          "radius": "[Bolt Hole Diameter] / 2",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "y",
+          "base": {
+            "x": "[Half Span] - [Bolt Edge Offset] - [Bolt Col Spacing]",
+            "y": "[Half Width] - 1",
+            "z": "[Bolt Edge Offset] + [Bolt Row Spacing]"
+          },
+          "radius": "[Bolt Hole Diameter] / 2",
+          "height": "[Sheet Thickness] + 2"
+        }
+      ]
+    },
+    {
+      "id": "wall-nw",
+      "name": "Corner Wall NW",
+      "material": "Galvanized Steel",
+      "solid": {
+        "kind": "prism",
+        "plane": "xy",
+        "from": 0,
+        "to": "[Tray Height]",
+        "points": [
+          [
+            "-[Half Span]",
+            "[Half Width]"
+          ],
+          [
+            "-[Inner Corner]",
+            "[Half Width]"
+          ],
+          [
+            "-[Half Width]",
+            "[Inner Corner]"
+          ],
+          [
+            "-[Half Width]",
+            "[Half Span]"
+          ],
+          [
+            "-[Half Width] - [Sheet Thickness]",
+            "[Half Span]"
+          ],
+          [
+            "-[Half Width] - [Sheet Thickness]",
+            "[Inner Corner] + [Sheet Thickness]"
+          ],
+          [
+            "-[Inner Corner] - [Sheet Thickness]",
+            "[Half Width] + [Sheet Thickness]"
+          ],
+          [
+            "-[Half Span]",
+            "[Half Width] + [Sheet Thickness]"
+          ]
+        ]
+      },
+      "cuts": [
+        {
+          "kind": "cylinder",
+          "axis": "x",
+          "base": {
+            "x": "-[Half Width] - [Sheet Thickness] - 1",
+            "y": "[Half Span] - [Bolt Edge Offset]",
+            "z": "[Bolt Edge Offset]"
+          },
+          "radius": "[Bolt Hole Diameter] / 2",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "x",
+          "base": {
+            "x": "-[Half Width] - [Sheet Thickness] - 1",
+            "y": "[Half Span] - [Bolt Edge Offset] - [Bolt Col Spacing]",
+            "z": "[Bolt Edge Offset]"
+          },
+          "radius": "[Bolt Hole Diameter] / 2",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "x",
+          "base": {
+            "x": "-[Half Width] - [Sheet Thickness] - 1",
+            "y": "[Half Span] - [Bolt Edge Offset]",
+            "z": "[Bolt Edge Offset] + [Bolt Row Spacing]"
+          },
+          "radius": "[Bolt Hole Diameter] / 2",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "x",
+          "base": {
+            "x": "-[Half Width] - [Sheet Thickness] - 1",
+            "y": "[Half Span] - [Bolt Edge Offset] - [Bolt Col Spacing]",
+            "z": "[Bolt Edge Offset] + [Bolt Row Spacing]"
+          },
+          "radius": "[Bolt Hole Diameter] / 2",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "y",
+          "base": {
+            "x": "-[Half Span] + [Bolt Edge Offset]",
+            "y": "[Half Width] - 1",
+            "z": "[Bolt Edge Offset]"
+          },
+          "radius": "[Bolt Hole Diameter] / 2",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "y",
+          "base": {
+            "x": "-[Half Span] + [Bolt Edge Offset] + [Bolt Col Spacing]",
+            "y": "[Half Width] - 1",
+            "z": "[Bolt Edge Offset]"
+          },
+          "radius": "[Bolt Hole Diameter] / 2",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "y",
+          "base": {
+            "x": "-[Half Span] + [Bolt Edge Offset]",
+            "y": "[Half Width] - 1",
+            "z": "[Bolt Edge Offset] + [Bolt Row Spacing]"
+          },
+          "radius": "[Bolt Hole Diameter] / 2",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "y",
+          "base": {
+            "x": "-[Half Span] + [Bolt Edge Offset] + [Bolt Col Spacing]",
+            "y": "[Half Width] - 1",
+            "z": "[Bolt Edge Offset] + [Bolt Row Spacing]"
+          },
+          "radius": "[Bolt Hole Diameter] / 2",
+          "height": "[Sheet Thickness] + 2"
+        }
+      ]
+    },
+    {
+      "id": "wall-sw",
+      "name": "Corner Wall SW",
+      "material": "Galvanized Steel",
+      "solid": {
+        "kind": "prism",
+        "plane": "xy",
+        "from": 0,
+        "to": "[Tray Height]",
+        "points": [
+          [
+            "-[Half Width]",
+            "-[Half Span]"
+          ],
+          [
+            "-[Half Width]",
+            "-[Inner Corner]"
+          ],
+          [
+            "-[Inner Corner]",
+            "-[Half Width]"
+          ],
+          [
+            "-[Half Span]",
+            "-[Half Width]"
+          ],
+          [
+            "-[Half Span]",
+            "-[Half Width] - [Sheet Thickness]"
+          ],
+          [
+            "-[Inner Corner] - [Sheet Thickness]",
+            "-[Half Width] - [Sheet Thickness]"
+          ],
+          [
+            "-[Half Width] - [Sheet Thickness]",
+            "-[Inner Corner] - [Sheet Thickness]"
+          ],
+          [
+            "-[Half Width] - [Sheet Thickness]",
+            "-[Half Span]"
+          ]
+        ]
+      },
+      "cuts": [
+        {
+          "kind": "cylinder",
+          "axis": "x",
+          "base": {
+            "x": "-[Half Width] - [Sheet Thickness] - 1",
+            "y": "-[Half Span] + [Bolt Edge Offset]",
+            "z": "[Bolt Edge Offset]"
+          },
+          "radius": "[Bolt Hole Diameter] / 2",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "x",
+          "base": {
+            "x": "-[Half Width] - [Sheet Thickness] - 1",
+            "y": "-[Half Span] + [Bolt Edge Offset] + [Bolt Col Spacing]",
+            "z": "[Bolt Edge Offset]"
+          },
+          "radius": "[Bolt Hole Diameter] / 2",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "x",
+          "base": {
+            "x": "-[Half Width] - [Sheet Thickness] - 1",
+            "y": "-[Half Span] + [Bolt Edge Offset]",
+            "z": "[Bolt Edge Offset] + [Bolt Row Spacing]"
+          },
+          "radius": "[Bolt Hole Diameter] / 2",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "x",
+          "base": {
+            "x": "-[Half Width] - [Sheet Thickness] - 1",
+            "y": "-[Half Span] + [Bolt Edge Offset] + [Bolt Col Spacing]",
+            "z": "[Bolt Edge Offset] + [Bolt Row Spacing]"
+          },
+          "radius": "[Bolt Hole Diameter] / 2",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "y",
+          "base": {
+            "x": "-[Half Span] + [Bolt Edge Offset]",
+            "y": "-[Half Width] - [Sheet Thickness] - 1",
+            "z": "[Bolt Edge Offset]"
+          },
+          "radius": "[Bolt Hole Diameter] / 2",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "y",
+          "base": {
+            "x": "-[Half Span] + [Bolt Edge Offset] + [Bolt Col Spacing]",
+            "y": "-[Half Width] - [Sheet Thickness] - 1",
+            "z": "[Bolt Edge Offset]"
+          },
+          "radius": "[Bolt Hole Diameter] / 2",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "y",
+          "base": {
+            "x": "-[Half Span] + [Bolt Edge Offset]",
+            "y": "-[Half Width] - [Sheet Thickness] - 1",
+            "z": "[Bolt Edge Offset] + [Bolt Row Spacing]"
+          },
+          "radius": "[Bolt Hole Diameter] / 2",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "y",
+          "base": {
+            "x": "-[Half Span] + [Bolt Edge Offset] + [Bolt Col Spacing]",
+            "y": "-[Half Width] - [Sheet Thickness] - 1",
+            "z": "[Bolt Edge Offset] + [Bolt Row Spacing]"
+          },
+          "radius": "[Bolt Hole Diameter] / 2",
+          "height": "[Sheet Thickness] + 2"
+        }
+      ]
+    },
+    {
+      "id": "wall-se",
+      "name": "Corner Wall SE",
+      "material": "Galvanized Steel",
+      "solid": {
+        "kind": "prism",
+        "plane": "xy",
+        "from": 0,
+        "to": "[Tray Height]",
+        "points": [
+          [
+            "[Half Span]",
+            "-[Half Width]"
+          ],
+          [
+            "[Inner Corner]",
+            "-[Half Width]"
+          ],
+          [
+            "[Half Width]",
+            "-[Inner Corner]"
+          ],
+          [
+            "[Half Width]",
+            "-[Half Span]"
+          ],
+          [
+            "[Half Width] + [Sheet Thickness]",
+            "-[Half Span]"
+          ],
+          [
+            "[Half Width] + [Sheet Thickness]",
+            "-[Inner Corner] - [Sheet Thickness]"
+          ],
+          [
+            "[Inner Corner] + [Sheet Thickness]",
+            "-[Half Width] - [Sheet Thickness]"
+          ],
+          [
+            "[Half Span]",
+            "-[Half Width] - [Sheet Thickness]"
+          ]
+        ]
+      },
+      "cuts": [
+        {
+          "kind": "cylinder",
+          "axis": "x",
+          "base": {
+            "x": "[Half Width] - 1",
+            "y": "-[Half Span] + [Bolt Edge Offset]",
+            "z": "[Bolt Edge Offset]"
+          },
+          "radius": "[Bolt Hole Diameter] / 2",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "x",
+          "base": {
+            "x": "[Half Width] - 1",
+            "y": "-[Half Span] + [Bolt Edge Offset] + [Bolt Col Spacing]",
+            "z": "[Bolt Edge Offset]"
+          },
+          "radius": "[Bolt Hole Diameter] / 2",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "x",
+          "base": {
+            "x": "[Half Width] - 1",
+            "y": "-[Half Span] + [Bolt Edge Offset]",
+            "z": "[Bolt Edge Offset] + [Bolt Row Spacing]"
+          },
+          "radius": "[Bolt Hole Diameter] / 2",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "x",
+          "base": {
+            "x": "[Half Width] - 1",
+            "y": "-[Half Span] + [Bolt Edge Offset] + [Bolt Col Spacing]",
+            "z": "[Bolt Edge Offset] + [Bolt Row Spacing]"
+          },
+          "radius": "[Bolt Hole Diameter] / 2",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "y",
+          "base": {
+            "x": "[Half Span] - [Bolt Edge Offset]",
+            "y": "-[Half Width] - [Sheet Thickness] - 1",
+            "z": "[Bolt Edge Offset]"
+          },
+          "radius": "[Bolt Hole Diameter] / 2",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "y",
+          "base": {
+            "x": "[Half Span] - [Bolt Edge Offset] - [Bolt Col Spacing]",
+            "y": "-[Half Width] - [Sheet Thickness] - 1",
+            "z": "[Bolt Edge Offset]"
+          },
+          "radius": "[Bolt Hole Diameter] / 2",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "y",
+          "base": {
+            "x": "[Half Span] - [Bolt Edge Offset]",
+            "y": "-[Half Width] - [Sheet Thickness] - 1",
+            "z": "[Bolt Edge Offset] + [Bolt Row Spacing]"
+          },
+          "radius": "[Bolt Hole Diameter] / 2",
+          "height": "[Sheet Thickness] + 2"
+        },
+        {
+          "kind": "cylinder",
+          "axis": "y",
+          "base": {
+            "x": "[Half Span] - [Bolt Edge Offset] - [Bolt Col Spacing]",
+            "y": "-[Half Width] - [Sheet Thickness] - 1",
+            "z": "[Bolt Edge Offset] + [Bolt Row Spacing]"
+          },
+          "radius": "[Bolt Hole Diameter] / 2",
+          "height": "[Sheet Thickness] + 2"
+        }
+      ]
+    },
+    {
+      "id": "flange-ne",
+      "name": "Top Flange NE",
+      "material": "Galvanized Steel",
+      "solid": {
+        "kind": "prism",
+        "plane": "xy",
+        "from": "[Tray Height] - [Sheet Thickness]",
+        "to": "[Tray Height]",
+        "points": [
+          [
+            "[Half Width]",
+            "[Half Span]"
+          ],
+          [
+            "[Half Width]",
+            "[Inner Corner]"
+          ],
+          [
+            "[Inner Corner]",
+            "[Half Width]"
+          ],
+          [
+            "[Half Span]",
+            "[Half Width]"
+          ],
+          [
+            "[Half Span]",
+            "[Half Width] - [Flange Width]"
+          ],
+          [
+            "[Inner Corner] - [Flange Width]",
+            "[Half Width] - [Flange Width]"
+          ],
+          [
+            "[Half Width] - [Flange Width]",
+            "[Inner Corner] - [Flange Width]"
+          ],
+          [
+            "[Half Width] - [Flange Width]",
+            "[Half Span]"
+          ]
+        ]
+      },
+      "cuts": []
+    },
+    {
+      "id": "flange-nw",
+      "name": "Top Flange NW",
+      "material": "Galvanized Steel",
+      "solid": {
+        "kind": "prism",
+        "plane": "xy",
+        "from": "[Tray Height] - [Sheet Thickness]",
+        "to": "[Tray Height]",
+        "points": [
+          [
+            "-[Half Span]",
+            "[Half Width]"
+          ],
+          [
+            "-[Inner Corner]",
+            "[Half Width]"
+          ],
+          [
+            "-[Half Width]",
+            "[Inner Corner]"
+          ],
+          [
+            "-[Half Width]",
+            "[Half Span]"
+          ],
+          [
+            "-[Half Width] + [Flange Width]",
+            "[Half Span]"
+          ],
+          [
+            "-[Half Width] + [Flange Width]",
+            "[Inner Corner] - [Flange Width]"
+          ],
+          [
+            "-[Inner Corner] + [Flange Width]",
+            "[Half Width] - [Flange Width]"
+          ],
+          [
+            "-[Half Span]",
+            "[Half Width] - [Flange Width]"
+          ]
+        ]
+      },
+      "cuts": []
+    },
+    {
+      "id": "flange-sw",
+      "name": "Top Flange SW",
+      "material": "Galvanized Steel",
+      "solid": {
+        "kind": "prism",
+        "plane": "xy",
+        "from": "[Tray Height] - [Sheet Thickness]",
+        "to": "[Tray Height]",
+        "points": [
+          [
+            "-[Half Width]",
+            "-[Half Span]"
+          ],
+          [
+            "-[Half Width]",
+            "-[Inner Corner]"
+          ],
+          [
+            "-[Inner Corner]",
+            "-[Half Width]"
+          ],
+          [
+            "-[Half Span]",
+            "-[Half Width]"
+          ],
+          [
+            "-[Half Span]",
+            "-[Half Width] + [Flange Width]"
+          ],
+          [
+            "-[Inner Corner] + [Flange Width]",
+            "-[Half Width] + [Flange Width]"
+          ],
+          [
+            "-[Half Width] + [Flange Width]",
+            "-[Inner Corner] + [Flange Width]"
+          ],
+          [
+            "-[Half Width] + [Flange Width]",
+            "-[Half Span]"
+          ]
+        ]
+      },
+      "cuts": []
+    },
+    {
+      "id": "flange-se",
+      "name": "Top Flange SE",
+      "material": "Galvanized Steel",
+      "solid": {
+        "kind": "prism",
+        "plane": "xy",
+        "from": "[Tray Height] - [Sheet Thickness]",
+        "to": "[Tray Height]",
+        "points": [
+          [
+            "[Half Span]",
+            "-[Half Width]"
+          ],
+          [
+            "[Inner Corner]",
+            "-[Half Width]"
+          ],
+          [
+            "[Half Width]",
+            "-[Inner Corner]"
+          ],
+          [
+            "[Half Width]",
+            "-[Half Span]"
+          ],
+          [
+            "[Half Width] - [Flange Width]",
+            "-[Half Span]"
+          ],
+          [
+            "[Half Width] - [Flange Width]",
+            "-[Inner Corner] + [Flange Width]"
+          ],
+          [
+            "[Inner Corner] - [Flange Width]",
+            "-[Half Width] + [Flange Width]"
+          ],
+          [
+            "[Half Span]",
+            "-[Half Width] + [Flange Width]"
+          ]
+        ]
+      },
+      "cuts": []
+    }
+  ],
+  "connectors": [
+    {
+      "id": "conn-left",
+      "name": "Cable Tray Left",
+      "systemType": "CableTray",
+      "shape": "rectangular",
+      "direction": "out",
+      "host": "reference-plane",
+      "origin": {
+        "x": "-[Half Span]",
+        "y": 0,
+        "z": "[Tray Height] / 2"
+      },
+      "directionVector": {
+        "x": -1,
+        "y": 0,
+        "z": 0
+      },
+      "width": "[Tray Width]",
+      "height": "[Tray Height]"
+    },
+    {
+      "id": "conn-right",
+      "name": "Cable Tray Right",
+      "systemType": "CableTray",
+      "shape": "rectangular",
+      "direction": "out",
+      "host": "reference-plane",
+      "origin": {
+        "x": "[Half Span]",
+        "y": 0,
+        "z": "[Tray Height] / 2"
+      },
+      "directionVector": {
+        "x": 1,
+        "y": 0,
+        "z": 0
+      },
+      "width": "[Tray Width]",
+      "height": "[Tray Height]"
+    },
+    {
+      "id": "conn-front",
+      "name": "Cable Tray Front",
+      "systemType": "CableTray",
+      "shape": "rectangular",
+      "direction": "out",
+      "host": "reference-plane",
+      "origin": {
+        "x": 0,
+        "y": "-[Half Span]",
+        "z": "[Tray Height] / 2"
+      },
+      "directionVector": {
+        "x": 0,
+        "y": -1,
+        "z": 0
+      },
+      "width": "[Tray Width]",
+      "height": "[Tray Height]"
+    },
+    {
+      "id": "conn-back",
+      "name": "Cable Tray Back",
+      "systemType": "CableTray",
+      "shape": "rectangular",
+      "direction": "out",
+      "host": "reference-plane",
+      "origin": {
+        "x": 0,
+        "y": "[Half Span]",
+        "z": "[Tray Height] / 2"
+      },
+      "directionVector": {
+        "x": 0,
+        "y": 1,
+        "z": 0
+      },
+      "width": "[Tray Width]",
+      "height": "[Tray Height]"
+    }
+  ],
+  "materials": [
+    {
+      "name": "Galvanized Steel",
+      "metalness": 0.7,
+      "roughness": 0.45
+    }
+  ],
+  "notes": [
+    "Ghi chú 1 (LOD 400): Mô hình được dựng theo mức chi tiết LOD 400 dựa trên bản vẽ khay cáp chữ thập (ngã tư) Thịnh Phát, không bao gồm nắp đậy theo đúng ký hiệu loại bỏ trên hình.",
+    "Ghi chú 2 (Tấm đáy & lỗ đột): Tấm đáy chữ thập có góc vát 45 độ và các lỗ đột thoát nhiệt/buộc cáp dọc theo 4 nhánh.",
+    "Ghi chú 3 (Thành vách & bulông): 4 vách thành góc bo 3 đoạn kèm gờ bẻ mép trên (Top Flange NE, Top Flange NW, Top Flange SW, Top Flange SE) quay vào trong lòng máng và các lỗ bắt bulông nối khay (2x2 lỗ mỗi đầu nhánh).",
+    "Ghi chú 4 (Connector): Cả 4 đầu kết nối đều dùng Connector hệ CableTray dạng chữ nhật, host='reference-plane' để giữ lòng khay rỗng và tự động cập nhật theo Tray Width, Tray Height, Half Span."
+  ]
+}
