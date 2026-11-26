@@ -463,6 +463,34 @@ namespace FamilyAgent.SelfTest
                     "a through cut reports infinite remaining material");
             });
 
+            Check("cable tray cross builds 4 plan centerline segments without warnings", () =>
+            {
+                var repoRoot = Directory.GetParent(FindExamplesDir()).Parent.FullName;
+                var crossPath = Path.Combine(
+                    repoRoot, "saved-models", "1795022740474-cable-tray-cross-400x100.json");
+                Expect(File.Exists(crossPath), "saved-models/1795022740474-cable-tray-cross-400x100.json exists");
+
+                var doc = Newtonsoft.Json.Linq.JObject.Parse(File.ReadAllText(crossPath));
+                var spec = SpecLoader.Load(doc["spec"].ToString());
+                var parameters = ParameterResolver.Resolve(spec);
+                Expect(parameters.Errors.Count == 0, $"parameter errors: {string.Join("; ", parameters.Errors)}");
+
+                var model = GeometryResolver.Resolve(spec, parameters);
+                Expect(model.Warnings.Count == 0, $"geometry warnings: {string.Join("; ", model.Warnings)}");
+                Expect(model.Category == "Cable Tray Fitting", "category preserved");
+                Expect(model.Connectors.Count == 4, "4 connectors preserved");
+
+                var segments = CableTrayPlan.Build(model.Connectors, parameters, model.Bounds);
+                Expect(segments.Count == 4, "expected 4 centerline segments for 4-way cross");
+                foreach (var seg in segments)
+                {
+                    var len = Math.Sqrt(
+                        (seg.EndX - seg.StartX) * (seg.EndX - seg.StartX) +
+                        (seg.EndY - seg.StartY) * (seg.EndY - seg.StartY));
+                    Expect(len > 0.5, $"expected non-zero segment length (> 0.5 ft), got {len:F3}");
+                }
+            });
+
             Console.WriteLine();
             Console.WriteLine(_failures == 0 ? "All core checks passed." : $"{_failures} check(s) failed.");
             return _failures == 0 ? 0 : 1;

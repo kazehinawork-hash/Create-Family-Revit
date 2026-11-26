@@ -115,6 +115,8 @@ namespace FamilyAgent.Core
         public int ArrayCount = 1;
         public string ArrayAxis = "x";
         public double ArraySpacing;
+        public string Detail;
+        public string Subcategory;
     }
 
     public sealed class Bounds3
@@ -146,6 +148,8 @@ namespace FamilyAgent.Core
 
     public sealed class ResolvedModel
     {
+        public string Category;
+        public List<MepConnector> Connectors = new List<MepConnector>();
         public List<ResolvedPart> Parts = new List<ResolvedPart>();
         public List<string> Warnings = new List<string>();
         public int Instances;
@@ -170,6 +174,7 @@ namespace FamilyAgent.Core
         /// </summary>
         public static ParameterSet Resolve(FamilySpec spec, IDictionary<string, double> overrides)
         {
+            SpecDefaults.ApplyFittingDefaults(spec);
             var set = new ParameterSet();
             var byName = new Dictionary<string, FamilyParameter>(StringComparer.OrdinalIgnoreCase);
 

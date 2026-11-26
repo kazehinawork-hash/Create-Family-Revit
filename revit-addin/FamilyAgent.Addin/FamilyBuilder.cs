@@ -110,7 +110,7 @@ namespace FamilyAgent.Addin
                         var failedParts = new List<string>();
 
                         var forms = CreateGeometry(
-                            document, model, materials, result.Warnings, partByForm, failedParts);
+                            document, model, parameters, materials, result.Warnings, partByForm, failedParts);
                         if (failedParts.Count > 0)
                         {
                             result.Warnings.Add($"Type \"{name}\": {failedParts.Count} part(s) could not be built");
@@ -714,7 +714,7 @@ namespace FamilyAgent.Addin
                         skeleton = CreateReferencePlanes(document, manager, parameters, model, result.Warnings);
                     }
                     forms = CreateGeometry(
-                        document, model, materials, result.Warnings, partByForm, failedParts);
+                        document, model, parameters, materials, result.Warnings, partByForm, failedParts);
                     joins = JoinOverlappingForms(
                         document, forms, partByForm, materials, result.Warnings);
                     connectorHosts = CreateConnectorHosts(
@@ -989,7 +989,7 @@ namespace FamilyAgent.Addin
                         skeleton = CreateReferencePlanes(document, manager, parameters, model, result.Warnings);
                     }
                     forms = CreateGeometry(
-                        document, model, materials, result.Warnings, partByForm, failedParts);
+                        document, model, parameters, materials, result.Warnings, partByForm, failedParts);
                     joins = JoinOverlappingForms(
                         document, forms, partByForm, materials, result.Warnings);
                     connectorHosts = CreateConnectorHosts(

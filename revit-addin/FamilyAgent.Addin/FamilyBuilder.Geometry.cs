@@ -18,6 +18,7 @@ namespace FamilyAgent.Addin
         private static List<Element> CreateGeometry(
             Document document,
             ResolvedModel model,
+            CoreParameterSet parameters,
             IDictionary<string, MaterialDef> materials,
             List<string> warnings,
             IDictionary<long, ResolvedPart> partByForm,
@@ -52,7 +53,7 @@ namespace FamilyAgent.Addin
                     warnings,
                     materialCache);
 
-                ApplyVisibilitySettings(document, body, part);
+                ApplyVisibilitySettings(document, body, part, warnings);
                 forms.Add(body);
                 if (partByForm != null && body.Id != ElementId.InvalidElementId)
                 {
@@ -173,6 +174,11 @@ namespace FamilyAgent.Addin
                         failedParts?.Add($"{label}: {ex.Message}");
                     }
                 }
+            }
+
+            if (string.Equals(model.Category, "Cable Tray Fitting", StringComparison.OrdinalIgnoreCase))
+            {
+                CreateCableTrayPlanLines(document, model, parameters, warnings);
             }
 
             return forms;
@@ -3275,72 +3281,123 @@ namespace FamilyAgent.Addin
             catch { }
         }
 
-        private static void ApplyVisibilitySettings(Document document, Element body, ResolvedPart part)
+        private static void ApplyVisibilitySettings(
+            Document document,
+            Element body,
+            ResolvedPart part,
+            List<string> warnings)
         {
-            if (body is GenericForm form)
+            if (!(body is GenericForm form))
+            {
+                warnings.Add($"Visibility for part \"{part.Name}\" was not applied: unsupported form type.");
+                return;
+            }
+
+            try
+            {
+                var isClearance = Regex.IsMatch(
+                    (part.Id ?? "") + " " + (part.Name ?? ""),
+                    @"(clearance|maintenance|access[_\s-]?zone|service[_\s-]?area|pull[_\s-]?space)",
+                    RegexOptions.IgnoreCase);
+
+                var detail = SpecDefaults.DetailLevel(part.Detail, part.Name);
+                var vis = new FamilyElementVisibility(FamilyElementVisibilityType.Model)
+                {
+                    IsShownInCoarse = detail == "coarse" && !isClearance,
+                    IsShownInMedium = detail != "fine" && !isClearance,
+                    IsShownInFine = true,
+                    IsShownInFrontBack = true,
+                    IsShownInLeftRight = true,
+                    IsShownInPlanRCPCut = true,
+                };
+                form.SetVisibility(vis);
+
+                var subcatName = !string.IsNullOrWhiteSpace(part.Subcategory)
+                    ? part.Subcategory.Trim()
+                    : isClearance ? "Clearance" : null;
+                if (!string.IsNullOrWhiteSpace(subcatName))
+                {
+                    var subcat = EnsureSubcategory(document, subcatName, warnings);
+                    if (subcat != null) form.Subcategory = subcat;
+                }
+            }
+            catch (Exception ex)
+            {
+                warnings.Add($"Visibility for part \"{part.Name}\" was not applied: {ex.Message}");
+            }
+        }
+
+        private static Category EnsureSubcategory(
+            Document document,
+            string name,
+            List<string> warnings)
+        {
+            try
+            {
+                var familyCat = document.OwnerFamily?.FamilyCategory;
+                if (familyCat == null || !familyCat.CanAddSubcategory) return null;
+
+                if (familyCat.SubCategories.Contains(name))
+                {
+                    return familyCat.SubCategories.get_Item(name);
+                }
+
+                var subcat = document.Settings.Categories.NewSubcategory(familyCat, name);
+                if (string.Equals(name, "Clearance", StringComparison.OrdinalIgnoreCase))
+                {
+                    subcat.LineColor = new Color(255, 128, 0);
+                    var dashedPattern = LinePatternElement.GetLinePatternElementByName(document, "Hidden")
+                        ?? LinePatternElement.GetLinePatternElementByName(document, "Dashed");
+                    if (dashedPattern != null)
+                    {
+                        subcat.SetLinePatternId(dashedPattern.Id, GraphicsStyleType.Projection);
+                    }
+                }
+                return subcat;
+            }
+            catch (Exception ex)
+            {
+                warnings.Add($"Subcategory \"{name}\" was not created: {ex.Message}");
+                return null;
+            }
+        }
+
+        private static void CreateCableTrayPlanLines(
+            Document document,
+            ResolvedModel model,
+            CoreParameterSet parameters,
+            List<string> warnings)
+        {
+            var segments = CableTrayPlan.Build(model.Connectors, parameters, model.Bounds);
+            for (var index = 0; index < segments.Count; index += 1)
             {
                 try
                 {
-                    var isClearance = Regex.IsMatch(
-                        (part.Id ?? "") + " " + (part.Name ?? ""),
-                        @"(clearance|maintenance|access[_\s-]?zone|service[_\s-]?area|pull[_\s-]?space)",
-                        RegexOptions.IgnoreCase);
+                    var segment = segments[index];
+                    var start = new XYZ(segment.StartX, segment.StartY, 0.0);
+                    var end = new XYZ(segment.EndX, segment.EndY, 0.0);
+                    if (start.DistanceTo(end) < 0.003) continue;
 
-                    // If clearance, assign Clearance subcategory with custom dashed style & coarse hidden
-                    if (isClearance)
+                    var plane = Plane.CreateByNormalAndOrigin(XYZ.BasisZ, start);
+                    var sketchPlane = SketchPlane.Create(document, plane);
+                    var curve = document.FamilyCreate.NewSymbolicCurve(
+                        Line.CreateBound(start, end), sketchPlane);
+
+                    // SymbolicCurve is view-specific 2D geometry: Model visibility throws
+                    // ArgumentException("Invalid visibility type. Parameter name: visibility").
+                    curve?.SetVisibility(new FamilyElementVisibility(FamilyElementVisibilityType.ViewSpecific)
                     {
-                        try
-                        {
-                            var familyCat = document.OwnerFamily?.FamilyCategory;
-                            if (familyCat != null && familyCat.CanAddSubcategory)
-                            {
-                                Category clearanceSubcat = null;
-                                if (familyCat.SubCategories.Contains("Clearance"))
-                                {
-                                    clearanceSubcat = familyCat.SubCategories.get_Item("Clearance");
-                                }
-                                else
-                                {
-                                    clearanceSubcat = document.Settings.Categories.NewSubcategory(familyCat, "Clearance");
-                                    clearanceSubcat.LineColor = new Color(255, 128, 0); // Orange indicator
-                                    var dashedPattern = LinePatternElement.GetLinePatternElementByName(document, "Hidden")
-                                        ?? LinePatternElement.GetLinePatternElementByName(document, "Dashed");
-                                    if (dashedPattern != null)
-                                    {
-                                        clearanceSubcat.SetLinePatternId(dashedPattern.Id, GraphicsStyleType.Projection);
-                                    }
-                                }
-
-                                if (clearanceSubcat != null)
-                                {
-                                    form.Subcategory = clearanceSubcat;
-                                }
-                            }
-                        }
-                        catch { }
-                    }
-
-                    // Small fasteners, bolts, labels or trim are set to Medium/Fine to keep Coarse views clean
-                    // Clearance is also hidden in Coarse views by default for clean 2D documentation
-                    var isSmallDetail = Regex.IsMatch(
-                        part.Name ?? "",
-                        @"(bolt|nut|screw|washer|pin|label|tag|indicator|hole)",
-                        RegexOptions.IgnoreCase);
-
-                    var vis = new FamilyElementVisibility(FamilyElementVisibilityType.Model)
-                    {
-                        IsShownInCoarse = !isSmallDetail && !isClearance,
-                        IsShownInMedium = true,
-                        IsShownInFine = true,
-                        IsShownInFrontBack = true,
-                        IsShownInLeftRight = true,
-                        IsShownInPlanRCPCut = true
-                    };
-                    form.SetVisibility(vis);
+                        IsShownInCoarse = true,
+                        IsShownInMedium = false,
+                        IsShownInFine = false,
+                    });
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // Some generic forms may not accept visibility overrides.
+                    var label = index < model.Connectors.Count
+                        ? model.Connectors[index]?.Name ?? model.Connectors[index]?.Id ?? index.ToString()
+                        : index.ToString();
+                    warnings.Add($"Cable tray centerline for \"{label}\" was not created: {ex.Message}");
                 }
             }
         }

@@ -7,7 +7,11 @@ namespace FamilyAgent.Core
     {
         public static ResolvedModel Resolve(FamilySpec spec, ParameterSet parameters)
         {
-            var model = new ResolvedModel();
+            var model = new ResolvedModel
+            {
+                Category = spec.Category,
+                Connectors = spec.Connectors ?? new List<MepConnector>(),
+            };
             model.Warnings.AddRange(parameters.Errors);
 
             var lookup = parameters.Lookup ??
@@ -443,6 +447,8 @@ namespace FamilyAgent.Core
                         Color = raw.Color,
                         Solid = ResolveSolid(raw.Solid, $"{path}.solid"),
                         Anchor = anchor,
+                        Detail = raw.Detail,
+                        Subcategory = raw.Subcategory,
                     };
 
                     if (raw.Cuts != null)
