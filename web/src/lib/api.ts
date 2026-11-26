@@ -158,8 +158,26 @@ export interface Health {
   models?: CmdcModel[];
   backends?: AgentBackends;
   bridge: string;
+  revit?: {
+    connected: boolean;
+    autoStart?: boolean;
+    exe?: string | null;
+  };
   outDir: string;
   queueDir: string;
+}
+
+export async function openRfaFolder(filePath: string): Promise<boolean> {
+  try {
+    const res = await fetch("/api/open-folder", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: filePath }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }
 
 export async function fetchHealth(): Promise<Health | null> {

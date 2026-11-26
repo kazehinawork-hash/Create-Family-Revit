@@ -269,3 +269,97 @@ test("save, load, and delete family from library UI", async ({ page, request }) 
     }
   }
 });
+
+test("Export RFA builds parametric RFA and opens folder when Revit bridge is connected, else falls back to 1-Click .bat with clear notice", async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  let revitConnected = true;
+  let buildHits = 0;
+  let openFolderHits = 0;
+  let portableHits = 0;
+
+  await page.route("**/api/health", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        agent: { provider: "agy", model: "agy:gemini-4-hydrogen-low", ready: true, detail: "ok" },
+        models: [{ id: "agy:gemini-4-hydrogen-low", label: "Hydrogen Low", via: "cli" }],
+        backends: { commandcode: false, agy: true, codex: false, claude: false, openai: false },
+        revit: { connected: revitConnected, autoStart: false, exe: null },
+        bridge: "http://127.0.0.1:8765",
+        outDir: "out",
+        queueDir: "queue",
+      }),
+    });
+  });
+
+  await page.route("**/api/design", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "text/event-stream; charset=utf-8",
+      body:
+        `data: ${JSON.stringify({ type: "job", jobId: "flows-export" })}\n\n` +
+        `data: ${JSON.stringify({
+          type: "spec",
+          spec: fixtureSpec,
+          stats: fakeStats,
+          issues: [],
+          errors: [],
+          outcome: "ok",
+        })}\n\n`,
+    });
+  });
+
+  await page.route("**/api/build", async (route) => {
+    buildHits += 1;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        mode: "revit",
+        path: "C:\\temp\\studio-flows-fixture.rfa",
+        revitVersion: "2024",
+        warnings: [],
+        stats: { driving: ["Tray Width"], locks: 2, totalForms: 1 },
+      }),
+    });
+  });
+
+  await page.route("**/api/download-rfa*", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/octet-stream", body: "RFA" });
+  });
+
+  await page.route("**/api/open-folder", async (route) => {
+    openFolderHits += 1;
+    await route.fulfill({ status: 200, contentType: "application/json", body: '{"ok":true}' });
+  });
+
+  await page.route("**/api/export-portable", async (route) => {
+    portableHits += 1;
+    await route.fulfill({ status: 200, contentType: "application/zip", body: "ZIP" });
+  });
+
+  await page.goto("/");
+  await page.locator("textarea").first().fill("Tạo máng cáp mẫu để kiểm tra Xuất RFA.");
+  await page.getByTestId("chat-send").click();
+  await expect(page.locator(".project-name")).toHaveText("Studio Flows Fixture");
+
+  // 1. Bridge ON -> clicks Xuất RFA triggers /api/build + /api/open-folder, not /api/export-portable
+  const exportBtn = page.locator("header.topbar button", { hasText: "Xuất RFA" }).first();
+  await expect(exportBtn).toHaveAttribute("title", /tham số thật/);
+  await exportBtn.click();
+  await expect.poll(() => buildHits).toBe(1);
+  await expect.poll(() => openFolderHits).toBe(1);
+  expect(portableHits).toBe(0);
+
+  // 2. Bridge OFF -> clicks Xuất RFA falls back to 1-Click .bat and explains metadata difference
+  revitConnected = false;
+  await exportBtn.click();
+  await expect.poll(() => portableHits).toBe(1);
+  await expect(page.locator(".toast")).toContainText(".bat");
+  await expect(page.locator(".toast")).toContainText("metadata");
+});

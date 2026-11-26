@@ -83,6 +83,8 @@ function StudioWorkspace() {
         lod={chat.lod}
         onLod={chat.handleLod}
         onBuild={modelState.handleBuild}
+        revitConnected={Boolean(health?.revit?.connected)}
+        onExportRfa={() => void modelState.handleExportRfa(Boolean(health?.revit?.connected))}
         onExportPortable={modelState.handleExportPortable}
         exportingPortable={modelState.exportingPortable}
         canBuild={Boolean(modelState.analysis?.ok)}

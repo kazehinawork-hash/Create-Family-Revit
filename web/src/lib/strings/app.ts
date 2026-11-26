@@ -85,12 +85,12 @@ const viDictionary = {
   appExportTypesFailed: "Xuất nhiều type thất bại",
 
   // Portable package
-  appPortableStarted: "Đang tạo gói 1-Click RFA Portable...",
+  appPortableStarted: "Đang tạo gói 1-Click RFA Portable (.bat)...",
   appPortableStartedSub:
-    "Đang đóng gói file spec, runner và kịch bản tự động dựng Native Family cho Revit...",
-  appPortableDone: "Tải gói 1-Click RFA thành công!",
+    "Không thấy Add-in Revit (bridge 8765) → tạo gói .bat (lưu ý: tham số chỉ là metadata, muốn tham số co dãn thật hãy mở Revit có Add-in).",
+  appPortableDone: "Đã tải gói 1-Click RFA (.bat — tham số metadata)",
   appPortableDoneSub:
-    "Giải nén file zip và click đúp '1-Click-Build.bat' trên máy có Revit để sinh file .rfa.",
+    "Giải nén và chạy '1-Click-Build.bat'. Tham số ở chế độ này chỉ là metadata; bật Add-in trong Revit rồi bấm 'Xuất RFA' để dựng RFA có tham số thật.",
   appPortableFailed: "Không thể tạo gói Portable",
 
   // Build in Revit
@@ -271,12 +271,12 @@ export const en: Translation<typeof vi> = {
   appExportTypesDone: (count) => `Exported ${count} types into one .rfa file`,
   appExportTypesFailed: "Exporting multiple types failed",
 
-  appPortableStarted: "Creating the 1-Click RFA Portable package...",
+  appPortableStarted: "Creating 1-Click RFA Portable (.bat) package...",
   appPortableStartedSub:
-    "Packing the spec file, the runner and the script that builds the native family in Revit...",
-  appPortableDone: "1-Click RFA package downloaded!",
+    "Revit add-in (bridge 8765) offline → packing .bat (parameters are metadata only; open Revit with the add-in for parametric RFA).",
+  appPortableDone: "Downloaded 1-Click RFA (.bat — metadata-only parameters)",
   appPortableDoneSub:
-    "Unzip the file and double-click '1-Click-Build.bat' on a machine with Revit to produce the .rfa file.",
+    "Unzip and run '1-Click-Build.bat'. For true parametric dimensions, open Revit with the add-in and click Export RFA.",
   appPortableFailed: "Could not create the Portable package",
 
   appBuildStarted: "Building the family in Revit…",
@@ -444,11 +444,12 @@ export const zh: Translation<typeof vi> = {
   appExportTypesDone: (count) => `已将 ${count} 个 type 导出到一个 .rfa 文件`,
   appExportTypesFailed: "导出多个 type 失败",
 
-  appPortableStarted: "正在生成 1-Click RFA Portable 包...",
-  appPortableStartedSub: "正在打包 spec 文件、runner 以及为 Revit 自动构建原生 Family 的脚本...",
-  appPortableDone: "1-Click RFA 包下载成功！",
+  appPortableStarted: "正在生成 1-Click RFA Portable（.bat）包...",
+  appPortableStartedSub:
+    "未检测到 Revit 插件（bridge 8765）→ 打包 .bat（参数仅为元数据；如需真实参数驱动，请先打开带插件的 Revit）。",
+  appPortableDone: "已下载 1-Click RFA（.bat — 参数仅为元数据）",
   appPortableDoneSub:
-    "解压 zip 文件，并在装有 Revit 的机器上双击 '1-Click-Build.bat' 以生成 .rfa 文件。",
+    "解压后运行 '1-Click-Build.bat'。若需真实可驱动参数，请在 Revit 启动插件后再点击导出 RFA。",
   appPortableFailed: "无法生成 Portable 包",
 
   appBuildStarted: "正在 Revit 中构建 family…",

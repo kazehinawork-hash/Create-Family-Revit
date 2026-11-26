@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -895,6 +896,44 @@ app.get("/api/download-rfa", (req, res) => {
     return;
   }
   res.download(resolved);
+});
+
+app.post("/api/open-folder", (req, res) => {
+  const filePath = req.body?.path;
+  if (!filePath || typeof filePath !== "string") {
+    res.status(400).json({ ok: false, error: "Path is required" });
+    return;
+  }
+  const resolved = safeDownloadPath(filePath, [...DOWNLOAD_ROOTS, ...getBuildOutputRoots()]);
+  if (!resolved) {
+    res.status(403).json({ ok: false, error: "File is outside the allowed folders" });
+    return;
+  }
+  if (!fs.existsSync(resolved)) {
+    res.status(404).json({ ok: false, error: "File not found" });
+    return;
+  }
+
+  if (process.env.NODE_ENV !== "test") {
+    try {
+      if (process.platform === "win32") {
+        const child = spawn("explorer.exe", [`/select,${resolved}`], {
+          detached: true,
+          stdio: "ignore",
+          windowsHide: false,
+        });
+        child.unref();
+      } else if (process.platform === "darwin") {
+        spawn("open", ["-R", resolved], { detached: true, stdio: "ignore" }).unref();
+      } else {
+        spawn("xdg-open", [path.dirname(resolved)], { detached: true, stdio: "ignore" }).unref();
+      }
+    } catch {
+      /* best-effort desktop reveal */
+    }
+  }
+
+  res.json({ ok: true, folder: path.dirname(resolved) });
 });
 
 app.get("/api/download-spec", (req, res) => {

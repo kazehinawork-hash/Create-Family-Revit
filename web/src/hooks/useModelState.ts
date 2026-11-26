@@ -8,7 +8,7 @@ import {
   type ParameterType,
 } from "@family/spec-core";
 import type { ModelNote, NoteDraft } from "../lib/annotations";
-import { buildFamily, downloadPortablePackage, exportMultiType } from "../lib/api";
+import { buildFamily, downloadPortablePackage, exportMultiType, fetchHealth, openRfaFolder } from "../lib/api";
 import type { Units } from "../lib/format";
 import { useI18n } from "../lib/i18n";
 import { useStudio } from "./StudioContext";
@@ -366,6 +366,7 @@ export function useModelState({ setToast, setMobileTab }: UseModelStateOptions) 
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        void openRfaFolder(result.path);
       } else if (result.mode === "queue") {
         setToast({
           text: t.appBridgeOffTitle,
@@ -388,6 +389,17 @@ export function useModelState({ setToast, setMobileTab }: UseModelStateOptions) 
     } finally {
       setBuilding(false);
     }
+  };
+
+  const handleExportRfa = async (fallbackBridgeConnected = false) => {
+    if (!spec || !analysis?.ok || building || exportingPortable) return;
+    const latest = await fetchHealth();
+    const bridgeUp = latest ? Boolean(latest.revit?.connected) : fallbackBridgeConnected;
+    if (bridgeUp) {
+      await handleBuild();
+      return;
+    }
+    await handleExportPortable();
   };
 
   return {
@@ -440,6 +452,7 @@ export function useModelState({ setToast, setMobileTab }: UseModelStateOptions) 
     handleUpdateConnectorHost,
     handleAddParameter,
     handleExportPortable,
+    handleExportRfa,
     handleBuild,
   };
 }
