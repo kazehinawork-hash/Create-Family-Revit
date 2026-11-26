@@ -16,6 +16,8 @@
     "test": "npm run build:core && npm run test -w @family/spec-core && npm run test -w server && npm run test -w web && npm run addin:test && node scripts/parity.mjs --no-build",
     "parity": "npm run build:core && node scripts/parity.mjs",
     "eval": "npm run build:core && node scripts/eval.mjs",
+    "bench": "npm run build:core && node bench/run.mjs",
+    "bench:ci": "npm run build:core && node bench/run.mjs --stub --mode both --runs 1 --ci",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",

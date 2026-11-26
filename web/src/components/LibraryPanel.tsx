@@ -7,6 +7,7 @@ import {
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { createPortal } from "react-dom";
 
 import type { SavedModelMeta, SavedModelRevision, TrashItem } from "../lib/api";
 import { useI18n } from "../lib/i18n";
@@ -83,7 +84,14 @@ function writeSidebarWidth(value: number): void {
 
 function IconFolder() {
   return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+    >
       <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
     </svg>
   );
@@ -91,7 +99,14 @@ function IconFolder() {
 
 function IconMore() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+    >
       <circle cx="5" cy="12" r="1.5" />
       <circle cx="12" cy="12" r="1.5" />
       <circle cx="19" cy="12" r="1.5" />
@@ -140,9 +155,19 @@ export function LibraryPanel({
   const [renameDraft, setRenameDraft] = useState("");
   const [editingGroup, setEditingGroup] = useState<string | null>(null);
   const [groupDraft, setGroupDraft] = useState("");
+  const [groupError, setGroupError] = useState<string | null>(null);
   // Menus are positioned with fixed coordinates: the scrollable columns would clip
   // an absolutely positioned dropdown that reaches past their edge.
-  const [openMenu, setOpenMenu] = useState<{ key: string; top: number; left: number } | null>(null);
+  const [openMenu, setOpenMenu] = useState<{
+    key: string;
+    top: number;
+    left: number;
+    group?: string;
+  } | null>(null);
+  const [groupDelete, setGroupDelete] = useState<{
+    name: string;
+    count: number;
+  } | null>(null);
   const [dragOverGroup, setDragOverGroup] = useState<string | null>(null);
   const [sidebarWidth, setSidebarWidth] = useState(readSidebarWidth);
   const renameCancelled = useRef(false);
@@ -164,13 +189,47 @@ export function LibraryPanel({
   }, [sort, collapsed]);
 
   const MENU_WIDTH = 176;
+  const MENU_HEIGHT = 84;
+
+  const placeMenu = (
+    event: { currentTarget: HTMLElement; clientX: number; clientY: number },
+    key: string,
+    anchorRight?: number,
+    anchorBottom?: number,
+    group?: string,
+  ) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const left = Math.max(
+      8,
+      Math.min(anchorRight ?? rect.right - MENU_WIDTH, window.innerWidth - MENU_WIDTH - 8),
+    );
+    // Near the bottom of the viewport the menu flips above the anchor instead of
+    // being clipped by the window edge.
+    const below = (anchorBottom ?? rect.bottom) + 6;
+    const top = below + MENU_HEIGHT > window.innerHeight - 8 ? rect.top - MENU_HEIGHT - 6 : below;
+    setOpenMenu({ key, top: Math.max(8, top), left, group });
+  };
 
   const toggleMenu = (event: ReactMouseEvent<HTMLButtonElement>, key: string) => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    const left = Math.max(8, Math.min(rect.right - MENU_WIDTH, window.innerWidth - MENU_WIDTH - 8));
-    setOpenMenu((current) =>
-      current?.key === key ? null : { key, top: rect.bottom + 6, left },
-    );
+    if (openMenu?.key === key) {
+      setOpenMenu(null);
+      return;
+    }
+    placeMenu(event, key);
+  };
+
+  const openGroupMenuAt = (
+    event: ReactMouseEvent<HTMLElement>,
+    group: string,
+    mode: "button" | "pointer",
+  ) => {
+    const key = `g:${group}`;
+    if (mode === "button" && openMenu?.key === key) {
+      setOpenMenu(null);
+      return;
+    }
+    // Right-click / double-click positions the menu at the pointer, not at the row edge.
+    placeMenu(event, key, event.clientX - MENU_WIDTH / 2, event.clientY + 4, group);
   };
 
   // A menu pinned to the viewport must not survive a scroll or a click elsewhere.
@@ -179,15 +238,20 @@ export function LibraryPanel({
     const close = () => setOpenMenu(null);
     const onPointerDown = (event: MouseEvent) => {
       const target = event.target as HTMLElement | null;
-      if (target?.closest(".card-menu, .card-menu-wrap, .group-menu-wrap")) return;
+      if (target?.closest(".card-menu, .card-menu-wrap, .group-menu-wrap, .group-menu-btn")) return;
       setOpenMenu(null);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpenMenu(null);
     };
     window.addEventListener("resize", close);
     window.addEventListener("scroll", close, true);
+    window.addEventListener("keydown", onKey);
     document.addEventListener("mousedown", onPointerDown);
     return () => {
       window.removeEventListener("resize", close);
       window.removeEventListener("scroll", close, true);
+      window.removeEventListener("keydown", onKey);
       document.removeEventListener("mousedown", onPointerDown);
     };
   }, [openMenu]);
@@ -261,19 +325,48 @@ export function LibraryPanel({
     void onCreateGroup(name);
   };
 
-  const commitGroupRename = (from: string) => {
-    const name = groupDraft.trim();
+  const commitGroupRename = (from: string, keepOpen = false) => {
+    const name = groupDraft.trim().replace(/\s+/g, " ");
+    if (!name || name === from) {
+      setEditingGroup(null);
+      setGroupError(null);
+      return;
+    }
+
+    const clash = sidebar.some(
+      (group) => group.name !== from && group.name.toLowerCase() === name.toLowerCase(),
+    );
+    if (clash) {
+      // A silent rename would merge two groups behind the user's back: keep the
+      // editor open (Enter) or report it under the list (blur, Escape-free).
+      setGroupError(t.libGroupNameTaken(name));
+      if (keepOpen) setGroupDraft(name);
+      else setEditingGroup(null);
+      return;
+    }
+
     setEditingGroup(null);
-    if (!name || name === from) return;
+    setGroupError(null);
     void onRenameGroup(from, name);
+  };
+
+  const beginGroupRename = (name: string) => {
+    setOpenMenu(null);
+    setGroupDraft(name);
+    setGroupError(null);
+    setEditingGroup(name);
   };
 
   const confirmDeleteGroup = (name: string) => {
     setOpenMenu(null);
-    if (!window.confirm(t.libConfirmDeleteGroup(name, t.ungrouped))) {
-      return;
-    }
-    onDeleteGroup(name);
+    const count = sidebar.find((group) => group.name === name)?.count ?? 0;
+    setGroupDelete({ name, count });
+  };
+
+  const commitDeleteGroup = () => {
+    if (!groupDelete) return;
+    onDeleteGroup(groupDelete.name);
+    setGroupDelete(null);
   };
 
   const moveToNewGroup = (model: SavedModelMeta) => {
@@ -309,7 +402,14 @@ export function LibraryPanel({
         {item.thumbUrl ? (
           <img src={item.thumbUrl} alt="" loading="lazy" draggable={false} />
         ) : (
-          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.3">
+          <svg
+            width="30"
+            height="30"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.3"
+          >
             <path d="M3 7l9-4 9 4-9 4-9-4z" />
             <path d="M3 12l9 4 9-4M3 17l9 4 9-4" />
           </svg>
@@ -338,7 +438,9 @@ export function LibraryPanel({
               >
                 <span className="card-menu-label">{t.moveToGroup}</span>
                 {[{ name: t.ungrouped, value: UNGROUPED as string }]
-                  .concat(sidebar.map((group) => ({ name: group.name, value: group.name as string })))
+                  .concat(
+                    sidebar.map((group) => ({ name: group.name, value: group.name as string })),
+                  )
                   .filter((option) => option.value !== (item.group ?? ""))
                   .map((option) => (
                     <button
@@ -352,7 +454,11 @@ export function LibraryPanel({
                       {option.name}
                     </button>
                   ))}
-                <button type="button" className="card-menu-new" onClick={() => moveToNewGroup(item)}>
+                <button
+                  type="button"
+                  className="card-menu-new"
+                  onClick={() => moveToNewGroup(item)}
+                >
                   {t.newGroupOption}
                 </button>
               </div>
@@ -368,7 +474,14 @@ export function LibraryPanel({
               beginRename(item);
             }}
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
               <path d="M12 20h9" />
               <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
             </svg>
@@ -382,7 +495,14 @@ export function LibraryPanel({
               onOpenHistory(item.id);
             }}
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
               <circle cx="12" cy="12" r="9" />
               <path d="M12 7v5l3 2" />
             </svg>
@@ -396,7 +516,14 @@ export function LibraryPanel({
               onDeleteModel(item.id);
             }}
           >
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
               <polyline points="3 6 5 6 21 6" />
               <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
             </svg>
@@ -456,12 +583,21 @@ export function LibraryPanel({
     </div>
   );
 
+  const groupMenu = openMenu?.key.startsWith("g:") ? openMenu.group : undefined;
+
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal-card library-modal" onClick={(event) => event.stopPropagation()}>
         <div className="modal-header">
           <div className="title-row">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
               <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
               <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
             </svg>
@@ -546,7 +682,9 @@ export function LibraryPanel({
                 data-drop-group=""
               >
                 <span>{t.ungrouped}</span>
-                <span className="count">{models.filter((model) => !(model.group ?? "").trim()).length}</span>
+                <span className="count">
+                  {models.filter((model) => !(model.group ?? "").trim()).length}
+                </span>
               </button>
 
               <div className="library-group-list">
@@ -555,7 +693,7 @@ export function LibraryPanel({
                     key={group.name}
                     className={`library-group-row ${activeGroup === group.name ? "active" : ""} ${
                       dragOverGroup === group.name ? "drop-target" : ""
-                    }`}
+                    } ${editingGroup === group.name ? "editing" : ""}`}
                     onDragOver={(event) => {
                       event.preventDefault();
                       setDragOverGroup(group.name);
@@ -567,73 +705,81 @@ export function LibraryPanel({
                       const id = event.dataTransfer.getData("text/plain");
                       if (id) onMoveModel(id, group.name);
                     }}
+                    onContextMenu={(event) => {
+                      if (editingGroup === group.name) return;
+                      event.preventDefault();
+                      openGroupMenuAt(event, group.name, "pointer");
+                    }}
                   >
                     {editingGroup === group.name ? (
-                      <input
-                        className="group-name-input"
-                        value={groupDraft}
-                        autoFocus
-                        aria-label={t.libRenameGroupAria(group.name)}
-                        onChange={(event) => setGroupDraft(event.target.value)}
-                        onFocus={(event) => event.currentTarget.select()}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") {
-                            event.preventDefault();
-                            event.currentTarget.blur();
-                          } else if (event.key === "Escape") {
-                            event.preventDefault();
-                            setEditingGroup(null);
-                          }
-                        }}
-                        onBlur={() => commitGroupRename(group.name)}
-                      />
+                      <>
+                        <input
+                          className={`group-name-input ${groupError ? "invalid" : ""}`}
+                          value={groupDraft}
+                          autoFocus
+                          aria-label={t.libRenameGroupAria(group.name)}
+                          aria-invalid={groupError ? true : undefined}
+                          data-testid={`group-rename-input-${group.name}`}
+                          onChange={(event) => {
+                            setGroupDraft(event.target.value);
+                            setGroupError(null);
+                          }}
+                          onFocus={(event) => event.currentTarget.select()}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              commitGroupRename(group.name, true);
+                            } else if (event.key === "Escape") {
+                              event.preventDefault();
+                              setEditingGroup(null);
+                              setGroupError(null);
+                            }
+                          }}
+                          onBlur={() => {
+                            if (editingGroup === group.name) commitGroupRename(group.name);
+                          }}
+                        />
+                        {groupError && (
+                          <div className="group-name-error" role="alert">
+                            {groupError}
+                          </div>
+                        )}
+                      </>
                     ) : (
                       <button
                         type="button"
                         className="library-filter"
                         onClick={() => selectGroup(group.name)}
-                        title={group.name}
+                        onDoubleClick={(event) => {
+                          event.preventDefault();
+                          beginGroupRename(group.name);
+                        }}
+                        title={t.libGroupRowHint(group.name)}
+                        data-group-name={group.name}
                       >
                         <span className="group-name">{group.name}</span>
                         <span className="count">{group.count}</span>
                       </button>
                     )}
-                    <div className="group-menu-wrap">
+                    {editingGroup === group.name ? null : (
                       <button
                         type="button"
                         className="group-menu-btn"
                         aria-label={t.libGroupOptionsAria(group.name)}
-                        onClick={(event) => toggleMenu(event, `g:${group.name}`)}
+                        aria-haspopup="menu"
+                        title={t.libGroupOptionsAria(group.name)}
+                        onClick={(event) => openGroupMenuAt(event, group.name, "button")}
                       >
                         <IconMore />
                       </button>
-                      {openMenu?.key === `g:${group.name}` && (
-                        <div
-                          className="card-menu card-menu-fixed"
-                          style={{ top: openMenu.top, left: openMenu.left }}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setOpenMenu(null);
-                              setGroupDraft(group.name);
-                              setEditingGroup(group.name);
-                            }}
-                          >
-                            {t.renameGroup}
-                          </button>
-                          <button
-                            type="button"
-                            className="danger"
-                            onClick={() => confirmDeleteGroup(group.name)}
-                          >
-                            {t.deleteGroup}
-                          </button>
-                        </div>
-                      )}
-                    </div>
+                    )}
                   </div>
                 ))}
+                {groupError && !editingGroup && (
+                  <div className="group-name-error" role="alert">
+                    {groupError}
+                  </div>
+                )}
               </div>
 
               <button
@@ -679,28 +825,28 @@ export function LibraryPanel({
             <section className="library-main">
               {!showTrash && (
                 <div className="library-toolbar">
-                <input
-                  type="search"
-                  className="library-search"
-                  value={query}
-                  placeholder={t.searchModels}
-                  aria-label={t.libSearchAria}
-                  onChange={(event) => setQuery(event.target.value)}
-                />
-                <label className="library-sort">
-                  <span>{t.sort}</span>
-                  <select
-                    value={sort}
-                    aria-label={t.libSortAria}
-                    onChange={(event) => setSort(event.target.value as LibrarySort)}
-                  >
-                    {SORTS.map((option) => (
-                      <option key={option} value={option}>
-                        {sortLabels[option]}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                  <input
+                    type="search"
+                    className="library-search"
+                    value={query}
+                    placeholder={t.searchModels}
+                    aria-label={t.libSearchAria}
+                    onChange={(event) => setQuery(event.target.value)}
+                  />
+                  <label className="library-sort">
+                    <span>{t.sort}</span>
+                    <select
+                      value={sort}
+                      aria-label={t.libSortAria}
+                      onChange={(event) => setSort(event.target.value as LibrarySort)}
+                    >
+                      {SORTS.map((option) => (
+                        <option key={option} value={option}>
+                          {sortLabels[option]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 </div>
               )}
 
@@ -809,6 +955,69 @@ export function LibraryPanel({
           </div>
         </div>
       </div>
+
+      {groupMenu &&
+        createPortal(
+          <div
+            className="card-menu card-menu-fixed group-card-menu"
+            role="menu"
+            data-testid="group-menu"
+            style={{ top: openMenu!.top, left: openMenu!.left }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button type="button" role="menuitem" onClick={() => beginGroupRename(groupMenu)}>
+              {t.renameGroup}
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              className="danger"
+              onClick={() => confirmDeleteGroup(groupMenu)}
+            >
+              {t.deleteGroup}
+            </button>
+          </div>,
+          document.body,
+        )}
+
+      {groupDelete &&
+        createPortal(
+          <div
+            className="modal-backdrop group-delete-backdrop"
+            onClick={(event) => {
+              event.stopPropagation();
+              setGroupDelete(null);
+            }}
+          >
+            <div
+              className="modal-card group-delete-dialog"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="group-delete-title"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <h3 id="group-delete-title">{t.libDeleteGroupTitle(groupDelete.name)}</h3>
+              <p>{t.libConfirmDeleteGroup(groupDelete.name, t.ungrouped)}</p>
+              {groupDelete.count > 0 && (
+                <p className="sub">{t.libDeleteGroupCount(groupDelete.count, t.ungrouped)}</p>
+              )}
+              <div className="group-delete-actions">
+                <button type="button" className="btn-ghost" onClick={() => setGroupDelete(null)}>
+                  {t.close}
+                </button>
+                <button
+                  type="button"
+                  className="btn-primary danger"
+                  data-testid="group-delete-confirm"
+                  onClick={commitDeleteGroup}
+                >
+                  {t.deleteGroup}
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

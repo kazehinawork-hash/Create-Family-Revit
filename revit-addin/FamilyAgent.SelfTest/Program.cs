@@ -37,6 +37,21 @@ namespace FamilyAgent.SelfTest
                 throw new Exception($"{message}: expected {expected}, got {actual}");
         }
 
+        private static string FindSelfTestFixture(string fileName)
+        {
+            var directory = new DirectoryInfo(AppContext.BaseDirectory);
+            while (directory != null)
+            {
+                var direct = Path.Combine(directory.FullName, "Fixtures", fileName);
+                if (File.Exists(direct)) return direct;
+                var fromRoot = Path.Combine(
+                    directory.FullName, "revit-addin", "FamilyAgent.SelfTest", "Fixtures", fileName);
+                if (File.Exists(fromRoot)) return fromRoot;
+                directory = directory.Parent;
+            }
+            throw new FileNotFoundException($"Could not find SelfTest fixture Fixtures/{fileName}");
+        }
+
         private static string FindExamplesDir()
         {
             var directory = new DirectoryInfo(AppContext.BaseDirectory);
@@ -461,6 +476,29 @@ namespace FamilyAgent.SelfTest
                 Expect(
                     double.IsPositiveInfinity(PrismCutPolicy.RemainingForBlindCut(0, 2, -1, 3)),
                     "a through cut reports infinite remaining material");
+            });
+
+            Check("cable tray cross builds 4 plan centerline segments without warnings", () =>
+            {
+                var crossPath = FindSelfTestFixture("cable-tray-cross-400x100.json");
+                var spec = SpecLoader.Load(File.ReadAllText(crossPath));
+                var parameters = ParameterResolver.Resolve(spec);
+                Expect(parameters.Errors.Count == 0, $"parameter errors: {string.Join("; ", parameters.Errors)}");
+
+                var model = GeometryResolver.Resolve(spec, parameters);
+                Expect(model.Warnings.Count == 0, $"geometry warnings: {string.Join("; ", model.Warnings)}");
+                Expect(model.Category == "Cable Tray Fitting", "category preserved");
+                Expect(model.Connectors.Count == 4, "4 connectors preserved");
+
+                var segments = CableTrayPlan.Build(model.Connectors, parameters, model.Bounds);
+                Expect(segments.Count == 4, "expected 4 centerline segments for 4-way cross");
+                foreach (var seg in segments)
+                {
+                    var len = Math.Sqrt(
+                        (seg.EndX - seg.StartX) * (seg.EndX - seg.StartX) +
+                        (seg.EndY - seg.StartY) * (seg.EndY - seg.StartY));
+                    Expect(len > 0.5, $"expected non-zero segment length (> 0.5 ft), got {len:F3}");
+                }
             });
 
             Console.WriteLine();

@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { analyzeSpec } from "@family/spec-core";
 
 import { autoHealSpec } from "../src/designer.js";
 import { crossSpec, elbowSpec, teeSpec } from "../src/templates/cable-ladder.js";
@@ -19,6 +20,12 @@ test("cable-ladder fittings are Cable Tray Fitting with a part type", () => {
       assert.equal(connector.systemType, "CableTray");
     }
   }
+
+  const elbow = elbowSpec();
+  assert.equal(elbow.macros?.length, 1);
+  const elbowAnalysis = analyzeSpec(elbow);
+  assert.equal(elbowAnalysis.ok, true);
+  assert.equal(elbowAnalysis.errors.length, 0);
 });
 
 test("cable-tray fitting aliases heal to the Revit category", () => {

@@ -1,8 +1,9 @@
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import express from "express";
-import { analyzeSpec } from "@family/spec-core";
+import { analyzeSpec, migrateSpec } from "@family/spec-core";
 import { config, ROOT } from "./config.js";
 import { design } from "./designer.js";
 import { buildFamily, buildMultiType, getBuildOutputRoots } from "./bridge.js";
@@ -897,6 +898,44 @@ app.get("/api/download-rfa", (req, res) => {
   res.download(resolved);
 });
 
+app.post("/api/open-folder", (req, res) => {
+  const filePath = req.body?.path;
+  if (!filePath || typeof filePath !== "string") {
+    res.status(400).json({ ok: false, error: "Path is required" });
+    return;
+  }
+  const resolved = safeDownloadPath(filePath, [...DOWNLOAD_ROOTS, ...getBuildOutputRoots()]);
+  if (!resolved) {
+    res.status(403).json({ ok: false, error: "File is outside the allowed folders" });
+    return;
+  }
+  if (!fs.existsSync(resolved)) {
+    res.status(404).json({ ok: false, error: "File not found" });
+    return;
+  }
+
+  if (process.env.NODE_ENV !== "test") {
+    try {
+      if (process.platform === "win32") {
+        const child = spawn("explorer.exe", [`/select,${resolved}`], {
+          detached: true,
+          stdio: "ignore",
+          windowsHide: false,
+        });
+        child.unref();
+      } else if (process.platform === "darwin") {
+        spawn("open", ["-R", resolved], { detached: true, stdio: "ignore" }).unref();
+      } else {
+        spawn("xdg-open", [path.dirname(resolved)], { detached: true, stdio: "ignore" }).unref();
+      }
+    } catch {
+      /* best-effort desktop reveal */
+    }
+  }
+
+  res.json({ ok: true, folder: path.dirname(resolved) });
+});
+
 app.get("/api/download-spec", (req, res) => {
   const specPath = req.query?.file;
   if (!specPath || typeof specPath !== "string") {
@@ -1152,7 +1191,13 @@ app.get("/api/models/:id", (req, res) => {
       return;
     }
     const raw = fs.readFileSync(filePath, "utf8");
-    res.json(JSON.parse(raw));
+    const data = JSON.parse(raw);
+    if (data && typeof data === "object" && data.spec && typeof data.spec === "object") {
+      // Migrate in memory when loading legacy files; never overwrite disk until user saves.
+      const migrated = migrateSpec(data.spec);
+      return res.json({ ...data, spec: migrated.spec, migrated: migrated.migrated });
+    }
+    res.json(data);
   } catch (error) {
     res.status(500).json({ error: error?.message || String(error) });
   }
@@ -1253,7 +1298,12 @@ app.get("/api/models/:id/history/:stamp", (req, res) => {
       res.status(404).json({ error: "Revision not found" });
       return;
     }
-    res.json(JSON.parse(fs.readFileSync(filePath, "utf8")));
+    const data = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    if (data && typeof data === "object" && data.spec && typeof data.spec === "object") {
+      const migrated = migrateSpec(data.spec);
+      return res.json({ ...data, spec: migrated.spec, migrated: migrated.migrated });
+    }
+    res.json(data);
   } catch (error) {
     res.status(500).json({ error: error?.message || String(error) });
   }

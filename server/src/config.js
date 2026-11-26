@@ -132,6 +132,10 @@ export const config = {
     promptMaxTier3: Number(process.env.AGENT_PROMPT_MAX_TIER3 || 40000),
     /** Cable-ladder templates (tee/elbow/cross) drawn locally instead of by a model. */
     useTemplates: process.env.AGENT_TEMPLATE !== "0",
+    /** Sheet-metal macros (`trayRun`). AGENT_MACROS=0 turns them off for baseline runs. */
+    get useMacros() {
+      return process.env.AGENT_MACROS !== "0";
+    },
     /**
      * Off (default): the stable c709e4c pipeline — one model, one conversation, up to
      * three repairs. On: templates, tier routing, checklist supplement rounds, vision

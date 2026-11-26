@@ -7,6 +7,7 @@
  */
 
 const PART_KEYS = ["addParts", "updateParts", "removePartIds"];
+const MACRO_KEYS = ["macros", "addMacros", "updateMacros", "removeMacroIds"];
 const PARAMETER_KEYS = ["addParameters", "updateParameters"];
 const CONNECTOR_KEYS = ["addConnectors", "updateConnectors"];
 
@@ -92,12 +93,18 @@ function removeByIds(items, ids) {
 }
 
 export function isFullSpec(value) {
-  return isPlainObject(value) && Array.isArray(value.parts) && "schemaVersion" in value;
+  return (
+    isPlainObject(value) &&
+    (Array.isArray(value.parts) || Array.isArray(value.macros)) &&
+    "schemaVersion" in value
+  );
 }
 
 export function isSpecPatch(value) {
   if (!isPlainObject(value)) return false;
-  return [...PART_KEYS, ...PARAMETER_KEYS, ...CONNECTOR_KEYS].some((key) => key in value);
+  return [...PART_KEYS, ...MACRO_KEYS, ...PARAMETER_KEYS, ...CONNECTOR_KEYS].some(
+    (key) => key in value,
+  );
 }
 
 /** Human-readable summary for the server log ("+6 parts, ~2 params"). */
@@ -142,6 +149,20 @@ export function applySpecPatch(spec, patch) {
     list(patch.updateConnectors),
   );
   out.connectors = connectors;
+
+  if (Array.isArray(patch.macros)) {
+    out.macros = list(patch.macros);
+  } else if (
+    Array.isArray(patch.addMacros) ||
+    Array.isArray(patch.updateMacros) ||
+    Array.isArray(patch.removeMacroIds)
+  ) {
+    const macros = updateExisting(
+      upsert(Array.isArray(spec.macros) ? spec.macros : [], list(patch.addMacros)),
+      list(patch.updateMacros),
+    );
+    out.macros = removeByIds(macros, patch.removeMacroIds);
+  }
 
   if (Array.isArray(patch.materials)) {
     out.materials = upsert(Array.isArray(spec.materials) ? spec.materials : [], list(patch.materials));

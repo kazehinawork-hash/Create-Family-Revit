@@ -1,0 +1,1051 @@
+{
+  "id": "1794935871648-cable-ladder-90deg-elbow-400x100",
+  "name": "Cút Thang Cáp",
+  "group": "PHỤ KIỆN THANG CÁP",
+  "spec": {
+    "name": "Cút Thang Cáp",
+    "schemaVersion": "1.0",
+    "category": "Cable Tray Fitting",
+    "partType": "Elbow",
+    "units": "mm",
+    "lod": 400,
+    "parameters": [
+      {
+        "name": "Ladder Width",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 500
+      },
+      {
+        "name": "Ladder Height",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 100
+      },
+      {
+        "name": "Sheet Thickness",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 1.8
+      },
+      {
+        "name": "Flange Width",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 20
+      },
+      {
+        "name": "Inner Leg Length",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 150
+      },
+      {
+        "name": "Inner Chamfer Length",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 200
+      },
+      {
+        "name": "Outer Chamfer Length",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "formula": "[Inner Chamfer Length] + [Ladder Width] / sqrt(2)"
+      },
+      {
+        "name": "Port Offset",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "formula": "[Ladder Width] + [Inner Leg Length] + [Inner Chamfer Length] / sqrt(2)"
+      },
+      {
+        "name": "Outer Leg Length",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "formula": "[Port Offset] - [Outer Chamfer Length] / sqrt(2)"
+      },
+      {
+        "name": "Notch Width",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 8
+      },
+      {
+        "name": "Top Flange Z",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "formula": "[Ladder Height] - [Sheet Thickness]"
+      },
+      {
+        "name": "M8 Slot Width",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 9
+      },
+      {
+        "name": "M8 Slot Length",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 20
+      },
+      {
+        "name": "M8 Long Slot Length",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 25
+      },
+      {
+        "name": "Rung Width",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 35
+      },
+      {
+        "name": "Rung Height",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 15
+      },
+      {
+        "name": "Rung Thickness",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 1.5
+      },
+      {
+        "name": "Rung Length",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "formula": "[Ladder Width] - 2 * [Sheet Thickness]"
+      },
+      {
+        "name": "Middle Rung Length",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "formula": "([Port Offset] - [Inner Leg Length] + [Ladder Width] - [Outer Chamfer Length] / sqrt(2) - [Sheet Thickness]) / sqrt(2)"
+      },
+      {
+        "name": "Rung Slot Width",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 9
+      },
+      {
+        "name": "Rung Slot Length",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 25
+      },
+      {
+        "name": "Rung Slot Spacing",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "formula": "([Rung Length] - [Rung Slot Length] - 1mm0mm) / 2"
+      }
+    ],
+    "parts": [
+      {
+        "id": "outer_left_leg_web",
+        "name": "Outer_Left_Leg_Web",
+        "material": "ThinhPhat_PowderCoated_Grey",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": "-[Port Offset] + [Outer Leg Length] / 2",
+            "y": "-[Sheet Thickness] / 2",
+            "z": 0
+          },
+          "size": {
+            "x": "[Outer Leg Length]",
+            "y": "[Sheet Thickness]",
+            "z": "[Ladder Height]"
+          }
+        },
+        "cuts": [
+          {
+            "kind": "box",
+            "origin": {
+              "x": "-[Port Offset] + 20mm",
+              "y": "-[Sheet Thickness] / 2",
+              "z": "20mm - [M8 Slot Length] / 2"
+            },
+            "size": {
+              "x": "[M8 Slot Width]",
+              "y": "[Sheet Thickness]",
+              "z": "[M8 Slot Length]"
+            },
+            "cornerRadius": 4.5
+          },
+          {
+            "kind": "box",
+            "origin": {
+              "x": "-[Port Offset] + 20mm",
+              "y": "-[Sheet Thickness] / 2",
+              "z": "[Ladder Height] - 20mm - [M8 Slot Length] / 2"
+            },
+            "size": {
+              "x": "[M8 Slot Width]",
+              "y": "[Sheet Thickness]",
+              "z": "[M8 Slot Length]"
+            },
+            "cornerRadius": 4.5
+          },
+          {
+            "kind": "box",
+            "origin": {
+              "x": "-[Port Offset] + 55mm",
+              "y": "-[Sheet Thickness] / 2",
+              "z": "[Ladder Height] / 2 - [M8 Slot Width] / 2"
+            },
+            "size": {
+              "x": "[M8 Long Slot Length]",
+              "y": "[Sheet Thickness]",
+              "z": "[M8 Slot Width]"
+            },
+            "cornerRadius": 4.5
+          }
+        ]
+      },
+      {
+        "id": "outer_left_leg_bot_flange",
+        "name": "Outer_Left_Leg_Bot_Flange",
+        "material": "ThinhPhat_PowderCoated_Grey",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": "-[Port Offset] + [Outer Leg Length] / 2",
+            "y": "-[Flange Width] / 2",
+            "z": 0
+          },
+          "size": {
+            "x": "[Outer Leg Length]",
+            "y": "[Flange Width]",
+            "z": "[Sheet Thickness]"
+          }
+        },
+        "cuts": []
+      },
+      {
+        "id": "outer_left_leg_top_flange",
+        "name": "Outer_Left_Leg_Top_Flange",
+        "material": "ThinhPhat_PowderCoated_Grey",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": "-[Port Offset] + [Outer Leg Length] / 2",
+            "y": "-[Flange Width] / 2",
+            "z": "[Top Flange Z]"
+          },
+          "size": {
+            "x": "[Outer Leg Length]",
+            "y": "[Flange Width]",
+            "z": "[Sheet Thickness]"
+          }
+        },
+        "cuts": []
+      },
+      {
+        "id": "outer_middle_chamfer_web",
+        "name": "Outer_Middle_Chamfer_Web",
+        "material": "ThinhPhat_PowderCoated_Grey",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": "(-[Outer Chamfer Length] / sqrt(2) - [Sheet Thickness] / 2) / 2",
+            "y": "(-[Outer Chamfer Length] / sqrt(2) - [Sheet Thickness] / 2) / 2",
+            "z": 0
+          },
+          "size": {
+            "x": "[Outer Chamfer Length]",
+            "y": "[Sheet Thickness]",
+            "z": "[Ladder Height]"
+          },
+          "rotationZ": -45
+        },
+        "cuts": []
+      },
+      {
+        "id": "outer_middle_chamfer_bot_flange",
+        "name": "Outer_Middle_Chamfer_Bot_Flange",
+        "material": "ThinhPhat_PowderCoated_Grey",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": "(-[Outer Chamfer Length] / sqrt(2) - [Flange Width] / 2) / 2",
+            "y": "(-[Outer Chamfer Length] / sqrt(2) - [Flange Width] / 2) / 2",
+            "z": 0
+          },
+          "size": {
+            "x": "[Outer Chamfer Length]",
+            "y": "[Flange Width]",
+            "z": "[Sheet Thickness]"
+          },
+          "rotationZ": -45
+        },
+        "cuts": []
+      },
+      {
+        "id": "outer_middle_chamfer_top_flange",
+        "name": "Outer_Middle_Chamfer_Top_Flange",
+        "material": "ThinhPhat_PowderCoated_Grey",
+        "solid": {
+          "kind": "prism",
+          "plane": "xy",
+          "points": [
+            [
+              "-[Outer Chamfer Length] / sqrt(2)",
+              0
+            ],
+            [
+              "-[Outer Chamfer Length] / sqrt(2) - [Flange Width] * (sqrt(2) - 1)",
+              "-[Flange Width]"
+            ],
+            [
+              "-[Flange Width]",
+              "-[Outer Chamfer Length] / sqrt(2) - [Flange Width] * (sqrt(2) - 1)"
+            ],
+            [
+              0,
+              "-[Outer Chamfer Length] / sqrt(2)"
+            ]
+          ],
+          "from": "[Top Flange Z]",
+          "to": "[Top Flange Z] + [Sheet Thickness]"
+        },
+        "cuts": []
+      },
+      {
+        "id": "outer_right_leg_web",
+        "name": "Outer_Right_Leg_Web",
+        "material": "ThinhPhat_PowderCoated_Grey",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": "-[Sheet Thickness] / 2",
+            "y": "-[Port Offset] + [Outer Leg Length] / 2",
+            "z": 0
+          },
+          "size": {
+            "x": "[Sheet Thickness]",
+            "y": "[Outer Leg Length]",
+            "z": "[Ladder Height]"
+          }
+        },
+        "cuts": [
+          {
+            "kind": "box",
+            "origin": {
+              "x": "-[Sheet Thickness] / 2",
+              "y": "-[Port Offset] + 20mm",
+              "z": "20mm - [M8 Slot Length] / 2"
+            },
+            "size": {
+              "x": "[Sheet Thickness]",
+              "y": "[M8 Slot Width]",
+              "z": "[M8 Slot Length]"
+            },
+            "cornerRadius": 4.5
+          },
+          {
+            "kind": "box",
+            "origin": {
+              "x": "-[Sheet Thickness] / 2",
+              "y": "-[Port Offset] + 20mm",
+              "z": "[Ladder Height] - 20mm - [M8 Slot Length] / 2"
+            },
+            "size": {
+              "x": "[Sheet Thickness]",
+              "y": "[M8 Slot Width]",
+              "z": "[M8 Slot Length]"
+            },
+            "cornerRadius": 4.5
+          },
+          {
+            "kind": "box",
+            "origin": {
+              "x": "-[Sheet Thickness] / 2",
+              "y": "-[Port Offset] + 55mm",
+              "z": "[Ladder Height] / 2 - [M8 Slot Width] / 2"
+            },
+            "size": {
+              "x": "[Sheet Thickness]",
+              "y": "[M8 Long Slot Length]",
+              "z": "[M8 Slot Width]"
+            },
+            "cornerRadius": 4.5
+          }
+        ]
+      },
+      {
+        "id": "outer_right_leg_bot_flange",
+        "name": "Outer_Right_Leg_Bot_Flange",
+        "material": "ThinhPhat_PowderCoated_Grey",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": "-[Flange Width] / 2",
+            "y": "-[Port Offset] + [Outer Leg Length] / 2",
+            "z": 0
+          },
+          "size": {
+            "x": "[Flange Width]",
+            "y": "[Outer Leg Length]",
+            "z": "[Sheet Thickness]"
+          }
+        },
+        "cuts": []
+      },
+      {
+        "id": "outer_right_leg_top_flange",
+        "name": "Outer_Right_Leg_Top_Flange",
+        "material": "ThinhPhat_PowderCoated_Grey",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": "-[Flange Width] / 2",
+            "y": "-[Port Offset] + [Outer Leg Length] / 2",
+            "z": "[Top Flange Z]"
+          },
+          "size": {
+            "x": "[Flange Width]",
+            "y": "[Outer Leg Length]",
+            "z": "[Sheet Thickness]"
+          }
+        },
+        "cuts": []
+      },
+      {
+        "id": "inner_left_leg_web",
+        "name": "Inner_Left_Leg_Web",
+        "material": "ThinhPhat_PowderCoated_Grey",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": "-[Port Offset] + [Inner Leg Length] / 2",
+            "y": "-[Ladder Width] + [Sheet Thickness] / 2",
+            "z": 0
+          },
+          "size": {
+            "x": "[Inner Leg Length]",
+            "y": "[Sheet Thickness]",
+            "z": "[Ladder Height]"
+          }
+        },
+        "cuts": [
+          {
+            "kind": "box",
+            "origin": {
+              "x": "-[Port Offset] + 20mm",
+              "y": "-[Ladder Width] + [Sheet Thickness] / 2",
+              "z": "20mm - [M8 Slot Length] / 2"
+            },
+            "size": {
+              "x": "[M8 Slot Width]",
+              "y": "[Sheet Thickness]",
+              "z": "[M8 Slot Length]"
+            },
+            "cornerRadius": 4.5
+          },
+          {
+            "kind": "box",
+            "origin": {
+              "x": "-[Port Offset] + 20mm",
+              "y": "-[Ladder Width] + [Sheet Thickness] / 2",
+              "z": "[Ladder Height] - 20mm - [M8 Slot Length] / 2"
+            },
+            "size": {
+              "x": "[M8 Slot Width]",
+              "y": "[Sheet Thickness]",
+              "z": "[M8 Slot Length]"
+            },
+            "cornerRadius": 4.5
+          },
+          {
+            "kind": "box",
+            "origin": {
+              "x": "-[Port Offset] + 55mm",
+              "y": "-[Ladder Width] + [Sheet Thickness] / 2",
+              "z": "[Ladder Height] / 2 - [M8 Slot Width] / 2"
+            },
+            "size": {
+              "x": "[M8 Long Slot Length]",
+              "y": "[Sheet Thickness]",
+              "z": "[M8 Slot Width]"
+            },
+            "cornerRadius": 4.5
+          }
+        ]
+      },
+      {
+        "id": "inner_left_leg_bot_flange",
+        "name": "Inner_Left_Leg_Bot_Flange",
+        "material": "ThinhPhat_PowderCoated_Grey",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": "-[Port Offset] + [Inner Leg Length] / 2",
+            "y": "-[Ladder Width] + [Flange Width] / 2",
+            "z": 0
+          },
+          "size": {
+            "x": "[Inner Leg Length]",
+            "y": "[Flange Width]",
+            "z": "[Sheet Thickness]"
+          }
+        },
+        "cuts": [
+          {
+            "kind": "box",
+            "origin": {
+              "x": "-[Port Offset] + [Inner Leg Length] - [Notch Width] / 2",
+              "y": "-[Ladder Width] + [Flange Width] / 2",
+              "z": 0
+            },
+            "size": {
+              "x": "[Notch Width]",
+              "y": "[Flange Width]",
+              "z": "[Sheet Thickness]"
+            }
+          }
+        ]
+      },
+      {
+        "id": "inner_left_leg_top_flange",
+        "name": "Inner_Left_Leg_Top_Flange",
+        "material": "ThinhPhat_PowderCoated_Grey",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": "-[Port Offset] + [Inner Leg Length] / 2",
+            "y": "-[Ladder Width] + [Flange Width] / 2",
+            "z": "[Top Flange Z]"
+          },
+          "size": {
+            "x": "[Inner Leg Length]",
+            "y": "[Flange Width]",
+            "z": "[Sheet Thickness]"
+          }
+        },
+        "cuts": [
+          {
+            "kind": "box",
+            "origin": {
+              "x": "-[Port Offset] + [Inner Leg Length] - [Notch Width] / 2",
+              "y": "-[Ladder Width] + [Flange Width] / 2",
+              "z": "[Top Flange Z]"
+            },
+            "size": {
+              "x": "[Notch Width]",
+              "y": "[Flange Width]",
+              "z": "[Sheet Thickness]"
+            }
+          }
+        ]
+      },
+      {
+        "id": "inner_middle_chamfer_web",
+        "name": "Inner_Middle_Chamfer_Web",
+        "material": "ThinhPhat_PowderCoated_Grey",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": "(-[Port Offset] + [Inner Leg Length] - [Ladder Width] + [Sheet Thickness] / 2) / 2",
+            "y": "(-[Port Offset] + [Inner Leg Length] - [Ladder Width] + [Sheet Thickness] / 2) / 2",
+            "z": 0
+          },
+          "size": {
+            "x": "[Inner Chamfer Length]",
+            "y": "[Sheet Thickness]",
+            "z": "[Ladder Height]"
+          },
+          "rotationZ": -45
+        },
+        "cuts": []
+      },
+      {
+        "id": "inner_middle_chamfer_bot_flange",
+        "name": "Inner_Middle_Chamfer_Bot_Flange",
+        "material": "ThinhPhat_PowderCoated_Grey",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": "(-[Port Offset] + [Inner Leg Length] - [Ladder Width] + [Flange Width] / 2) / 2",
+            "y": "(-[Port Offset] + [Inner Leg Length] - [Ladder Width] + [Flange Width] / 2) / 2",
+            "z": 0
+          },
+          "size": {
+            "x": "[Inner Chamfer Length]",
+            "y": "[Flange Width]",
+            "z": "[Sheet Thickness]"
+          },
+          "rotationZ": -45
+        },
+        "cuts": []
+      },
+      {
+        "id": "inner_middle_chamfer_top_flange",
+        "name": "Inner_Middle_Chamfer_Top_Flange",
+        "material": "ThinhPhat_PowderCoated_Grey",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": "(-[Port Offset] + [Inner Leg Length] - [Ladder Width] + [Flange Width] / 2) / 2",
+            "y": "(-[Port Offset] + [Inner Leg Length] - [Ladder Width] + [Flange Width] / 2) / 2",
+            "z": "[Top Flange Z]"
+          },
+          "size": {
+            "x": "[Inner Chamfer Length]",
+            "y": "[Flange Width]",
+            "z": "[Sheet Thickness]"
+          },
+          "rotationZ": -45
+        },
+        "cuts": []
+      },
+      {
+        "id": "inner_right_leg_web",
+        "name": "Inner_Right_Leg_Web",
+        "material": "ThinhPhat_PowderCoated_Grey",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": "-[Ladder Width] + [Sheet Thickness] / 2",
+            "y": "-[Port Offset] + [Inner Leg Length] / 2",
+            "z": 0
+          },
+          "size": {
+            "x": "[Sheet Thickness]",
+            "y": "[Inner Leg Length]",
+            "z": "[Ladder Height]"
+          }
+        },
+        "cuts": [
+          {
+            "kind": "box",
+            "origin": {
+              "x": "-[Ladder Width] + [Sheet Thickness] / 2",
+              "y": "-[Port Offset] + 20mm",
+              "z": "20mm - [M8 Slot Length] / 2"
+            },
+            "size": {
+              "x": "[Sheet Thickness]",
+              "y": "[M8 Slot Width]",
+              "z": "[M8 Slot Length]"
+            },
+            "cornerRadius": 4.5
+          },
+          {
+            "kind": "box",
+            "origin": {
+              "x": "-[Ladder Width] + [Sheet Thickness] / 2",
+              "y": "-[Port Offset] + 20mm",
+              "z": "[Ladder Height] - 20mm - [M8 Slot Length] / 2"
+            },
+            "size": {
+              "x": "[Sheet Thickness]",
+              "y": "[M8 Slot Width]",
+              "z": "[M8 Slot Length]"
+            },
+            "cornerRadius": 4.5
+          },
+          {
+            "kind": "box",
+            "origin": {
+              "x": "-[Ladder Width] + [Sheet Thickness] / 2",
+              "y": "-[Port Offset] + 55mm",
+              "z": "[Ladder Height] / 2 - [M8 Slot Width] / 2"
+            },
+            "size": {
+              "x": "[Sheet Thickness]",
+              "y": "[M8 Long Slot Length]",
+              "z": "[M8 Slot Width]"
+            },
+            "cornerRadius": 4.5
+          }
+        ]
+      },
+      {
+        "id": "inner_right_leg_bot_flange",
+        "name": "Inner_Right_Leg_Bot_Flange",
+        "material": "ThinhPhat_PowderCoated_Grey",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": "-[Ladder Width] + [Flange Width] / 2",
+            "y": "-[Port Offset] + [Inner Leg Length] / 2",
+            "z": 0
+          },
+          "size": {
+            "x": "[Flange Width]",
+            "y": "[Inner Leg Length]",
+            "z": "[Sheet Thickness]"
+          }
+        },
+        "cuts": [
+          {
+            "kind": "box",
+            "origin": {
+              "x": "-[Ladder Width] + [Flange Width] / 2",
+              "y": "-[Port Offset] + [Inner Leg Length] - [Notch Width] / 2",
+              "z": 0
+            },
+            "size": {
+              "x": "[Flange Width]",
+              "y": "[Notch Width]",
+              "z": "[Sheet Thickness]"
+            }
+          }
+        ]
+      },
+      {
+        "id": "inner_right_leg_top_flange",
+        "name": "Inner_Right_Leg_Top_Flange",
+        "material": "ThinhPhat_PowderCoated_Grey",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": "-[Ladder Width] + [Flange Width] / 2",
+            "y": "-[Port Offset] + [Inner Leg Length] / 2",
+            "z": "[Top Flange Z]"
+          },
+          "size": {
+            "x": "[Flange Width]",
+            "y": "[Inner Leg Length]",
+            "z": "[Sheet Thickness]"
+          }
+        },
+        "cuts": [
+          {
+            "kind": "box",
+            "origin": {
+              "x": "-[Ladder Width] + [Flange Width] / 2",
+              "y": "-[Port Offset] + [Inner Leg Length] - [Notch Width] / 2",
+              "z": "[Top Flange Z]"
+            },
+            "size": {
+              "x": "[Flange Width]",
+              "y": "[Notch Width]",
+              "z": "[Sheet Thickness]"
+            }
+          }
+        ]
+      },
+      {
+        "id": "left_leg_rung",
+        "name": "Left_Leg_Rung",
+        "material": "ThinhPhat_PowderCoated_Grey",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": "-[Port Offset] + 132.5mm",
+            "y": "-[Ladder Width] / 2",
+            "z": 0
+          },
+          "size": {
+            "x": "[Rung Width]",
+            "y": "[Rung Length]",
+            "z": "[Rung Height]"
+          }
+        },
+        "cuts": [
+          {
+            "kind": "box",
+            "origin": {
+              "x": "-[Port Offset] + 132.5mm",
+              "y": "-[Ladder Width] / 2",
+              "z": 0
+            },
+            "size": {
+              "x": "[Rung Width] - 2 * [Rung Thickness]",
+              "y": "[Rung Length]",
+              "z": "[Rung Height] - [Rung Thickness]"
+            }
+          },
+          {
+            "kind": "box",
+            "origin": {
+              "x": "-[Port Offset] + 132.5mm",
+              "y": "-[Ladder Width] / 2 - [Rung Slot Spacing]",
+              "z": "[Rung Height] - [Rung Thickness]"
+            },
+            "size": {
+              "x": "[Rung Slot Width]",
+              "y": "[Rung Slot Length]",
+              "z": "[Rung Thickness]"
+            },
+            "cornerRadius": 4.5
+          },
+          {
+            "kind": "box",
+            "origin": {
+              "x": "-[Port Offset] + 132.5mm",
+              "y": "-[Ladder Width] / 2",
+              "z": "[Rung Height] - [Rung Thickness]"
+            },
+            "size": {
+              "x": "[Rung Slot Width]",
+              "y": "[Rung Slot Length]",
+              "z": "[Rung Thickness]"
+            },
+            "cornerRadius": 4.5
+          },
+          {
+            "kind": "box",
+            "origin": {
+              "x": "-[Port Offset] + 132.5mm",
+              "y": "-[Ladder Width] / 2 + [Rung Slot Spacing]",
+              "z": "[Rung Height] - [Rung Thickness]"
+            },
+            "size": {
+              "x": "[Rung Slot Width]",
+              "y": "[Rung Slot Length]",
+              "z": "[Rung Thickness]"
+            },
+            "cornerRadius": 4.5
+          }
+        ]
+      },
+      {
+        "id": "middle_diagonal_rung",
+        "name": "Middle_Diagonal_Rung",
+        "material": "ThinhPhat_PowderCoated_Grey",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": "(-[Outer Chamfer Length] / sqrt(2) - [Port Offset] + [Inner Leg Length] - [Ladder Width]) / 4",
+            "y": "(-[Outer Chamfer Length] / sqrt(2) - [Port Offset] + [Inner Leg Length] - [Ladder Width]) / 4",
+            "z": 0
+          },
+          "size": {
+            "x": "[Middle Rung Length]",
+            "y": "[Rung Width]",
+            "z": "[Rung Height]"
+          },
+          "rotationZ": 45
+        },
+        "cuts": [
+          {
+            "kind": "box",
+            "origin": {
+              "x": "(-[Outer Chamfer Length] / sqrt(2) - [Port Offset] + [Inner Leg Length] - [Ladder Width]) / 4",
+              "y": "(-[Outer Chamfer Length] / sqrt(2) - [Port Offset] + [Inner Leg Length] - [Ladder Width]) / 4",
+              "z": 0
+            },
+            "size": {
+              "x": "[Middle Rung Length]",
+              "y": "[Rung Width] - 2 * [Rung Thickness]",
+              "z": "[Rung Height] - [Rung Thickness]"
+            },
+            "rotationZ": 45
+          },
+          {
+            "kind": "box",
+            "origin": {
+              "x": "(-[Outer Chamfer Length] / sqrt(2) - [Port Offset] + [Inner Leg Length] - [Ladder Width]) / 4",
+              "y": "(-[Outer Chamfer Length] / sqrt(2) - [Port Offset] + [Inner Leg Length] - [Ladder Width]) / 4",
+              "z": "[Rung Height] - [Rung Thickness]"
+            },
+            "size": {
+              "x": "[Rung Slot Length]",
+              "y": "[Rung Slot Width]",
+              "z": "[Rung Thickness]"
+            },
+            "rotationZ": 45,
+            "cornerRadius": 4.5
+          }
+        ]
+      },
+      {
+        "id": "right_leg_rung",
+        "name": "Right_Leg_Rung",
+        "material": "ThinhPhat_PowderCoated_Grey",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": "-[Ladder Width] / 2",
+            "y": "-[Port Offset] + 132.5mm",
+            "z": 0
+          },
+          "size": {
+            "x": "[Rung Length]",
+            "y": "[Rung Width]",
+            "z": "[Rung Height]"
+          }
+        },
+        "cuts": [
+          {
+            "kind": "box",
+            "origin": {
+              "x": "-[Ladder Width] / 2",
+              "y": "-[Port Offset] + 132.5mm",
+              "z": 0
+            },
+            "size": {
+              "x": "[Rung Length]",
+              "y": "[Rung Width] - 2 * [Rung Thickness]",
+              "z": "[Rung Height] - [Rung Thickness]"
+            }
+          },
+          {
+            "kind": "box",
+            "origin": {
+              "x": "-[Ladder Width] / 2 - [Rung Slot Spacing]",
+              "y": "-[Port Offset] + 132.5mm",
+              "z": "[Rung Height] - [Rung Thickness]"
+            },
+            "size": {
+              "x": "[Rung Slot Length]",
+              "y": "[Rung Slot Width]",
+              "z": "[Rung Thickness]"
+            },
+            "cornerRadius": 4.5
+          },
+          {
+            "kind": "box",
+            "origin": {
+              "x": "-[Ladder Width] / 2",
+              "y": "-[Port Offset] + 132.5mm",
+              "z": "[Rung Height] - [Rung Thickness]"
+            },
+            "size": {
+              "x": "[Rung Slot Length]",
+              "y": "[Rung Slot Width]",
+              "z": "[Rung Thickness]"
+            },
+            "cornerRadius": 4.5
+          },
+          {
+            "kind": "box",
+            "origin": {
+              "x": "-[Ladder Width] / 2 + [Rung Slot Spacing]",
+              "y": "-[Port Offset] + 132.5mm",
+              "z": "[Rung Height] - [Rung Thickness]"
+            },
+            "size": {
+              "x": "[Rung Slot Length]",
+              "y": "[Rung Slot Width]",
+              "z": "[Rung Thickness]"
+            },
+            "cornerRadius": 4.5
+          }
+        ]
+      }
+    ],
+    "connectors": [
+      {
+        "id": "port_1",
+        "name": "Left Entry",
+        "systemType": "CableTray",
+        "shape": "rectangular",
+        "direction": "in",
+        "host": "reference-plane",
+        "origin": {
+          "x": "-[Port Offset]",
+          "y": "-[Ladder Width] / 2",
+          "z": "[Ladder Height] / 2"
+        },
+        "directionVector": {
+          "x": -1,
+          "y": 0,
+          "z": 0
+        },
+        "width": "[Ladder Width]",
+        "height": "[Ladder Height]"
+      },
+      {
+        "id": "port_2",
+        "name": "Right Exit",
+        "systemType": "CableTray",
+        "shape": "rectangular",
+        "direction": "out",
+        "host": "reference-plane",
+        "origin": {
+          "x": "-[Ladder Width] / 2",
+          "y": "-[Port Offset]",
+          "z": "[Ladder Height] / 2"
+        },
+        "directionVector": {
+          "x": 0,
+          "y": -1,
+          "z": 0
+        },
+        "width": "[Ladder Width]",
+        "height": "[Ladder Height]"
+      },
+      {
+        "id": "port_3",
+        "name": "Left Aux",
+        "systemType": "CableTray",
+        "shape": "rectangular",
+        "direction": "in",
+        "host": "reference-plane",
+        "origin": {
+          "x": "-[Port Offset] + 150mm",
+          "y": "-[Ladder Width] / 2",
+          "z": "[Ladder Height] / 2"
+        },
+        "directionVector": {
+          "x": -1,
+          "y": 0,
+          "z": 0
+        },
+        "width": "[Ladder Width]",
+        "height": "[Ladder Height]"
+      },
+      {
+        "id": "port_4",
+        "name": "Right Aux",
+        "systemType": "CableTray",
+        "shape": "rectangular",
+        "direction": "out",
+        "host": "reference-plane",
+        "origin": {
+          "x": "-[Ladder Width] / 2",
+          "y": "-[Port Offset] + 150mm",
+          "z": "[Ladder Height] / 2"
+        },
+        "directionVector": {
+          "x": 0,
+          "y": -1,
+          "z": 0
+        },
+        "width": "[Ladder Width]",
+        "height": "[Ladder Height]"
+      }
+    ],
+    "materials": [
+      {
+        "name": "ThinhPhat_PowderCoated_Grey",
+        "color": "#9198a0",
+        "metalness": 0.2,
+        "roughness": 0.45
+      }
+    ],
+    "notes": [
+      "Mức chi tiết LOD 400: Đã điều chỉnh công thức Outer Chamfer Length thành [Inner Chamfer Length] + [Ladder Width] / sqrt(2) để thu ngắn đoạn vát ngoài 45 độ, đưa 2 góc ngoài xiên vào trong cân đối hơn theo hình vẽ, kéo theo cập nhật Outer Leg Length, Middle Rung Length và các part Outer_Left_Leg_*, Outer_Right_Leg_*, Outer_Middle_Chamfer_*, Middle_Diagonal_Rung.",
+      "Đã sửa lỗi cú pháp công thức Rung Slot Spacing từ 1mm0mm thành 10mm."
+    ]
+  }
+}

@@ -1,4 +1,6 @@
 export * from "./types.js";
+export * from "./migrate.js";
+export * from "./macros.js";
 export * from "./expr.js";
 export * from "./parameters.js";
 export * from "./dependencies.js";

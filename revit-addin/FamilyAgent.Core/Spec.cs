@@ -137,6 +137,8 @@ namespace FamilyAgent.Core
         public List<SolidPrimitive> Cuts { get; set; }
         public PartArray Array { get; set; }
         public PartAnchor Anchor { get; set; }
+        public string Detail { get; set; }
+        public string Subcategory { get; set; }
     }
 
     public sealed class FamilyParameter

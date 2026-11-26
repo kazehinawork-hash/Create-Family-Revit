@@ -19,26 +19,37 @@ const FAMILY_RULES = [
     pattern:
       /\belbow\b|\btee\b|\bcross\b|transition|reducer|branch|fitting|ống gió|cút|tê\b|chữ\s?y|ngã\s?(ba|tư)|thu\s?hẹp|côn|reducer/i,
   },
+  {
+    block: "Sheet-metal macros (trayRun)",
+    // Only cable-tray/ladder work benefits from the folded-run macro.
+    pattern:
+      /cable\s*(tray|ladder)|thang\s*cáp|máng\s*cáp|máng\s*thang|tray\s*run|folded\s*sheet|thép\s*tấm|tôn\s*chấn/i,
+  },
 ];
 
 /** Sections that only help when they apply. Everything else is always sent. */
 const CONDITIONAL = {
   "Physical layout rules": "family",
   "Duct and pipe fittings": "family",
+  "Sheet-metal macros (trayRun)": "family",
   "Datasheet handling": "datasheet",
   "Reasoning about a parameter change": "edit",
   "Output shape": "build",
 };
 
-/** Target size of the system prompt; a cable-ladder brief must fit under 10 KB. */
-export const DEFAULT_BUDGET = 10000;
+/** Target size of the system prompt; leaves room for core + triggered family blocks. */
+export const DEFAULT_BUDGET = 14000;
 
-/** When over budget, drop in this order (least harmful first). */
+/** Blocks that must stay in the prompt so format, notes and geometry self-checks remain intact. */
+export const REQUIRED_BLOCKS = [
+  "Notes",
+  "Geometry quality checklist (self-check before returning)",
+  "Output shape",
+];
+
+/** When over budget, drop only optional polish sections so required blocks stay intact. */
 const TRIM_ORDER = [
   "Build parity (studio ↔ .rfa)",
-  "Notes",
-  "Output shape",
-  "Geometry quality checklist (self-check before returning)",
   "Missing information",
   "Orientation and hosting",
 ];
@@ -82,10 +93,19 @@ export function selectBlocks({ text = "", options = {} } = {}) {
   wanted.add("Build parity (studio ↔ .rfa)");
 
   for (const rule of FAMILY_RULES) {
+    if (rule.block === "Sheet-metal macros (trayRun)" && options.macros === false) continue;
     if (rule.pattern.test(brief)) wanted.add(rule.block);
   }
 
   return wanted;
+}
+
+/** Remove macro mentions when AGENT_MACROS=0 so the baseline prompt is clean. */
+function stripMacroMentions(text) {
+  return String(text ?? "")
+    .split(/\r?\n/)
+    .filter((line) => !/\b(trayRun|slotPattern)\b/i.test(line))
+    .join("\n");
 }
 
 /**
@@ -96,11 +116,17 @@ export function selectBlocks({ text = "", options = {} } = {}) {
 export function buildSystemPrompt(markdown, { text = "", options = {} } = {}) {
   const { intro, blocks } = splitPromptBlocks(markdown);
   const wanted = selectBlocks({ text, options });
-  let kept = blocks.filter((block) => !(block.title in CONDITIONAL) || wanted.has(block.title));
+  let kept = blocks.filter(
+    (block) =>
+      (!(block.title in CONDITIONAL) || wanted.has(block.title)) &&
+      (options.macros !== false || block.title !== "Sheet-metal macros (trayRun)"),
+  );
   const dropped = [];
 
-  const render = (list) =>
-    compactMarkdown([intro, ...list.map((block) => block.body)].filter(Boolean).join("\n\n"));
+  const render = (list) => {
+    const raw = compactMarkdown([intro, ...list.map((block) => block.body)].filter(Boolean).join("\n\n"));
+    return options.macros === false ? stripMacroMentions(raw) : raw;
+  };
 
   // Stay inside the per-call prompt budget. Blocks are dropped lowest-value first so
   // a short brief is cheap and a complex one still keeps its geometry rules.
@@ -117,10 +143,7 @@ export function buildSystemPrompt(markdown, { text = "", options = {} } = {}) {
   return {
     prompt,
     blocks: kept.map((block) => block.title),
-    dropped: [
-      ...blocks.filter((block) => !kept.includes(block)).map((block) => block.title),
-      ...dropped.filter((title) => blocks.some((block) => block.title === title)),
-    ].filter((title, index, all) => all.indexOf(title) === index),
+    dropped,
   };
 }
 

@@ -60,11 +60,103 @@ function convertValue(value, unit, type) {
   return null;
 }
 
-const UNIT = '(mm|cm|m|inch|in|")';
-const SET_VERB = "(?:đổi|thay\\s+đổi|chỉnh|sửa|đặt|gán|set|change|update|adjust|make)";
-const UP_VERB = "(?:tăng|cộng\\s+thêm|cộng|nâng|increase|raise|bump|add)";
-const DOWN_VERB = "(?:giảm|trừ|bớt|hạ|decrease|reduce|lower|subtract)";
-const SET_OP = "(?:thành|sang|về|to|=|:)";
+const UNIT = '(mm|cm|m|inch|in|"|deg|°|do)';
+const SET_VERB = "(?:doi|thay\\s+doi|chinh|sua|dat|gan|set|change|update|adjust|make)";
+const UP_VERB = "(?:tang|cong\\s+them|cong|nang|increase|raise|bump|add)";
+const DOWN_VERB = "(?:giam|tru|bot|ha|decrease|reduce|lower|subtract)";
+const SET_OP = "(?:thanh|sang|ve|to|=|:)";
+
+/**
+ * Strip Vietnamese diacritics while keeping punctuation (`°`, `"`, `%`, `.`, `,`) intact
+ * so both accented and unaccented phrasings match the same patterns.
+ */
+function stripViDiacritics(value) {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/gi, "d")
+    .toLowerCase();
+}
+
+/**
+ * Ordered longest-phrase-first so specific compound phrases ("dai nhanh", "duong kinh ngoai")
+ * resolve before generic suffixes ("dai", "duong kinh").
+ */
+const VI_PARAM_ALIASES = [
+  { phrases: ["duong kinh danh nghia"], exact: ["nominal diameter"], suffix: [] },
+  {
+    phrases: ["duong kinh ngoai"],
+    exact: ["outer diameter", "body od", "od"],
+    suffix: ["outer diameter", "od"],
+    subfeature: true,
+  },
+  {
+    phrases: ["duong kinh trong"],
+    exact: ["inner diameter", "bore diameter", "id"],
+    suffix: ["inner diameter", "bore diameter", "id"],
+    subfeature: true,
+  },
+  {
+    phrases: [
+      "chieu dai nhanh",
+      "do dai nhanh",
+      "dai nhanh",
+      "doan nhanh",
+      "chieu dai canh",
+      "dai canh",
+    ],
+    exact: ["leg length", "arm length", "branch length", "run length"],
+    suffix: ["leg length", "arm length", "branch length", "run length"],
+    subfeature: true,
+  },
+  {
+    phrases: [
+      "chieu rong mep gap",
+      "be rong mep gap",
+      "do rong mep gap",
+      "mep gap",
+      "canh gap",
+      "tai gap",
+      "vien gap",
+    ],
+    exact: ["flange", "flange width", "lip", "lip width", "hem width"],
+    suffix: ["flange", "flange width", "lip width", "lip", "hem width"],
+    subfeature: true,
+  },
+  { phrases: ["chieu rong", "be rong", "do rong", "rong"], exact: ["width"], suffix: ["width"] },
+  { phrases: ["chieu cao", "be cao", "do cao", "cao"], exact: ["height"], suffix: ["height"] },
+  { phrases: ["chieu dai", "be dai", "do dai", "dai"], exact: ["length"], suffix: ["length"] },
+  { phrases: ["chieu sau", "be sau", "do sau", "sau"], exact: ["depth"], suffix: ["depth"] },
+  {
+    phrases: ["day ton", "day tam"],
+    exact: ["sheet thickness", "plate thickness"],
+    suffix: ["sheet thickness", "plate thickness"],
+  },
+  {
+    phrases: ["day thanh", "day vach"],
+    exact: ["wall thickness", "panel thickness"],
+    suffix: ["wall thickness", "panel thickness"],
+  },
+  { phrases: ["chieu day", "be day", "do day", "day"], exact: ["thickness"], suffix: ["thickness"] },
+  { phrases: ["duong kinh", "co ong", "phi"], exact: ["diameter", "nominal diameter"], suffix: ["diameter"] },
+  {
+    phrases: ["ban kinh uon", "ban kinh cong"],
+    exact: ["bend radius", "center radius", "radius"],
+    suffix: ["bend radius", "center radius"],
+  },
+  { phrases: ["ban kinh"], exact: ["radius"], suffix: ["radius"] },
+  { phrases: ["goc uon", "goc re", "goc co"], exact: ["bend angle", "angle"], suffix: ["bend angle"] },
+  { phrases: ["goc"], exact: ["angle"], suffix: ["angle"] },
+  { phrases: ["buoc bac", "khoang cach bac"], exact: ["rung pitch", "rung spacing"], suffix: ["pitch", "spacing"] },
+  { phrases: ["so bac", "so luong bac"], exact: ["rung count"], suffix: ["rung count"] },
+  {
+    phrases: ["kich thuoc vat", "do vat"],
+    exact: ["chamfer size", "chamfer", "miter offset"],
+    suffix: ["chamfer size", "chamfer"],
+  },
+];
+
+export { VI_PARAM_ALIASES };
 
 /**
  * Word boundaries written explicitly: JS `\b` is ASCII-only, so a Vietnamese verb
@@ -156,6 +248,76 @@ export function matchTarget(text, candidates, { minScore = 0.8 } = {}) {
   }
 
   return { match: best.candidate, ambiguous: false };
+}
+
+function matchVietnameseAlias(text, candidates) {
+  const clauseNorm = normalizeName(text);
+  if (!clauseNorm) return { match: null, ambiguous: false, matchedPhrase: null };
+
+  for (let entryIndex = 0; entryIndex < VI_PARAM_ALIASES.length; entryIndex += 1) {
+    const entry = VI_PARAM_ALIASES[entryIndex];
+    const earlierSubfeatures = VI_PARAM_ALIASES.slice(0, entryIndex).filter((e) => e.subfeature);
+    const isClaimedBySubfeature = (base) =>
+      earlierSubfeatures.some(
+        (sub) =>
+          sub.exact?.includes(base) ||
+          sub.suffix?.some((sfx) => base === sfx || base.endsWith(` ${sfx}`)),
+      );
+
+    for (const phrase of entry.phrases) {
+      const hit = clauseNorm.match(new RegExp(`(?:^| )(${escapeRegExp(phrase)})(?: (\\d+))?(?: |$)`, "u"));
+      if (!hit) continue;
+
+      const candidateSuffix = hit[2] ?? null;
+      const hasSuffixCandidate =
+        candidateSuffix !== null &&
+        candidates.some((c) => {
+          const words = normalizeName(c.name).split(" ").filter(Boolean);
+          return words[words.length - 1] === candidateSuffix;
+        });
+
+      const suffixNum = hasSuffixCandidate ? candidateSuffix : null;
+      const matchedPhrase = suffixNum ? `${hit[1]} ${suffixNum}` : hit[1];
+
+      const scoped = suffixNum
+        ? candidates.filter((c) => {
+          const words = normalizeName(c.name).split(" ").filter(Boolean);
+          return words[words.length - 1] === suffixNum;
+        })
+        : candidates;
+
+      const stripTrailingNum = (nameNorm) =>
+        suffixNum ? nameNorm.replace(new RegExp(` ${escapeRegExp(suffixNum)}$`), "") : nameNorm;
+
+      const tier1 = scoped.filter((c) => {
+        const base = stripTrailingNum(normalizeName(c.name));
+        return Boolean(entry.exact?.includes(base));
+      });
+      if (tier1.length === 1) return { match: tier1[0], ambiguous: false, matchedPhrase };
+      if (tier1.length > 1) return { match: null, ambiguous: true, matchedPhrase };
+
+      const rawTier2 = scoped.filter((c) => {
+        const base = stripTrailingNum(normalizeName(c.name));
+        if (isClaimedBySubfeature(base)) return false;
+        return entry.suffix?.some((sfx) => base === sfx || base.endsWith(` ${sfx}`));
+      });
+      // Ignore derived formula helpers when editable numeric matches exist (e.g. "Half Width" vs "Tray Width").
+      const editableTier2 = rawTier2.filter((c) => !c.formula && NUMERIC_TYPES.has(c.type));
+      const tier2 = editableTier2.length > 0 ? editableTier2 : rawTier2;
+      if (tier2.length === 1) return { match: tier2[0], ambiguous: false, matchedPhrase };
+      if (tier2.length > 1) return { match: null, ambiguous: true, matchedPhrase };
+    }
+  }
+
+  return { match: null, ambiguous: false, matchedPhrase: null };
+}
+
+function matchParameterTarget(text, parameters) {
+  const direct = matchTarget(text, parameters);
+  if (direct.ambiguous || direct.match) {
+    return { ...direct, matchedPhrase: direct.match?.name ?? null };
+  }
+  return matchVietnameseAlias(text, parameters);
 }
 
 function parseColorEdit(text, spec) {
@@ -256,23 +418,43 @@ const NUMBER = "(-?\\d+(?:[.,]\\d+)?)";
 
 function numericTarget(text, spec) {
   const params = (spec.parameters ?? []).filter((param) => param?.name && typeof param.name === "string");
-  const hit = matchTarget(text, params);
+  const hit = matchParameterTarget(text, params);
   if (hit.ambiguous) return { blocked: true };
-  if (!hit.match) return { blocked: false, param: null };
+  if (!hit.match) return { blocked: false, param: null, matchedPhrase: null };
   if (hit.match.formula || !NUMERIC_TYPES.has(hit.match.type)) return { blocked: true };
   if (typeof hit.match.value !== "number") return { blocked: true };
-  return { blocked: false, param: hit.match };
+  return { blocked: false, param: hit.match, matchedPhrase: hit.matchedPhrase };
 }
 
 function roundFor(param, value) {
   return param.type === "Integer" ? Math.round(value) : Math.round(value * 1000) / 1000;
 }
 
-function parseClause(clause, spec) {
+function applyAbsoluteMatch(targetText, rawNumber, unitText, spec) {
+  const params = (spec.parameters ?? []).filter((param) => param?.name);
+  const hit = matchParameterTarget(targetText, params);
+  if (hit.ambiguous || !hit.match) return hit.ambiguous ? null : undefined;
+
+  const param = hit.match;
+  if (param.formula || !NUMERIC_TYPES.has(param.type)) return null;
+
+  const raw = parseNumber(rawNumber);
+  const value = raw === null ? null : convertValue(raw, unitText, param.type);
+  if (value === null) return null;
+
+  return { name: param.name, type: param.type, value: roundFor(param, value) };
+}
+
+function parseClause(rawClause, spec) {
+  const clause = stripViDiacritics(rawClause);
+
+  // Fractions ("xuống còn 1/2") would otherwise be read as the number 1.
+  if (/\d\s*\/\s*\d/.test(clause)) return null;
+
   // 1. percentage: "tăng 10%", "giảm Ladder Height 5 %", "increase by 20 percent"
   const percent = clause.match(
     new RegExp(
-      `(tăng|giảm|increase|decrease|reduce)\\s+(?:by\\s+)?(.{0,60}?)${NUMBER}\\s*(?:%|percent|phan\\s+tram)`,
+      `(tang|giam|increase|decrease|reduce)\\s+(?:by\\s+)?(.{0,60}?)${NUMBER}\\s*(?:%|percent|phan\\s+tram)`,
       "iu",
     ),
   );
@@ -281,16 +463,16 @@ function parseClause(clause, spec) {
     if (blocked || !param) return blocked ? null : undefined;
     const amount = parseNumber(percent[3]);
     if (amount === null) return null;
-    const sign = /^(giảm|decrease|reduce)$/i.test(percent[1]) ? -1 : 1;
+    const sign = /^(giam|decrease|reduce)$/i.test(percent[1]) ? -1 : 1;
     const value = param.value * (1 + (sign * amount) / 100);
     return { name: param.name, type: param.type, value: roundFor(param, value) };
   }
 
   // 2. multiply / halve: "nhân đôi", "gấp đôi", "double", "giảm một nửa", "halve"
   const multiply = clause.match(
-    /(nhân\s+đôi|gấp\s+đôi|nhân\s+(?:với\s+)?2|double|x2|×2|nhân\s+ba|triple|x3|×3)/iu,
+    /(nhan\s+doi|gap\s+doi|nhan\s+(?:voi\s+)?2|double|x2|×2|nhan\s+ba|triple|x3|×3)/iu,
   );
-  const halve = clause.match(/(giảm\s+một\s+nửa|chia\s+đôi|halve|half)/iu);
+  const halve = clause.match(/(giam\s+mot\s+nua|chia\s+doi|halve|half)/iu);
 
   if (multiply || halve) {
     const { blocked, param } = numericTarget(clause, spec);
@@ -299,21 +481,44 @@ function parseClause(clause, spec) {
     return { name: param.name, type: param.type, value: roundFor(param, param.value * factor) };
   }
 
+  // 2b. target-level ("lên X" / "xuống X"): "tăng chiều cao lên 150", "giảm chiều rộng xuống 300" -> absolute X
+  const levelTarget = clause.match(
+    new RegExp(
+      `^(?:(?:${UP_VERB}|${DOWN_VERB}|${SET_VERB})\\s+)?(?:tham\\s+so\\s+)?(.+?)(?:\\s+(?:${UP_VERB}|${DOWN_VERB}))?\\s+(?:len|xuong)(?!\\s+(?:them|bot))(?:\\s+(?:thanh|con|toi|den))?\\s+${NUMBER}\\s*${UNIT}?$`,
+      "iu",
+    ),
+  );
+  if (levelTarget) {
+    return applyAbsoluteMatch(levelTarget[1], levelTarget[2], levelTarget[3], spec);
+  }
+
   // 3. relative delta: "tăng chiều cao thêm 100mm", "giảm X 50", "add 10 mm to X"
-  // Detect the verb on the clause without the parameter name: "Lower Run Length"
-  // contains the verb "lower" and would otherwise look like a decrease.
+  // Strip the matched parameter name or Vietnamese phrase so digits in "Ladder Width 1"
+  // or verbs inside "Lower Run Length" never pollute delta detection or amount parsing.
   const deltaTarget = numericTarget(clause, spec);
-  const clauseWithoutName = deltaTarget.param
-    ? clause.replace(new RegExp(escapeRegExp(deltaTarget.param.name), "gi"), " ")
-    : clause;
+  let clauseWithoutName = clause;
+  if (deltaTarget.param) {
+    clauseWithoutName = clauseWithoutName.replace(
+      new RegExp(escapeRegExp(deltaTarget.param.name), "gi"),
+      " ",
+    );
+    if (
+      deltaTarget.matchedPhrase &&
+      deltaTarget.matchedPhrase.toLowerCase() !== deltaTarget.param.name.toLowerCase()
+    ) {
+      clauseWithoutName = normalizeName(clauseWithoutName).replace(
+        new RegExp(`(?:^| )${escapeRegExp(deltaTarget.matchedPhrase)}(?: |$)`, "gi"),
+        " ",
+      );
+    }
+  }
   const delta = clauseWithoutName.match(verbPattern(`${UP_VERB}|${DOWN_VERB}`));
 
   if (delta) {
     const { blocked, param } = deltaTarget;
     if (blocked) return null;
 
-    const withoutName = clauseWithoutName;
-    const amount = withoutName.match(new RegExp(`${NUMBER}\\s*${UNIT}?`, "iu"));
+    const amount = clauseWithoutName.match(new RegExp(`${NUMBER}\\s*${UNIT}?`, "iu"));
     if (!amount) return param ? null : undefined;
 
     if (param) {
@@ -332,41 +537,28 @@ function parseClause(clause, spec) {
     return undefined;
   }
 
-  // 4. absolute set: "đổi Ladder Width 1 thành 400", "set X to 1200 mm"
+  // 4. absolute set with explicit operator: "đổi chiều rộng thành 600 mm", "set X to 1200 mm"
   const set = clause.match(
-    new RegExp(`${SET_VERB}\\s+(?:tham\\s+số\\s+)?(.+?)\\s*${SET_OP}\\s*${NUMBER}\\s*${UNIT}?`, "iu"),
+    new RegExp(`${SET_VERB}\\s+(?:tham\\s+so\\s+)?(.+?)\\s*${SET_OP}\\s*${NUMBER}\\s*${UNIT}?`, "iu"),
   );
   if (set) {
-    const params = (spec.parameters ?? []).filter((param) => param?.name);
-    const hit = matchTarget(set[1], params);
-    if (hit.ambiguous || !hit.match) return hit.ambiguous ? null : undefined;
-
-    const param = hit.match;
-    if (param.formula || !NUMERIC_TYPES.has(param.type)) return null;
-
-    const raw = parseNumber(set[2]);
-    const value = raw === null ? null : convertValue(raw, set[3], param.type);
-    if (value === null) return null;
-
-    return { name: param.name, type: param.type, value: roundFor(param, value) };
+    return applyAbsoluteMatch(set[1], set[2], set[3], spec);
   }
 
-  // 5. bare assignment after a split clause: "… và Ladder Width 2 thành 250"
+  // 4b. verb + target + value without separator word: "đổi chiều rộng 600 mm", "sua day 2"
+  const setNoOp = clause.match(
+    new RegExp(`${SET_VERB}\\s+(?:tham\\s+so\\s+)?(.+?)\\s+${NUMBER}\\s*${UNIT}?$`, "iu"),
+  );
+  if (setNoOp) {
+    return applyAbsoluteMatch(setNoOp[1], setNoOp[2], setNoOp[3], spec);
+  }
+
+  // 5. bare assignment: "Tray Width = 600", "chiều rộng: 600mm", "… và Ladder Width 2 thành 250"
   const bare = clause.match(
     new RegExp(`^(.{2,60}?)\\s*${SET_OP}\\s*${NUMBER}\\s*${UNIT}?$`, "iu"),
   );
   if (bare) {
-    const params = (spec.parameters ?? []).filter((param) => param?.name);
-    const hit = matchTarget(bare[1], params);
-    if (hit.ambiguous || !hit.match) return hit.ambiguous ? null : undefined;
-
-    const param = hit.match;
-    if (param.formula || !NUMERIC_TYPES.has(param.type)) return null;
-    const raw = parseNumber(bare[2]);
-    const value = raw === null ? null : convertValue(raw, bare[3], param.type);
-    if (value === null) return null;
-
-    return { name: param.name, type: param.type, value: roundFor(param, value) };
+    return applyAbsoluteMatch(bare[1], bare[2], bare[3], spec);
   }
 
   return undefined;
@@ -394,11 +586,12 @@ export function parseFastParameterEdit(prompt, spec) {
   if (material) return material;
 
   const clauses = text
-    .split(/\s*[,;]\s+|\s+(?:và|and|then)\s+/iu)
+    .split(/\s*[,;]\s+|\s+(?:và|va|and|then|sau\s+đó|sau\s+do|rồi|roi)\s+/iu)
     .map((clause) => clause.trim())
     .filter(Boolean);
 
   const edits = [];
+  let skippedProse = false;
   for (const clause of clauses) {
     // A clause that touches a formula/non-numeric parameter cannot be applied locally.
     const clauseNorm = normalizeName(clause);
@@ -412,9 +605,16 @@ export function parseFastParameterEdit(prompt, spec) {
 
     const edit = parseClause(clause, spec);
     if (edit === null) return null; // explicit edit we cannot do deterministically
-    if (edit === undefined) continue; // prose without a concrete edit
+    if (edit === undefined) {
+      skippedProse = true; // prose without a concrete edit
+      continue;
+    }
     edits.push(edit);
   }
+
+  // "đổi chiều rộng thành 600 và thêm 1 lỗ": applying only the width would silently drop
+  // the rest of the request, so let the model handle the whole message.
+  if (skippedProse && edits.length > 0) return null;
 
   if (edits.length === 0) {
     // "tăng 10%" with no name anywhere: ambiguous, let the model read the request.

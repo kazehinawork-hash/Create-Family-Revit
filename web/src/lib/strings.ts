@@ -26,8 +26,14 @@ const coreVi = {
   saveAs: "Lưu bản mới",
   saveAsHint: "Lưu thành một bản mới, giữ nguyên bản đang mở",
   exportRfa: "Xuất RFA",
-  exportRfaHint: "Tải gói dựng Native Family 1-Click (không cần Add-in)",
+  exportRfaHint:
+    "Chưa kết nối Add-in Revit → tải gói 1-Click (.bat, tham số chỉ là metadata). Mở Revit có Add-in để xuất RFA có tham số thật.",
+  exportRfaRevitHint:
+    "Đã kết nối Add-in Revit → dựng thẳng ra file .rfa có tham số thật và mở thư mục chứa file",
   exportingRfa: "Đang nén gói…",
+  exportPortableMenu: "Tải gói 1-Click (.bat)",
+  exportPortableMenuHint:
+    "Tải gói chạy độc lập không cần Add-in (tham số chỉ lưu dạng metadata, không co dãn hình)",
   buildRevit: "Dựng trong Revit",
   buildRevitHint: "Đẩy trực tiếp vào phiên Revit đang mở qua Add-in Bridge",
   building: "Đang dựng…",
@@ -170,8 +176,14 @@ const coreEn: typeof coreVi = {
   saveAs: "Save as",
   saveAsHint: "Save as a new copy, keeping the current one",
   exportRfa: "Export RFA",
-  exportRfaHint: "Download the 1-click native family package (no add-in needed)",
+  exportRfaHint:
+    "Revit add-in offline → downloads 1-Click (.bat) package (parameters are metadata only). Open Revit with the add-in for parametric RFA.",
+  exportRfaRevitHint:
+    "Revit add-in connected → builds a parametric .rfa directly via Revit bridge and opens its folder",
   exportingRfa: "Packing…",
+  exportPortableMenu: "Download 1-Click (.bat)",
+  exportPortableMenuHint:
+    "Standalone package without add-in (parameters are stored as metadata only)",
   buildRevit: "Build in Revit",
   buildRevitHint: "Push straight into the open Revit session through the add-in bridge",
   building: "Building…",
@@ -309,8 +321,13 @@ const coreZh: typeof coreVi = {
   saveAs: "另存为新文件",
   saveAsHint: "另存为新副本，保留当前文件",
   exportRfa: "导出 RFA",
-  exportRfaHint: "下载一键原生 Family 包（无需插件）",
+  exportRfaHint:
+    "未连接 Revit 插件 → 下载 1-Click（.bat）包（参数仅为元数据）。开启带插件的 Revit 可直接导出真实参数化 RFA。",
+  exportRfaRevitHint:
+    "已连接 Revit 插件 → 通过 Revit Bridge 直接生成真实参数化 .rfa 并打开所在文件夹",
   exportingRfa: "正在打包…",
+  exportPortableMenu: "下载 1-Click（.bat）",
+  exportPortableMenuHint: "无需插件的独立构建包（参数仅保存为元数据）",
   buildRevit: "在 Revit 中构建",
   buildRevitHint: "通过 Add-in Bridge 直接推送到当前 Revit 会话",
   building: "正在构建…",

@@ -1,291 +1,37 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { FamilyParameter, MaterialDef, ResolvedModel, ResolvedPart } from "@family/spec-core";
+import type { ResolvedModel } from "@family/spec-core";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
-import { formatDimensions, type Units } from "../lib/format";
-import {
-  buildPartGeometry,
-  instanceEdgeGeometry,
-  partColor,
-  partMaterialProps,
-  type PreviewQuality,
-} from "../lib/three-build";
-import { buildPartGeometryAsync, type BuiltPartGeometry } from "../lib/geometry-pool";
+import { formatDimensions } from "../lib/format";
+import { type PreviewQuality } from "../lib/three-build";
 import { useI18n } from "../lib/i18n";
-import type { ChatTarget, ModelNote, NoteDraft, Vec3Like } from "../lib/annotations";
-
-/** Camera presets the ViewCube can request. */
-type ViewDirection =
-  | "top"
-  | "front"
-  | "back"
-  | "left"
-  | "right"
-  | "iso"
-  | "tfr"
-  | "tfl"
-  | "tbr"
-  | "tbl"
-  | "bfr"
-  | "bfl"
-  | "bbr"
-  | "bbl";
-
-interface PartCacheEntry {
-  geometryKey: string;
-  styleKey: string;
-  group: THREE.Group;
-  meshMaterial: THREE.MeshStandardMaterial;
-  edgeMaterial: THREE.LineBasicMaterial;
-  /** Stencil helpers that mark the solid part of a section cut. */
-  stencilBack?: THREE.Mesh;
-  stencilFront?: THREE.Mesh;
-  /** Dark back-face shell that makes the outer silhouette read stronger. */
-  silhouette?: THREE.Mesh;
-  disposables: { dispose: () => void }[];
-}
-
-interface Props {
-  model: ResolvedModel | null;
-  parameters?: FamilyParameter[];
-  materials: MaterialDef[];
-  units: Units;
-  showGrid: boolean;
-  onToggleGrid: () => void;
-  showPlanes?: boolean;
-  onTogglePlanes?: () => void;
-  showConnectors?: boolean;
-  onToggleConnectors?: () => void;
-  showHandles?: boolean;
-  onToggleHandles?: () => void;
-  selectedPartId?: string | null;
-  onSelectPart?: (partId: string | null) => void;
-  /** Add parts to the chat composer from the context menu. */
-  onSendPartsToChat?: (targets: ChatTarget[]) => void;
-  /** Notes pinned on the model. */
-  notes?: ModelNote[];
-  onAddNote?: (draft: NoteDraft) => void;
-  onFocusNote?: (note: ModelNote) => void;
-  focusNote?: ModelNote | null;
-  hiddenPartIds?: string[];
-  onToggleHidePart?: (partId: string) => void;
-  onUnhideAll?: () => void;
-  transparentPartIds?: string[];
-  onToggleTransparentPart?: (partId: string) => void;
-  onResetTransparent?: () => void;
-  issuePartIds?: string[];
-  highlightPartIds?: string[];
-  focusPartId?: string | null;
-  onUpdateParameter?: (name: string, value: number) => void;
-  /** Empty-state suggestion: start a sample family. */
-  onLoadSample?: () => void;
-  /** Hands the parent a function that renders and returns a 320px JPEG snapshot. */
-  onCaptureReady?: (capture: (() => string | null) | null) => void;
-  /** File name used when exporting the current view as PNG. */
-  fileName?: string;
-  /** Parts whose cuts the add-in will skip (thin prism): drawn as dashed ghosts. */
-  skippedCutPartIds?: string[];
-  theme?: "light" | "dark";
-}
-
-/**
- * Cross-section of the model bounds at a plane, ordered around the centroid.
- * Used to draw the section outline exactly where it cuts the model (Dalux style).
- */
-function planeCrossSection(
-  bounds: {
-    min: { x: number; y: number; z: number };
-    max: { x: number; y: number; z: number };
-  },
-  normal: THREE.Vector3,
-  point: THREE.Vector3,
-): THREE.Vector3[] {
-  const corners: THREE.Vector3[] = [];
-  for (let i = 0; i < 8; i += 1) {
-    corners.push(
-      new THREE.Vector3(
-        i & 1 ? bounds.max.x : bounds.min.x,
-        i & 2 ? bounds.max.y : bounds.min.y,
-        i & 4 ? bounds.max.z : bounds.min.z,
-      ),
-    );
-  }
-  const edges: [number, number][] = [
-    [0, 1],
-    [2, 3],
-    [4, 5],
-    [6, 7],
-    [0, 2],
-    [1, 3],
-    [4, 6],
-    [5, 7],
-    [0, 4],
-    [1, 5],
-    [2, 6],
-    [3, 7],
-  ];
-
-  const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(normal, point);
-  const epsilon = 1e-4;
-  const points: THREE.Vector3[] = [];
-
-  for (const [a, b] of edges) {
-    const da = plane.distanceToPoint(corners[a]);
-    const db = plane.distanceToPoint(corners[b]);
-    if (Math.abs(da) < epsilon) points.push(corners[a].clone());
-    if (Math.abs(db) < epsilon) points.push(corners[b].clone());
-    if (da * db < 0) {
-      const t = da / (da - db);
-      points.push(corners[a].clone().lerp(corners[b], t));
-    }
-  }
-
-  const unique: THREE.Vector3[] = [];
-  for (const candidate of points) {
-    if (!unique.some((item) => item.distanceToSquared(candidate) < 1e-4)) unique.push(candidate);
-  }
-  if (unique.length < 3) return [];
-
-  const centroid = unique
-    .reduce((acc, item) => acc.add(item), new THREE.Vector3())
-    .divideScalar(unique.length);
-  const u = new THREE.Vector3(1, 0, 0);
-  if (Math.abs(normal.x) > 0.9) u.set(0, 1, 0);
-  u.crossVectors(normal, u).normalize();
-  const v = new THREE.Vector3().crossVectors(normal, u).normalize();
-
-  unique.sort((a, b) => {
-    const av = a.clone().sub(centroid);
-    const bv = b.clone().sub(centroid);
-    return Math.atan2(v.dot(av), u.dot(av)) - Math.atan2(v.dot(bv), u.dot(bv));
-  });
-
-  return unique;
-}
-
-/**
- * Align the second measurement point to the nearest world axis (X/Y/Z) through
- * the first point when it is close enough, so distances snap to straight,
- * parallel or perpendicular runs.
- */
-function snapToAxis(
-  from: THREE.Vector3,
-  to: THREE.Vector3,
-  maxAngleDeg = 10,
-): { point: THREE.Vector3; axis: "X" | "Y" | "Z" | null } {
-  const delta = to.clone().sub(from);
-  const length = delta.length();
-  if (length < 1e-3) return { point: to.clone(), axis: null };
-
-  const direction = delta.divideScalar(length);
-  const candidates: ["X" | "Y" | "Z", number][] = [
-    ["X", Math.abs(direction.x)],
-    ["Y", Math.abs(direction.y)],
-    ["Z", Math.abs(direction.z)],
-  ];
-  candidates.sort((left, right) => right[1] - left[1]);
-  const [axis, alignment] = candidates[0];
-  if (alignment < Math.cos((maxAngleDeg * Math.PI) / 180)) {
-    return { point: to.clone(), axis: null };
-  }
-
-  const point = from.clone();
-  if (axis === "X") point.x = to.x;
-  if (axis === "Y") point.y = to.y;
-  if (axis === "Z") point.z = to.z;
-  return { point, axis };
-}
-
-function createInfiniteGrid(): THREE.Mesh {
-  const material = new THREE.ShaderMaterial({
-    uniforms: {
-      uMinorColor: { value: new THREE.Color(0xb8b0a5) },
-      uMajorColor: { value: new THREE.Color(0x8f877d) },
-      uMinorOpacity: { value: 0.22 },
-      uMajorOpacity: { value: 0.34 },
-      uFadeStart: { value: 6000 },
-      uFadeEnd: { value: 36000 },
-      uCamera: { value: new THREE.Vector3() },
-    },
-    vertexShader: `
-      varying vec3 vWorldPosition;
-      void main() {
-        vec4 world = modelMatrix * vec4(position, 1.0);
-        vWorldPosition = world.xyz;
-        gl_Position = projectionMatrix * viewMatrix * world;
-      }
-    `,
-    fragmentShader: `
-      uniform vec3 uMinorColor;
-      uniform vec3 uMajorColor;
-      uniform float uMinorOpacity;
-      uniform float uMajorOpacity;
-      uniform float uFadeStart;
-      uniform float uFadeEnd;
-      uniform vec3 uCamera;
-      varying vec3 vWorldPosition;
-
-      float gridLine(vec2 world, float spacing) {
-        vec2 coord = world / spacing;
-        vec2 derivative = max(fwidth(coord), vec2(1e-5));
-        vec2 grid = abs(fract(coord - 0.5) - 0.5) / derivative;
-        return 1.0 - smoothstep(0.0, 1.2, min(grid.x, grid.y));
-      }
-
-      void main() {
-        vec2 world = vWorldPosition.xy;
-        // Pick a scale from the pixel footprint, then blend one decade at a time.
-        float footprint = max(fwidth(world.x), fwidth(world.y));
-        float target = max(10.0, footprint * 64.0);
-        float level = clamp(log(target / 10.0) / log(10.0), 0.0, 3.0);
-        float exponent = floor(level);
-        float blend = fract(level);
-        float base = 10.0 * pow(10.0, exponent);
-
-        float minor = mix(
-          gridLine(world, base),
-          gridLine(world, base * 10.0),
-          blend
-        );
-        float major = mix(
-          gridLine(world, base * 5.0),
-          gridLine(world, base * 50.0),
-          blend
-        );
-
-        float distanceToCamera = length(world - uCamera.xy);
-        float fade = 1.0 - smoothstep(uFadeStart, uFadeEnd, distanceToCamera);
-        float alpha = max(minor * uMinorOpacity, major * uMajorOpacity) * fade;
-        if (alpha < 0.002) discard;
-        gl_FragColor = vec4(mix(uMinorColor, uMajorColor, major), alpha);
-      }
-    `,
-    transparent: true,
-    depthWrite: false,
-    depthTest: true,
-    side: THREE.DoubleSide,
-  });
-  const grid = new THREE.Mesh(new THREE.PlaneGeometry(2000000, 2000000), material);
-  grid.position.z = -0.05;
-  grid.renderOrder = -2;
-  return grid;
-}
-
-interface SceneState {
-  renderer: THREE.WebGLRenderer;
-  scene: THREE.Scene;
-  camera: THREE.PerspectiveCamera;
-  controls: OrbitControls;
-  content: THREE.Group;
-  handlesGroup: THREE.Group;
-  grid: THREE.Mesh;
-  refPlanesGroup: THREE.Group;
-  connectorsGroup: THREE.Group;
-  key: THREE.DirectionalLight;
-  shadowPlane: THREE.Mesh;
-  disposables: { dispose: () => void }[];
-}
+import type { ModelNote } from "../lib/annotations";
+import {
+  buildDimensionsGroup,
+  buildGhostCutsGroup,
+  captureViewerThumbnail,
+  computeCameraPreset,
+  createInfiniteGrid,
+  createSectionCap,
+  populateConnectors,
+  populatePartHandles,
+  populateRefPlanes,
+} from "./viewer/sceneHelpers";
+import { setupViewCube } from "./viewer/viewCube";
+import { attachViewerInteractions } from "./viewer/interactions";
+import { usePartMeshes } from "./viewer/usePartMeshes";
+import { useSection } from "./viewer/useSection";
+import { ViewerOverlays } from "./viewer/ViewerOverlays";
+import type {
+  ActiveHandleState,
+  ContextMenuState,
+  NoteComposerState,
+  PartCacheEntry,
+  SceneState,
+  ViewDirection,
+  ViewerProps,
+} from "./viewer/types";
 
 export function Viewer({
   model,
@@ -294,9 +40,9 @@ export function Viewer({
   units,
   showGrid,
   onToggleGrid,
-  showPlanes = true,
+  showPlanes,
   onTogglePlanes,
-  showConnectors = true,
+  showConnectors,
   onToggleConnectors,
   selectedPartId,
   onSelectPart,
@@ -314,31 +60,25 @@ export function Viewer({
   issuePartIds = [],
   highlightPartIds = [],
   focusPartId = null,
+  fitSignal = 0,
   onUpdateParameter,
   onLoadSample,
   onCaptureReady,
   fileName,
   skippedCutPartIds = [],
   theme = "light",
-}: Props) {
+}: ViewerProps) {
   const { t, formatNumber } = useI18n();
   const hostRef = useRef<HTMLDivElement>(null);
   const cubeHostRef = useRef<HTMLDivElement>(null);
-  // Canvas labels (measure, section, dimensions) are painted inside effects with
-  // fixed dependency lists; refs keep them on the active language without
-  // rebuilding the renderer or the scene.
   const tRef = useRef(t);
   tRef.current = t;
   const formatNumberRef = useRef(formatNumber);
   formatNumberRef.current = formatNumber;
-  const onCaptureReadyRef = useRef<Props["onCaptureReady"]>(onCaptureReady);
+  const onCaptureReadyRef = useRef<ViewerProps["onCaptureReady"]>(onCaptureReady);
   onCaptureReadyRef.current = onCaptureReady;
   const stateRef = useRef<SceneState | null>(null);
-  // The ViewCube lives inside the scene effect (deps []); a ref keeps the latest
-  // setView without tearing the whole scene down when its identity changes.
-  const setViewRef = useRef<(direction: ViewDirection) => void>(() => {});
-  // The scene only renders when something actually changed: camera motion fires a
-  // "change" event, geometry/style effects mark it dirty. Saves GPU when idle.
+  const setViewRef = useRef<(direction: ViewDirection) => void>(() => { });
   const renderDirtyRef = useRef(true);
   const modelRef = useRef<ResolvedModel | null>(model);
   const onSelectPartRef = useRef(onSelectPart);
@@ -349,49 +89,19 @@ export function Viewer({
   onFocusNoteRef.current = onFocusNote;
   const onUpdateParameterRef = useRef(onUpdateParameter);
   onUpdateParameterRef.current = onUpdateParameter;
-  const onToggleHidePartRef = useRef(onToggleHidePart);
-  onToggleHidePartRef.current = onToggleHidePart;
-  const onToggleTransparentPartRef = useRef(onToggleTransparentPart);
-  onToggleTransparentPartRef.current = onToggleTransparentPart;
-  const onUnhideAllRef = useRef(onUnhideAll);
-  onUnhideAllRef.current = onUnhideAll;
-  const onResetTransparentRef = useRef(onResetTransparent);
-  onResetTransparentRef.current = onResetTransparent;
   const hasFittedRef = useRef(false);
+  const lastFitSignalRef = useRef(0);
   modelRef.current = model;
 
-  const [activeHandle, setActiveHandle] = useState<{
-    label: string;
-    value: number;
-    screenX: number;
-    screenY: number;
-  } | null>(null);
-
-  const [contextMenu, setContextMenu] = useState<{
-    partId: string;
-    partName: string;
-    x: number;
-    y: number;
-    normal: THREE.Vector3 | null;
-    surfaceNormal: THREE.Vector3 | null;
-    point: THREE.Vector3 | null;
-    center: THREE.Vector3 | null;
-  } | null>(null);
+  const [activeHandle, setActiveHandle] = useState<ActiveHandleState | null>(null);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [pickedPartIds, setPickedPartIds] = useState<string[]>([]);
   const pickedPartIdsRef = useRef<string[]>([]);
   pickedPartIdsRef.current = pickedPartIds;
   const notesRef = useRef<ModelNote[]>(notes);
   notesRef.current = notes;
   const notePinRefs = useRef(new Map<string, HTMLButtonElement>());
-  const [noteComposer, setNoteComposer] = useState<{
-    partId: string;
-    partName: string;
-    x: number;
-    y: number;
-    point: Vec3Like;
-    normal?: Vec3Like;
-    text: string;
-  } | null>(null);
+  const [noteComposer, setNoteComposer] = useState<NoteComposerState | null>(null);
 
   // A selection made in the parameter panel or chat replaces the Ctrl+click set.
   useEffect(() => {
@@ -415,16 +125,10 @@ export function Viewer({
 
   const [visiblePartCount, setVisiblePartCount] = useState<number>(0);
   const prevModelRef = useRef<ResolvedModel | null>(null);
-  // Rendered parts survive re-runs of the scene effect: only new or changed parts are
-  // rebuilt, so the assembly animation adds meshes instead of redrawing everything.
   const partCacheRef = useRef(new Map<string, PartCacheEntry>());
-  // Solid outlines never change for a given resolved part, so the expensive
-  // JSON.stringify pass is cached per part object instead of running every effect.
-  const shapeKeysRef = useRef(new WeakMap<ResolvedPart, string>());
 
   const [animatingPartName, setAnimatingPartName] = useState<string | null>(null);
   const [detailLevel, setDetailLevel] = useState<"coarse" | "medium" | "fine">("fine");
-  // Always the high-quality tessellation: the HD/Standard toggle was noise.
   const previewQuality: PreviewQuality = "high";
   const [turntableActive, setTurntableActive] = useState<boolean>(false);
   const turntableRef = useRef<boolean>(false);
@@ -436,16 +140,15 @@ export function Viewer({
   const shadowsEnabledRef = useRef<boolean>(true);
   shadowsEnabledRef.current = shadowsEnabled;
 
-  // Section (clipping plane) and measurement tools.
-  const [sectionAxis, setSectionAxis] = useState<"off" | "x" | "y" | "z" | "custom">("off");
-  const [sectionT, setSectionT] = useState(1);
-  const [sectionCustom, setSectionCustom] = useState<{
-    normal: THREE.Vector3;
-    base: THREE.Vector3;
-  } | null>(null);
-  const [pickingSection, setPickingSection] = useState(false);
-  const pickingSectionRef = useRef(false);
-  pickingSectionRef.current = pickingSection;
+  const section = useSection({
+    stateRef,
+    partCacheRef,
+    renderDirtyRef,
+    model,
+    t,
+    formatNumber,
+  });
+
   const [measuring, setMeasuring] = useState(false);
   const [measureLabel, setMeasureLabel] = useState<string | null>(null);
   const [measureCount, setMeasureCount] = useState(0);
@@ -455,47 +158,37 @@ export function Viewer({
   const measureSegmentsRef = useRef<THREE.Group[]>([]);
   const measureMarkersRef = useRef<THREE.Mesh[]>([]);
   const measurePreviewGroupRef = useRef<THREE.Group | null>(null);
-  const sectionPlaneRef = useRef<THREE.Group | null>(null);
-  const sectionOutlineRef = useRef<THREE.Group | null>(null);
-  const sectionArrowRef = useRef<THREE.Object3D | null>(null);
-  const sectionHandleLabelRef = useRef<THREE.Sprite | null>(null);
-  const sectionBuildKeyRef = useRef<string>("off");
-  const sectionDragRef = useRef(false);
-  const sectionDragMovedRef = useRef(false);
-  const sectionDragDataRef = useRef<{
-    origin: THREE.Vector3;
-    normal: THREE.Vector3;
-    range: number;
-    sign: number;
-  } | null>(null);
 
-  const statusRef = useRef(status);
-  statusRef.current = status;
-
-  // Hover / selection presentation.
   const [hoveredPartId, setHoveredPartId] = useState<string | null>(null);
   const [hoverInfo, setHoverInfo] = useState<{ x: number; y: number; name: string } | null>(null);
   const [dimOthers, setDimOthers] = useState(true);
-  // Section cap (hatched fill) is only worth it for families without hundreds of parts.
-  const [sectionFill, setSectionFill] = useState(true);
   const [explode, setExplode] = useState(0);
   const [explodeOpen, setExplodeOpen] = useState(false);
   const [toolsMenuOpen, setToolsMenuOpen] = useState(false);
   const [showDimensions, setShowDimensions] = useState(false);
-  // Which corner of the bounding box faces the camera; dimension lines follow it.
   const [dimView, setDimView] = useState("111");
   const dimViewRef = useRef("111");
   const showDimensionsRef = useRef(false);
   showDimensionsRef.current = showDimensions;
   const explodeDirsRef = useRef(new WeakMap<THREE.Object3D, THREE.Vector3>());
-  // Camera target while the exploded view grows/shrinks: the tick loop eases to it.
   const explodeFitRef = useRef<{ pos: THREE.Vector3; look: THREE.Vector3 } | null>(null);
+  const prevExplodeRef = useRef(0);
   const dimensionsRef = useRef<THREE.Group | null>(null);
   const ghostCutsRef = useRef<THREE.Group | null>(null);
-  const sectionCapRef = useRef<THREE.Mesh | null>(null);
+  const {
+    pickingSectionRef,
+    sectionArrowRef,
+    sectionDragRef,
+    sectionDragMovedRef,
+    sectionDragDataRef,
+    sectionCapRef,
+    setSectionCustom,
+    setSectionAxis,
+    setSectionT,
+    setPickingSection,
+  } = section;
   const hoverBlockedRef = useRef(false);
-  // Hover is off while the user is orbiting, measuring or placing a section plane.
-  hoverBlockedRef.current = measuring || pickingSection || sectionAxis !== "off";
+  hoverBlockedRef.current = measuring || section.pickingSection || section.sectionAxis !== "off";
 
   /** Export the current view as a PNG named after the family. */
   const saveImage = () => {
@@ -583,15 +276,12 @@ export function Viewer({
 
     const prevParts = prevModelRef.current?.parts;
 
-    // Nếu số lượng part đang tăng dần từng bước (khi Agent trực tiếp đắp part)
     if (prevParts && model.parts.length > prevParts.length) {
       prevModelRef.current = model;
       setVisiblePartCount(model.parts.length);
       const newestPart = model.parts[model.parts.length - 1];
       setAnimatingPartName(newestPart?.name || null);
-      const timer = setTimeout(() => {
-        setAnimatingPartName(null);
-      }, 1000);
+      const timer = setTimeout(() => setAnimatingPartName(null), 1000);
       return () => clearTimeout(timer);
     }
 
@@ -603,8 +293,6 @@ export function Viewer({
     prevModelRef.current = model;
 
     if (isDifferent) {
-      // A finished model arrives in one go: build it up part by part instead of popping
-      // the whole thing in, so the user sees it assemble. Big families step faster.
       setVisiblePartCount(1);
       setAnimatingPartName(model.parts[0]?.name || null);
 
@@ -622,10 +310,10 @@ export function Viewer({
         }
       }, step);
       return () => clearInterval(interval);
-    } else {
-      setVisiblePartCount(model.parts.length);
-      setAnimatingPartName(null);
     }
+
+    setVisiblePartCount(model.parts.length);
+    setAnimatingPartName(null);
   }, [model]);
 
   useEffect(() => {
@@ -639,21 +327,17 @@ export function Viewer({
       powerPreference: "high-performance",
     });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 3));
-    // The scene background carries the theme; the canvas itself stays opaque.
     renderer.setClearColor(0x000000, 0);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 0.96;
     renderer.shadowMap.enabled = shadowsEnabledRef.current;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    // The shadow map only depends on geometry and the light, not on the camera:
-    // refresh it when the scene changes instead of re-rendering it every frame.
     renderer.shadowMap.autoUpdate = false;
     renderer.shadowMap.needsUpdate = true;
     renderer.domElement.style.width = "100%";
     renderer.domElement.style.height = "100%";
     host.appendChild(renderer.domElement);
 
-    // Opt-in draw-call HUD: open the studio with ?debug=1.
     const debugStats = new URLSearchParams(window.location.search).has("debug");
     let statsEl: HTMLDivElement | null = null;
     if (debugStats) {
@@ -665,8 +349,6 @@ export function Viewer({
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(themeRef.current === "dark" ? 0x191e22 : 0xece9e2);
 
-    // A neutral room probe gives the metals something to reflect; without it every
-    // metalness > 0 surface renders as flat grey.
     const pmrem = new THREE.PMREMGenerator(renderer);
     const environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     pmrem.dispose();
@@ -685,21 +367,13 @@ export function Viewer({
     controls.maxDistance = 60000;
     controls.maxPolarAngle = Math.PI - 0.05;
 
-    // Tự động tắt Turntable khi người dùng chủ động tương tác/xoay/zoom bằng chuột
     controls.addEventListener("start", () => {
-      if (turntableRef.current) {
-        setTurntableActive(false);
-      }
+      if (turntableRef.current) setTurntableActive(false);
     });
-
     controls.addEventListener("change", () => {
       renderDirtyRef.current = true;
     });
 
-    // Standard CAD / Revit mouse mapping:
-    // Left click: Rotate / Orbit
-    // Middle click (or Right click): Pan / Rê khung hình
-    // Right click: Pan / Rotate
     controls.mouseButtons = {
       LEFT: THREE.MOUSE.ROTATE,
       MIDDLE: THREE.MOUSE.PAN,
@@ -729,13 +403,10 @@ export function Viewer({
 
     const content = new THREE.Group();
     scene.add(content);
-
     const handlesGroup = new THREE.Group();
     scene.add(handlesGroup);
-
     const refPlanesGroup = new THREE.Group();
     scene.add(refPlanesGroup);
-
     const connectorsGroup = new THREE.Group();
     scene.add(connectorsGroup);
 
@@ -743,43 +414,10 @@ export function Viewer({
     const gridMaterial = grid.material as THREE.ShaderMaterial;
     scene.add(grid);
 
-    // Hatched section cap.
-    // Stencil section cap: opaque fill with a screen-space hatch. The shader reads
-    // gl_FragCoord, so the stripe density is constant at every zoom level.
-    const sectionCap = new THREE.Mesh(
-      new THREE.PlaneGeometry(1, 1),
-      new THREE.ShaderMaterial({
-        vertexShader: `
-          void main() {
-            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-          }
-        `,
-        fragmentShader: `
-          void main() {
-            vec3 base = vec3(0.898, 0.878, 0.827);
-            vec3 line = vec3(0.549, 0.525, 0.478);
-            float stripe = step(0.86, fract((gl_FragCoord.x + gl_FragCoord.y) / 14.0));
-            gl_FragColor = vec4(mix(base, line, stripe), 1.0);
-          }
-        `,
-        side: THREE.DoubleSide,
-        clipping: false,
-        stencilWrite: true,
-        stencilRef: 0,
-        stencilFunc: THREE.NotEqualStencilFunc,
-        stencilFail: THREE.KeepStencilOp,
-        stencilZFail: THREE.KeepStencilOp,
-        stencilZPass: THREE.KeepStencilOp,
-        depthWrite: true,
-        depthTest: true,
-      }),
-    );
-    sectionCap.renderOrder = 2;
-    sectionCap.visible = false;
+    const sectionCap = createSectionCap();
     scene.add(sectionCap);
     sectionCapRef.current = sectionCap;
 
-    // Catches the key light's shadow so parts read as sitting on the floor.
     const shadowPlane = new THREE.Mesh(
       new THREE.PlaneGeometry(1, 1),
       new THREE.ShadowMaterial({ color: 0x14191d, opacity: 0.32 }),
@@ -790,8 +428,6 @@ export function Viewer({
     shadowPlane.visible = shadowsEnabledRef.current;
     scene.add(shadowPlane);
 
-    // Direct WebGL rendering with native MSAA. Post-processing was removed because
-    // its resolve pass softened the thin sheet edges and made the image pulse.
     const resize = () => {
       const width = host.clientWidth || 1;
       const height = host.clientHeight || 1;
@@ -805,1294 +441,96 @@ export function Viewer({
     observer.observe(host);
     resize();
 
-    let downPos = { x: 0, y: 0 };
-    const CLICK_DRAG_TOLERANCE_PX = 6;
-    let draggingHandle: {
-      arrow: THREE.Object3D;
-      axis: "x" | "y" | "z";
-      dir: number;
-      paramName: string;
-      initialVal: number;
-      initialMouse: { x: number; y: number };
-      dragPlane: THREE.Plane;
-      startPoint: THREE.Vector3;
-    } | null = null;
+    const detachInteractions = attachViewerInteractions({
+      renderer,
+      scene,
+      camera,
+      controls,
+      content,
+      handlesGroup,
+      modelRef,
+      tRef,
+      formatNumberRef,
+      renderDirtyRef,
+      measuringRef,
+      pickingSectionRef,
+      hoverBlockedRef,
+      measurePointsRef,
+      measureSegmentsRef,
+      measureMarkersRef,
+      measurePreviewGroupRef,
+      sectionArrowRef,
+      sectionDragRef,
+      sectionDragMovedRef,
+      sectionDragDataRef,
+      pickedPartIdsRef,
+      onSelectPartRef,
+      onUpdateParameterRef,
+      setActiveHandle,
+      setContextMenu,
+      setNoteComposer,
+      setHoveredPartId,
+      setHoverInfo,
+      setPickedPartIds,
+      setMeasureLabel,
+      setMeasureCount,
+      setSectionCustom,
+      setSectionAxis,
+      setSectionT,
+      setPickingSection,
+    });
 
-    const dragRaycaster = new THREE.Raycaster();
-    const dragPointer = new THREE.Vector2();
-
-    /**
-     * Localized name of the snap target under the cursor ("face" / "edge" / "corner").
-     * The picker keeps ASCII tokens so the labels can follow the active language.
-     */
-    const snapLabel = (kind: string) => {
-      const strings = tRef.current;
-      if (kind === "corner") return strings.viewerSnapCorner;
-      if (kind === "edge") return strings.viewerSnapEdge;
-      return strings.viewerSnapFace;
-    };
-
-    /**
-     * Snap a measurement point to a vertex, an edge or the face under the cursor.
-     * Shared by the live hover preview and the click handler.
-     */
-    const pickMeasurePoint = (
-      raycaster: THREE.Raycaster,
-      screenX: number,
-      screenY: number,
-    ): { point: THREE.Vector3; kind: string } | null => {
-      const hits = raycaster.intersectObjects(content.children, true);
-      const hit = hits.find((entry) => (entry.object as THREE.Mesh).isMesh);
-      if (!hit) return null;
-
-      const bounds = modelRef.current?.bounds;
-      const modelExtent = bounds ? Math.max(bounds.size.x, bounds.size.y, bounds.size.z) : 0;
-
-      let point = hit.point.clone();
-      let kind = "face";
-
-      const mesh = hit.object as THREE.Mesh;
-      if (hit.face && mesh.isMesh) {
-        const geometry = mesh.geometry as THREE.BufferGeometry;
-        const position = geometry.getAttribute("position");
-        const rect = renderer.domElement.getBoundingClientRect();
-        const toScreen = (world: THREE.Vector3) => {
-          const projected = world.clone().project(camera);
-          return {
-            x: ((projected.x + 1) / 2) * rect.width,
-            y: ((-projected.y + 1) / 2) * rect.height,
-          };
-        };
-
-        // 1. Nearest vertex of the whole part. Only vertices close to the hit
-        // point are projected, so large CSG meshes stay cheap.
-        if (position) {
-          const probe = modelExtent > 0 ? modelExtent * 0.12 : Number.POSITIVE_INFINITY;
-          const probeSq = probe * probe;
-          const vertex = new THREE.Vector3();
-          let bestDistance = 14;
-          let best: THREE.Vector3 | null = null;
-
-          for (let i = 0; i < position.count; i += 1) {
-            vertex.fromBufferAttribute(position, i).applyMatrix4(mesh.matrixWorld);
-            if (vertex.distanceToSquared(hit.point) > probeSq) continue;
-            const screen = toScreen(vertex);
-            const distance = Math.hypot(screen.x - screenX, screen.y - screenY);
-            if (distance < bestDistance) {
-              bestDistance = distance;
-              best = vertex.clone();
-            }
-          }
-
-          if (best) {
-            point = best;
-            kind = "corner";
-          }
-        }
-
-        // 2. Otherwise snap to the closest edge of the hit triangle.
-        if (kind === "face" && position && hit.face) {
-          const distanceToSegment = (
-            p: { x: number; y: number },
-            a: { x: number; y: number },
-            b: { x: number; y: number },
-          ) => {
-            const dx = b.x - a.x;
-            const dy = b.y - a.y;
-            const lengthSq = dx * dx + dy * dy;
-            const t =
-              lengthSq > 0
-                ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / lengthSq))
-                : 0;
-            return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
-          };
-
-          const corners = [hit.face.a, hit.face.b, hit.face.c].map((index) =>
-            new THREE.Vector3().fromBufferAttribute(position, index).applyMatrix4(mesh.matrixWorld),
-          );
-          const screens = corners.map(toScreen);
-          const edges: [number, number][] = [
-            [0, 1],
-            [1, 2],
-            [2, 0],
-          ];
-          let bestEdge = -1;
-          let bestEdgeDistance = 10;
-          edges.forEach(([i, j], index) => {
-            const distance = distanceToSegment({ x: screenX, y: screenY }, screens[i], screens[j]);
-            if (distance < bestEdgeDistance) {
-              bestEdgeDistance = distance;
-              bestEdge = index;
-            }
-          });
-
-          if (bestEdge >= 0) {
-            const [i, j] = edges[bestEdge];
-            const pointOnSegment = new THREE.Vector3();
-            raycaster.ray.distanceSqToSegment(corners[i], corners[j], undefined, pointOnSegment);
-            point = pointOnSegment;
-            kind = "edge";
-          }
-        }
-      }
-
-      return { point, kind };
-    };
-
-    const onCanvasMouseDown = (e: MouseEvent) => {
-      downPos = { x: e.clientX, y: e.clientY };
-      setContextMenu(null);
-      setNoteComposer(null);
-
-      const rect = renderer.domElement.getBoundingClientRect();
-      dragPointer.set(
-        ((e.clientX - rect.left) / rect.width) * 2 - 1,
-        -((e.clientY - rect.top) / rect.height) * 2 + 1,
-      );
-      dragRaycaster.setFromCamera(dragPointer, camera);
-      const handleHits = dragRaycaster.intersectObjects(handlesGroup.children, true);
-
-      if (handleHits.length > 0) {
-        let handleObj: THREE.Object3D | null = handleHits[0].object;
-        while (
-          handleObj &&
-          !handleObj.userData.isShapeHandle &&
-          handleObj.parent !== handlesGroup &&
-          handleObj.parent
-        ) {
-          handleObj = handleObj.parent;
-        }
-
-        if (handleObj && handleObj.userData.isShapeHandle) {
-          e.stopPropagation();
-          controls.enabled = false;
-
-          const axis = handleObj.userData.axis as "x" | "y" | "z";
-          const dir = handleObj.userData.dir as number;
-          const paramName = handleObj.userData.paramName as string;
-          const initialVal = handleObj.userData.currentVal as number;
-
-          // Drag plane perpendicular to camera direction
-          const camDir = new THREE.Vector3();
-          camera.getWorldDirection(camDir);
-          const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(
-            camDir.negate(),
-            handleObj.position,
-          );
-
-          const startIntersection = new THREE.Vector3();
-          dragRaycaster.ray.intersectPlane(plane, startIntersection);
-
-          draggingHandle = {
-            arrow: handleObj,
-            axis,
-            dir,
-            paramName,
-            initialVal,
-            initialMouse: { x: e.clientX, y: e.clientY },
-            dragPlane: plane,
-            startPoint: startIntersection.clone(),
-          };
-
-          const screenPos = handleObj.position.clone().project(camera);
-          const sx = ((screenPos.x + 1) / 2) * rect.width;
-          const sy = ((-screenPos.y + 1) / 2) * rect.height;
-          setActiveHandle({
-            label: paramName,
-            value: Math.round(initialVal),
-            screenX: sx,
-            screenY: sy,
-          });
-          return;
-        }
-      }
-    };
-
-    const onCanvasMouseMove = (e: MouseEvent) => {
-      if (!draggingHandle) {
-        if (sectionDragRef.current) return;
-        // Hover cursor check
-        const rect = renderer.domElement.getBoundingClientRect();
-        dragPointer.set(
-          ((e.clientX - rect.left) / rect.width) * 2 - 1,
-          -((e.clientY - rect.top) / rect.height) * 2 + 1,
-        );
-        dragRaycaster.setFromCamera(dragPointer, camera);
-        const handleHits = dragRaycaster.intersectObjects(handlesGroup.children, true);
-        if (handleHits.length > 0) {
-          renderer.domElement.style.cursor = "pointer";
-        } else if (
-          sectionArrowRef.current &&
-          dragRaycaster.intersectObject(sectionArrowRef.current, true).length > 0
-        ) {
-          renderer.domElement.style.cursor = "grab";
-        } else {
-          renderer.domElement.style.cursor = "default";
-        }
-        updateMeasurePreview(e);
-        return;
-      }
-
-      const rect = renderer.domElement.getBoundingClientRect();
-      dragPointer.set(
-        ((e.clientX - rect.left) / rect.width) * 2 - 1,
-        -((e.clientY - rect.top) / rect.height) * 2 + 1,
-      );
-      dragRaycaster.setFromCamera(dragPointer, camera);
-
-      const currentIntersection = new THREE.Vector3();
-      if (dragRaycaster.ray.intersectPlane(draggingHandle.dragPlane, currentIntersection)) {
-        const deltaWorld = currentIntersection.clone().sub(draggingHandle.startPoint);
-        const axisVector = new THREE.Vector3();
-        axisVector[draggingHandle.axis] = 1;
-
-        // Project delta onto handle axis
-        const axisDelta = deltaWorld.dot(axisVector) * draggingHandle.dir;
-
-        // Multiplier: if dimension is centered (like origin centered bounding box), delta is 2x for full width
-        const deltaMultiplier = 2;
-        const rawNewVal = draggingHandle.initialVal + axisDelta * deltaMultiplier;
-        // Snap to nearest 10mm (Revit style snap)
-        const snapped = Math.max(50, Math.round(rawNewVal / 10) * 10);
-
-        const screenPos = draggingHandle.arrow.position.clone().project(camera);
-        const sx = ((screenPos.x + 1) / 2) * rect.width;
-        const sy = ((-screenPos.y + 1) / 2) * rect.height;
-
-        setActiveHandle({
-          label: draggingHandle.paramName,
-          value: snapped,
-          screenX: sx,
-          screenY: sy,
-        });
-
-        onUpdateParameterRef.current?.(draggingHandle.paramName, snapped);
-      }
-    };
-
-    const onCanvasMouseUp = () => {
-      if (draggingHandle) {
-        draggingHandle = null;
-        controls.enabled = true;
-        setTimeout(() => setActiveHandle(null), 1200);
-      }
-    };
-
-    const addMeasurement = (a: THREE.Vector3, b: THREE.Vector3, modelExtent: number) => {
-      const direction = b.clone().sub(a);
-      const length = direction.length();
-      if (length <= 0) return;
-      direction.normalize();
-
-      const accent = 0xcf222e;
-      const radius = Math.max(1.6, modelExtent * 0.0011);
-      const group = new THREE.Group();
-
-      const accentMaterial = new THREE.MeshBasicMaterial({ color: accent, depthTest: false });
-
-      const midpoint = a.clone().addScaledVector(direction, length / 2);
-
-      const lineMesh = new THREE.Mesh(
-        new THREE.CylinderGeometry(radius, radius, length, 10),
-        accentMaterial,
-      );
-      lineMesh.position.copy(midpoint);
-      lineMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
-      lineMesh.renderOrder = 993;
-      group.add(lineMesh);
-
-      // Dimension arrowheads at both ends, pointing outward.
-      const viewDirection = camera.getWorldDirection(new THREE.Vector3());
-      const perpendicular = new THREE.Vector3().crossVectors(direction, viewDirection);
-      if (perpendicular.lengthSq() < 1e-6) perpendicular.set(0, 0, 1);
-      perpendicular.normalize();
-      const arrowLength = Math.max(12, modelExtent * 0.016);
-      const arrowRadius = Math.max(3, modelExtent * 0.0042);
-      for (const [endpoint, sign] of [
-        [a, -1],
-        [b, 1],
-      ] as [THREE.Vector3, number][]) {
-        const pointing = direction.clone().multiplyScalar(sign);
-        const arrowHead = new THREE.Mesh(
-          new THREE.ConeGeometry(arrowRadius, arrowLength, 12),
-          accentMaterial,
-        );
-        arrowHead.position.copy(endpoint).addScaledVector(pointing, -arrowLength / 2);
-        arrowHead.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), pointing);
-        arrowHead.renderOrder = 993;
-        group.add(arrowHead);
-      }
-
-      const canvas = document.createElement("canvas");
-      canvas.width = 256;
-      canvas.height = 72;
-      const ctx = canvas.getContext("2d");
-      if (ctx) {
-        ctx.beginPath();
-        ctx.roundRect(4, 4, 248, 64, 18);
-        ctx.fillStyle = "rgba(255,255,255,0.97)";
-        ctx.fill();
-        ctx.strokeStyle = "#2f6feb";
-        ctx.lineWidth = 3;
-        ctx.stroke();
-        ctx.fillStyle = "#1f2328";
-        ctx.font = "bold 30px 'Segoe UI', Arial, sans-serif";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(`${formatNumberRef.current(Math.round(length))} mm`, 128, 37);
-      }
-      const texture = new THREE.CanvasTexture(canvas);
-      texture.anisotropy = 4;
-      const sprite = new THREE.Sprite(
-        new THREE.SpriteMaterial({ map: texture, depthTest: false, transparent: true }),
-      );
-      const spriteHeight = Math.max(modelExtent * 0.04, 34);
-      sprite.scale.set(spriteHeight * (256 / 72), spriteHeight, 1);
-      sprite.position.copy(midpoint).addScaledVector(perpendicular, arrowLength * 1.6);
-      sprite.renderOrder = 1000;
-      group.add(sprite);
-
-      scene.add(group);
-      measureSegmentsRef.current.push(group);
-      setMeasureCount(measureSegmentsRef.current.length);
-      renderDirtyRef.current = true;
-    };
-
-    // Dalux-style live preview while measuring: hover dot plus rubber-band line.
-    const previewGroup = new THREE.Group();
-    previewGroup.visible = false;
-    scene.add(previewGroup);
-    measurePreviewGroupRef.current = previewGroup;
-
-    const previewLine = new THREE.Mesh(
-      new THREE.CylinderGeometry(1, 1, 1, 8),
-      new THREE.MeshBasicMaterial({
-        color: 0xcf222e,
-        transparent: true,
-        opacity: 0.65,
-        depthTest: false,
-      }),
-    );
-    previewLine.renderOrder = 996;
-    previewGroup.add(previewLine);
-
-    const previewDot = new THREE.Mesh(
-      new THREE.SphereGeometry(1, 14, 12),
-      new THREE.MeshBasicMaterial({ color: 0xcf222e, depthTest: false }),
-    );
-    previewDot.renderOrder = 997;
-    previewGroup.add(previewDot);
-
-    const previewCanvas = document.createElement("canvas");
-    previewCanvas.width = 256;
-    previewCanvas.height = 72;
-    const previewContext = previewCanvas.getContext("2d");
-    const previewTexture = new THREE.CanvasTexture(previewCanvas);
-    previewTexture.anisotropy = 4;
-    const previewLabel = new THREE.Sprite(
-      new THREE.SpriteMaterial({ map: previewTexture, transparent: true, depthTest: false }),
-    );
-    previewLabel.renderOrder = 998;
-    previewGroup.add(previewLabel);
-
-    let previewText = "";
-
-    const drawPreviewLabel = (text: string) => {
-      if (!previewContext || text === previewText) return;
-      previewText = text;
-      previewContext.clearRect(0, 0, 256, 72);
-      previewContext.beginPath();
-      previewContext.roundRect(4, 4, 248, 64, 18);
-      previewContext.fillStyle = "rgba(255,255,255,0.95)";
-      previewContext.fill();
-      previewContext.strokeStyle = "#2f6feb";
-      previewContext.lineWidth = 3;
-      previewContext.stroke();
-      previewContext.fillStyle = "#1f2328";
-      previewContext.font = "bold 30px 'Segoe UI', Arial, sans-serif";
-      previewContext.textAlign = "center";
-      previewContext.textBaseline = "middle";
-      previewContext.fillText(text, 128, 37);
-      previewTexture.needsUpdate = true;
-    };
-
-    const hideMeasurePreview = () => {
-      previewGroup.visible = false;
-    };
-
-    let previewSnapKey = "";
-    let previewSnap: { point: THREE.Vector3; kind: string } | null = null;
-
-    const updateMeasurePreview = (e: MouseEvent) => {
-      if (!measuringRef.current) {
-        hideMeasurePreview();
-        return;
-      }
-
-      const rect = renderer.domElement.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      if (x < 0 || y < 0 || x > rect.width || y > rect.height) {
-        hideMeasurePreview();
-        return;
-      }
-
-      dragPointer.set((x / rect.width) * 2 - 1, -(y / rect.height) * 2 + 1);
-      dragRaycaster.setFromCamera(dragPointer, camera);
-
-      // Snapping scans vertices, so recompute only when the cursor really moved.
-      const snapKey = `${Math.round(x / 2)}:${Math.round(y / 2)}`;
-      if (snapKey !== previewSnapKey) {
-        previewSnapKey = snapKey;
-        previewSnap = pickMeasurePoint(dragRaycaster, x, y);
-      }
-      const picked = previewSnap;
-      if (!picked) {
-        hideMeasurePreview();
-        return;
-      }
-
-      const bounds = modelRef.current?.bounds;
-      const modelExtent = bounds ? Math.max(bounds.size.x, bounds.size.y, bounds.size.z) : 0;
-      const markerRadius = Math.max(5, modelExtent / 220);
-      const labelHeight = Math.max(modelExtent * 0.04, 32);
-
-      previewGroup.visible = true;
-      previewDot.visible = true;
-      previewDot.scale.setScalar(markerRadius);
-      previewDot.position.copy(picked.point);
-
-      const points = measurePointsRef.current;
-      const kindLabel = snapLabel(picked.kind);
-      if (points.length === 0) {
-        // Snap target chip: tells you what will be picked before clicking.
-        previewLine.visible = false;
-        previewLabel.visible = true;
-        previewLabel.scale.set(labelHeight * (256 / 72), labelHeight, 1);
-        previewLabel.position.copy(picked.point).add(new THREE.Vector3(0, 0, labelHeight * 0.9));
-        drawPreviewLabel(kindLabel);
-        renderDirtyRef.current = true;
-        return;
-      }
-
-      const a = points[0];
-      const constrained = snapToAxis(a, picked.point);
-      const direction = constrained.point.clone().sub(a);
-      const length = direction.length();
-      if (length < 1e-3) {
-        previewLine.visible = false;
-        previewLabel.visible = false;
-        renderDirtyRef.current = true;
-        return;
-      }
-      direction.normalize();
-
-      previewDot.position.copy(constrained.point);
-
-      previewLine.visible = true;
-      previewLine.scale.set(markerRadius * 0.3, length, markerRadius * 0.3);
-      previewLine.position.copy(a).addScaledVector(direction, length / 2);
-      previewLine.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
-
-      previewLabel.visible = true;
-      previewLabel.scale.set(labelHeight * (256 / 72), labelHeight, 1);
-      previewLabel.position
-        .copy(previewLine.position)
-        .add(new THREE.Vector3(0, 0, labelHeight * 0.8));
-      drawPreviewLabel(
-        tRef.current.viewerMeasurePreview(
-          formatNumberRef.current(Math.round(length)),
-          constrained.axis ?? "",
-        ),
-      );
-
-      renderDirtyRef.current = true;
-    };
-
-    const pickPointer = new THREE.Vector2();
-    const pickRaycaster = new THREE.Raycaster();
-
-    const partAtObject = (
-      object: THREE.Object3D,
-    ): { partId: string; partName: string; object: THREE.Object3D } | null => {
-      let current: THREE.Object3D | null = object;
-      while (current && current !== content) {
-        const partId = current.userData?.partId as string | undefined;
-        if (partId) {
-          return {
-            partId,
-            partName: (current.userData?.partName as string) || partId,
-            object: current,
-          };
-        }
-        current = current.parent;
-      }
-      return null;
-    };
-
-    const visibleInTree = (object: THREE.Object3D): boolean => {
-      let current: THREE.Object3D | null = object;
-      while (current) {
-        if (!current.visible) return false;
-        if (current === content) return true;
-        current = current.parent;
-      }
-      return true;
-    };
-
-    /** Shared picker: hover, click and context menu must all resolve the same part. */
-    const pickPartAt = (
-      clientX: number,
-      clientY: number,
-    ): {
-      hit: THREE.Intersection;
-      partId: string;
-      partName: string;
-      object: THREE.Object3D;
-    } | null => {
-      const rect = renderer.domElement.getBoundingClientRect();
-      if (!rect.width || !rect.height) return null;
-      pickPointer.set(
-        ((clientX - rect.left) / rect.width) * 2 - 1,
-        -((clientY - rect.top) / rect.height) * 2 + 1,
-      );
-      pickRaycaster.setFromCamera(pickPointer, camera);
-      const hits = pickRaycaster.intersectObjects(content.children, true);
-      for (const hit of hits) {
-        if (!(hit.object as THREE.Mesh).isMesh || !visibleInTree(hit.object)) continue;
-        if (
-          renderer.clippingPlanes?.some((plane) => plane.distanceToPoint(hit.point) < 0)
-        ) {
-          continue;
-        }
-        const part = partAtObject(hit.object);
-        if (part) return { hit, ...part };
-      }
-      return null;
-    };
-
-    const onCanvasClick = (e: MouseEvent) => {
-      // Ignore the click that ends a section-arrow drag.
-      if (sectionDragMovedRef.current) {
-        sectionDragMovedRef.current = false;
-        return;
-      }
-      // Ignore if user was dragging / orbiting
-      const dx = Math.abs(e.clientX - downPos.x);
-      const dy = Math.abs(e.clientY - downPos.y);
-      if (dx > CLICK_DRAG_TOLERANCE_PX || dy > CLICK_DRAG_TOLERANCE_PX) return;
-
-      const rect = renderer.domElement.getBoundingClientRect();
-      const pointer = new THREE.Vector2(
-        ((e.clientX - rect.left) / rect.width) * 2 - 1,
-        -((e.clientY - rect.top) / rect.height) * 2 + 1,
-      );
-
-      const mainRaycaster = new THREE.Raycaster();
-      mainRaycaster.setFromCamera(pointer, camera);
-
-      if (pickingSectionRef.current) {
-        const hit = pickPartAt(e.clientX, e.clientY)?.hit;
-        if (hit?.face) {
-          const mesh = hit.object as THREE.Mesh;
-          // Face normals point outward; flip so the interior side is kept and the
-          // camera side is cut away.
-          const normal = hit.face.normal
-            .clone()
-            .transformDirection(mesh.matrixWorld)
-            .normalize()
-            .negate();
-          setSectionCustom({ normal, base: hit.point.clone() });
-          setSectionAxis("custom");
-          setSectionT(0.5);
-        }
-        setPickingSection(false);
-        return;
-      }
-
-      if (measuringRef.current) {
-        const rect = renderer.domElement.getBoundingClientRect();
-        const picked = pickMeasurePoint(mainRaycaster, e.clientX - rect.left, e.clientY - rect.top);
-        if (picked) {
-          const { kind: snapKind } = picked;
-          const points = measurePointsRef.current;
-          const constrained = points.length === 1 ? snapToAxis(points[0], picked.point) : null;
-          const point = constrained ? constrained.point : picked.point;
-
-          const bounds = modelRef.current?.bounds;
-          const modelExtent = bounds ? Math.max(bounds.size.x, bounds.size.y, bounds.size.z) : 0;
-
-          const markerRadius = Math.max(5, modelExtent / 220);
-          const marker = new THREE.Mesh(
-            new THREE.SphereGeometry(markerRadius, 16, 12),
-            new THREE.MeshBasicMaterial({ color: 0xcf222e, depthTest: false }),
-          );
-          marker.position.copy(point);
-          marker.renderOrder = 998;
-          scene.add(marker);
-          measureMarkersRef.current.push(marker);
-
-          if (points.length === 0) {
-            points.push(point);
-            setMeasureLabel(tRef.current.viewerMeasureFirstPoint(snapLabel(snapKind)));
-          } else {
-            const a = points[0];
-            const distance = a.distanceTo(point);
-            points.length = 0;
-            addMeasurement(a, point, modelExtent);
-            hideMeasurePreview();
-            setMeasureLabel(
-              tRef.current.viewerMeasureResult(
-                formatNumberRef.current(Math.round(distance)),
-                snapLabel(snapKind),
-                constrained?.axis ?? "",
-              ),
-            );
-          }
-          renderDirtyRef.current = true;
-        }
-        return;
-      }
-
-      // Check handle click first
-      const handleHits = mainRaycaster.intersectObjects(handlesGroup.children, true);
-      if (handleHits.length > 0) return;
-
-      const picked = pickPartAt(e.clientX, e.clientY);
-      if (!picked) {
-        setPickedPartIds([]);
-        pickedPartIdsRef.current = [];
-        onSelectPartRef.current?.(null);
-        return;
-      }
-
-      const modifier = e.ctrlKey || e.metaKey;
-      if (modifier) {
-        const next = pickedPartIdsRef.current.includes(picked.partId)
-          ? pickedPartIdsRef.current.filter((id) => id !== picked.partId)
-          : [...pickedPartIdsRef.current, picked.partId];
-        pickedPartIdsRef.current = next;
-        setPickedPartIds(next);
-        onSelectPartRef.current?.(next[next.length - 1] ?? null);
-      } else {
-        setPickedPartIds([picked.partId]);
-        pickedPartIdsRef.current = [picked.partId];
-        onSelectPartRef.current?.(picked.partId);
-      }
-    };
-
-    const onContextMenu = (e: MouseEvent) => {
-      // Prevent browser right-click menu
-      e.preventDefault();
-
-      // If user dragged with right mouse button (pan), don't show context menu
-      const dx = Math.abs(e.clientX - downPos.x);
-      const dy = Math.abs(e.clientY - downPos.y);
-      if (dx > CLICK_DRAG_TOLERANCE_PX || dy > CLICK_DRAG_TOLERANCE_PX) {
-        return;
-      }
-
-      const picked = pickPartAt(e.clientX, e.clientY);
-      if (picked) {
-        const { hit, partId, object } = picked;
-        const partDef = modelRef.current?.parts.find((p) => p.id === partId);
-        const partName = partDef?.name || picked.partName || partId;
-        const mesh = hit.object as THREE.Mesh;
-
-        // Section placed from this click: plane normal follows the clicked face and
-        // is flipped to face away from the camera, so the near half gets cut.
-        const surfaceNormal: THREE.Vector3 | null = hit.face
-          ? hit.face.normal.clone().transformDirection(mesh.matrixWorld).normalize()
-          : null;
-        const normal: THREE.Vector3 = surfaceNormal
-          ? surfaceNormal.clone().negate()
-          : camera.getWorldDirection(new THREE.Vector3());
-
-        // Cut through the middle of the part so it is visibly sliced, not flush
-        // with the surface that was clicked.
-        let center: THREE.Vector3 | null = null;
-        const box = new THREE.Box3().setFromObject(object);
-        if (!box.isEmpty()) center = box.getCenter(new THREE.Vector3());
-        if (!center) center = hit.point.clone();
-
-        if (!pickedPartIdsRef.current.includes(partId)) {
-          setPickedPartIds([partId]);
-          pickedPartIdsRef.current = [partId];
-        }
-        onSelectPartRef.current?.(partId);
-        setContextMenu({
-          partId,
-          partName,
-          x: e.clientX,
-          y: e.clientY,
-          normal,
-          surfaceNormal,
-          point: hit.point.clone(),
-          center,
-        });
-        return;
-      }
-
-      setContextMenu(null);
-    };
-
-    renderer.domElement.addEventListener("contextmenu", onContextMenu);
-    renderer.domElement.addEventListener("mousedown", onCanvasMouseDown);
-    window.addEventListener("mousemove", onCanvasMouseMove);
-    window.addEventListener("mouseup", onCanvasMouseUp);
-    renderer.domElement.addEventListener("click", onCanvasClick);
-
-    // Hover: one raycast per animation frame, never while orbiting or using a tool.
-    let hoverFrame = 0;
-
-    const clearHover = () => {
-      setHoveredPartId((current) => (current === null ? current : null));
-      setHoverInfo((current) => (current === null ? current : null));
-    };
-
-    const onHoverMove = (event: MouseEvent) => {
-      if (event.buttons || hoverBlockedRef.current) {
-        clearHover();
-        return;
-      }
-      if (hoverFrame) return;
-      const x = event.clientX;
-      const y = event.clientY;
-
-      hoverFrame = requestAnimationFrame(() => {
-        hoverFrame = 0;
-        const rect = renderer.domElement.getBoundingClientRect();
-        if (!rect.width || !rect.height) return;
-
-        const picked = pickPartAt(x, y);
-        const partId = picked?.partId ?? null;
-        const name = picked?.partName ?? "";
-
-        setHoveredPartId((current) => (current === partId ? current : partId));
-        setHoverInfo((current) => {
-          if (!partId) return current === null ? current : null;
-          return { x: x - rect.left, y: y - rect.top, name };
-        });
-      });
-    };
-
-    const onHoverLeave = () => clearHover();
-    renderer.domElement.addEventListener("pointermove", onHoverMove);
-    // Some automation paths only emit mousemove; the rAF throttle collapses duplicates.
-    renderer.domElement.addEventListener("mousemove", onHoverMove);
-    renderer.domElement.addEventListener("pointerleave", onHoverLeave);
-    renderer.domElement.addEventListener("mouseleave", onHoverLeave);
-
-    // Section plane drag handle: grab the red arrow and drag it along the normal.
-    const sectionRay = new THREE.Raycaster();
-    const sectionPointer = new THREE.Vector2();
-    const readSectionPointer = (e: PointerEvent) => {
-      const rect = renderer.domElement.getBoundingClientRect();
-      sectionPointer.set(
-        ((e.clientX - rect.left) / rect.width) * 2 - 1,
-        -((e.clientY - rect.top) / rect.height) * 2 + 1,
-      );
-    };
-
-    const onSectionPointerDown = (e: PointerEvent) => {
-      const arrow = sectionArrowRef.current;
-      const data = sectionDragDataRef.current;
-      if (!arrow || !data) return;
-      readSectionPointer(e);
-      sectionRay.setFromCamera(sectionPointer, camera);
-      if (sectionRay.intersectObject(arrow, true).length === 0) return;
-
-      // Capture phase: stop OrbitControls from starting a rotation.
-      e.stopPropagation();
-      e.preventDefault();
-      sectionDragRef.current = true;
-      controls.enabled = false;
-      renderer.domElement.style.cursor = "grabbing";
-    };
-
-    const onSectionPointerMove = (e: PointerEvent) => {
-      const data = sectionDragDataRef.current;
-
-      if (!sectionDragRef.current) return;
-
-      if (!data) return;
-      readSectionPointer(e);
-      sectionRay.setFromCamera(sectionPointer, camera);
-
-      const span = data.range * 2;
-      const start = data.origin.clone().addScaledVector(data.normal, -span);
-      const end = data.origin.clone().addScaledVector(data.normal, span);
-      const hitPoint = new THREE.Vector3();
-      sectionRay.ray.distanceSqToSegment(start, end, undefined, hitPoint);
-      const offset = hitPoint.sub(data.origin).dot(data.normal);
-      const next = Math.min(1, Math.max(0, 0.5 + (data.sign * offset) / data.range));
-      setSectionT(next);
-    };
-
-    const onSectionPointerUp = () => {
-      if (!sectionDragRef.current) return;
-      sectionDragRef.current = false;
-      sectionDragMovedRef.current = true;
-      controls.enabled = true;
-      renderer.domElement.style.cursor = "";
-    };
-
-    renderer.domElement.addEventListener("pointerdown", onSectionPointerDown, true);
-    window.addEventListener("pointermove", onSectionPointerMove);
-    window.addEventListener("pointerup", onSectionPointerUp);
-
-    let frame = 0;
-
-    // ViewCube Setup
-    const cubeHost = cubeHostRef.current;
-    let cubeRenderer: THREE.WebGLRenderer | null = null;
-    let cubeScene: THREE.Scene | null = null;
-    let cubeCamera: THREE.PerspectiveCamera | null = null;
-    let cubeMesh: THREE.Mesh | null = null;
-    let faceHighlightMesh: THREE.Mesh | null = null;
-    let cornerHighlightMesh: THREE.Mesh | null = null;
-    const raycaster = new THREE.Raycaster();
-    const mouse = new THREE.Vector2();
-
-    // Camera animation state for smooth Revit transition
     const animStartPos = new THREE.Vector3();
     const animEndPos = new THREE.Vector3();
     const animStartTarget = new THREE.Vector3();
     const animEndTarget = new THREE.Vector3();
-    let animProgress = 1; // 1 = done
+    let animProgress = 1;
     let lastFrameTime = performance.now();
 
-    const createCubeMaterial = (text: string) => {
-      const canvas = document.createElement("canvas");
-      canvas.width = 256;
-      canvas.height = 256;
-      const ctx = canvas.getContext("2d")!;
-
-      // Neutral matte gray background like Revit ViewCube
-      ctx.fillStyle = "#d6d9dc";
-      ctx.fillRect(0, 0, 256, 256);
-
-      // Subtle top/left light bevel
-      ctx.strokeStyle = "rgba(255, 255, 255, 0.7)";
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.moveTo(2, 254);
-      ctx.lineTo(2, 2);
-      ctx.lineTo(254, 2);
-      ctx.stroke();
-
-      // Clean Revit border
-      ctx.strokeStyle = "#aeb3b7";
-      ctx.lineWidth = 3;
-      ctx.strokeRect(1, 1, 254, 254);
-
-      // Revit typography: italic sans-serif bold, subtle dark ink
-      ctx.fillStyle = "#4d545a";
-      ctx.font = "italic bold 44px 'Segoe UI', Arial, sans-serif";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(text, 128, 128);
-
-      const texture = new THREE.CanvasTexture(canvas);
-      texture.anisotropy = 4;
-      return new THREE.MeshStandardMaterial({
-        map: texture,
-        roughness: 0.55,
-        metalness: 0.1,
-      });
-    };
-
-    if (cubeHost) {
-      cubeRenderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
-      cubeRenderer.setSize(110, 110);
-      cubeRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-      cubeRenderer.setClearColor(0x000000, 0); // 100% transparent background
-      cubeHost.appendChild(cubeRenderer.domElement);
-
-      cubeScene = new THREE.Scene();
-      cubeScene.add(new THREE.AmbientLight(0xffffff, 1.4));
-      const cubeLight = new THREE.DirectionalLight(0xffffff, 1.2);
-      cubeLight.position.set(4, -5, 6);
-      cubeScene.add(cubeLight);
-
-      // Camera FOV 42 with distance 6.2 ensures large ring and cube never get clipped
-      cubeCamera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
-      cubeCamera.up.set(0, 0, 1);
-
-      // Face order in BoxGeometry: +X (Right), -X (Left), +Y (Back), -Y (Front), +Z (Top), -Z (Bottom)
-      const materials = [
-        createCubeMaterial("RIGHT"),
-        createCubeMaterial("LEFT"),
-        createCubeMaterial("BACK"),
-        createCubeMaterial("FRONT"),
-        createCubeMaterial("TOP"),
-        createCubeMaterial("BOTTOM"),
-      ];
-
-      const geometry = new THREE.BoxGeometry(2, 2, 2);
-      cubeMesh = new THREE.Mesh(geometry, materials);
-      cubeScene.add(cubeMesh);
-
-      // Add crisp edges to the cube
-      const cubeEdges = new THREE.LineSegments(
-        new THREE.EdgesGeometry(geometry),
-        new THREE.LineBasicMaterial({ color: 0xa3a8ac, linewidth: 1 }),
-      );
-      cubeScene.add(cubeEdges);
-
-      // Revit blue face highlight overlay (shows on click/hover face)
-      const faceHighlightGeom = new THREE.PlaneGeometry(1.65, 1.65);
-      const faceHighlightMat = new THREE.MeshBasicMaterial({
-        color: 0x50a6ff,
-        transparent: true,
-        opacity: 0.45,
-        depthTest: false,
-      });
-      faceHighlightMesh = new THREE.Mesh(faceHighlightGeom, faceHighlightMat);
-      faceHighlightMesh.visible = false;
-      faceHighlightMesh.renderOrder = 999;
-      cubeScene.add(faceHighlightMesh);
-
-      // Revit corner highlight overlay (shows on click corner)
-      const cornerHighlightGeom = new THREE.BoxGeometry(0.55, 0.55, 0.55);
-      const cornerHighlightMat = new THREE.MeshBasicMaterial({
-        color: 0x50a6ff,
-        transparent: true,
-        opacity: 0.55,
-        depthTest: false,
-      });
-      cornerHighlightMesh = new THREE.Mesh(cornerHighlightGeom, cornerHighlightMat);
-      cornerHighlightMesh.visible = false;
-      cornerHighlightMesh.renderOrder = 999;
-      cubeScene.add(cornerHighlightMesh);
-
-      // Compass Ring with S, E, N, W (Z is UP, X is Right, Y is Front(-Y)/Back(+Y))
-      const compassCanvas = document.createElement("canvas");
-      compassCanvas.width = 512;
-      compassCanvas.height = 512;
-      const cCtx = compassCanvas.getContext("2d")!;
-      cCtx.clearRect(0, 0, 512, 512);
-
-      // Outer ring band (larger ring around the cube as in Revit)
-      cCtx.beginPath();
-      cCtx.arc(256, 256, 222, 0, Math.PI * 2);
-      cCtx.lineWidth = 30;
-      cCtx.strokeStyle = "rgba(70, 76, 82, 0.68)";
-      cCtx.stroke();
-
-      // Inner ring thin contour
-      cCtx.beginPath();
-      cCtx.arc(256, 256, 198, 0, Math.PI * 2);
-      cCtx.lineWidth = 1.5;
-      cCtx.strokeStyle = "rgba(255, 255, 255, 0.4)";
-      cCtx.stroke();
-
-      // Cardinal direction letters (N, S, E, W) - crisp light gray
-      cCtx.shadowColor = "rgba(0, 0, 0, 0.28)";
-      cCtx.shadowBlur = 4;
-      cCtx.fillStyle = "#ffffff";
-      cCtx.font = "bold 44px 'Segoe UI', Arial, sans-serif";
-      cCtx.textAlign = "center";
-      cCtx.textBaseline = "middle";
-
-      // N is towards +Y (top of canvas)
-      cCtx.fillText("N", 256, 256 - 222);
-      // S is towards -Y (bottom of canvas)
-      cCtx.fillText("S", 256, 256 + 222);
-      // E is towards +X (right of canvas)
-      cCtx.fillText("E", 256 + 222, 256);
-      // W is towards -X (left of canvas)
-      cCtx.fillText("W", 256 - 222, 256);
-
-      const compassTexture = new THREE.CanvasTexture(compassCanvas);
-      compassTexture.anisotropy = 4;
-      // Larger diameter compass plane (4.3 vs 3.6)
-      const compassGeom = new THREE.PlaneGeometry(4.3, 4.3);
-      const compassMat = new THREE.MeshBasicMaterial({
-        map: compassTexture,
-        transparent: true,
-        side: THREE.DoubleSide,
-      });
-      const compassMesh = new THREE.Mesh(compassGeom, compassMat);
-      compassMesh.position.z = -1.02;
-      cubeScene.add(compassMesh);
-
-      // 8 Interactive Corners for ISO/Perspective views
-      const cornerGeom = new THREE.BoxGeometry(0.5, 0.5, 0.5);
-      const cornerMat = new THREE.MeshBasicMaterial({
-        color: 0x9fbcd1,
-        transparent: true,
-        opacity: 0.01, // Invisible click targets normally, highlight mesh appears on click
-      });
-
-      const corners: {
-        mesh: THREE.Mesh;
-        view: "tfr" | "tfl" | "tbr" | "tbl" | "bfr" | "bfl" | "bbr" | "bbl";
-      }[] = [
-        { mesh: new THREE.Mesh(cornerGeom, cornerMat), view: "tfr" },
-        { mesh: new THREE.Mesh(cornerGeom, cornerMat), view: "tfl" },
-        { mesh: new THREE.Mesh(cornerGeom, cornerMat), view: "tbr" },
-        { mesh: new THREE.Mesh(cornerGeom, cornerMat), view: "tbl" },
-        { mesh: new THREE.Mesh(cornerGeom, cornerMat), view: "bfr" },
-        { mesh: new THREE.Mesh(cornerGeom, cornerMat), view: "bfl" },
-        { mesh: new THREE.Mesh(cornerGeom, cornerMat), view: "bbr" },
-        { mesh: new THREE.Mesh(cornerGeom, cornerMat), view: "bbl" },
-      ];
-
-      // Set positions for all 8 corners
-      corners[0].mesh.position.set(0.78, -0.78, 0.78); // Top-Front-Right (+X, -Y, +Z)
-      corners[1].mesh.position.set(-0.78, -0.78, 0.78); // Top-Front-Left (-X, -Y, +Z)
-      corners[2].mesh.position.set(0.78, 0.78, 0.78); // Top-Back-Right (+X, +Y, +Z)
-      corners[3].mesh.position.set(-0.78, 0.78, 0.78); // Top-Back-Left (-X, +Y, +Z)
-      corners[4].mesh.position.set(0.78, -0.78, -0.78); // Bottom-Front-Right (+X, -Y, -Z)
-      corners[5].mesh.position.set(-0.78, -0.78, -0.78); // Bottom-Front-Left (-X, -Y, -Z)
-      corners[6].mesh.position.set(0.78, 0.78, -0.78); // Bottom-Back-Right (+X, +Y, -Z)
-      corners[7].mesh.position.set(-0.78, 0.78, -0.78); // Bottom-Back-Left (-X, +Y, -Z)
-
-      for (const c of corners) {
-        cubeScene.add(c.mesh);
-      }
-
-      // Smooth camera transition function
-      const smoothTransitionTo = (targetPos: THREE.Vector3, targetLook: THREE.Vector3) => {
+    const viewCube = setupViewCube({
+      cubeHost: cubeHostRef.current,
+      camera,
+      modelRef,
+      setViewRef,
+      onTransitionTo: (targetPos, targetLook) => {
         animStartPos.copy(camera.position);
         animEndPos.copy(targetPos);
         animStartTarget.copy(controls.target);
         animEndTarget.copy(targetLook);
-        animProgress = 0; // Trigger smooth animation in tick()
-      };
+        animProgress = 0;
+        lastFrameTime = performance.now();
+      },
+    });
 
-      const calculateViewCameraPos = (
-        direction:
-          | "top"
-          | "front"
-          | "back"
-          | "left"
-          | "right"
-          | "iso"
-          | "tfr"
-          | "tfl"
-          | "tbr"
-          | "tbl"
-          | "bfr"
-          | "bfl"
-          | "bbr"
-          | "bbl",
-      ) => {
-        const current = modelRef.current;
-        if (!current?.bounds) return null;
-        const { min, max } = current.bounds;
-        const center = new THREE.Vector3(
-          (min.x + max.x) / 2,
-          (min.y + max.y) / 2,
-          (min.z + max.z) / 2,
-        );
-        const radius = Math.max(
-          new THREE.Vector3(max.x - min.x, max.y - min.y, max.z - min.z).length() / 2,
-          120,
-        );
-        const distance = (radius / Math.sin((camera.fov * Math.PI) / 360)) * 1.15;
-        const dCorner = distance * 0.7;
-
-        const offset = new THREE.Vector3();
-        switch (direction) {
-          case "top":
-            offset.set(0, -0.001, distance);
-            break;
-          case "front":
-            offset.set(0, -distance, 0);
-            break;
-          case "back":
-            offset.set(0, distance, 0);
-            break;
-          case "left":
-            offset.set(-distance, 0, 0);
-            break;
-          case "right":
-            offset.set(distance, 0, 0);
-            break;
-          case "tfr":
-          case "iso":
-            offset.set(dCorner, -dCorner, dCorner * 0.8);
-            break;
-          case "tfl":
-            offset.set(-dCorner, -dCorner, dCorner * 0.8);
-            break;
-          case "tbr":
-            offset.set(dCorner, dCorner, dCorner * 0.8);
-            break;
-          case "tbl":
-            offset.set(-dCorner, dCorner, dCorner * 0.8);
-            break;
-          case "bfr":
-            offset.set(dCorner, -dCorner, -dCorner * 0.5);
-            break;
-          case "bfl":
-            offset.set(-dCorner, -dCorner, -dCorner * 0.5);
-            break;
-          case "bbr":
-            offset.set(dCorner, dCorner, -dCorner * 0.5);
-            break;
-          case "bbl":
-            offset.set(-dCorner, dCorner, -dCorner * 0.5);
-            break;
-          default:
-            offset.set(distance * 0.7, -distance * 0.7, distance * 0.55);
-            break;
-        }
-        return { pos: center.clone().add(offset), center };
-      };
-
-      const updateHighlightByRay = () => {
-        if (!cubeCamera) return;
-        raycaster.setFromCamera(mouse, cubeCamera);
-
-        // Check corners hover
-        for (const c of corners) {
-          const hits = raycaster.intersectObject(c.mesh);
-          if (hits.length > 0) {
-            if (cornerHighlightMesh) {
-              cornerHighlightMesh.position.copy(c.mesh.position);
-              cornerHighlightMesh.visible = true;
-            }
-            if (faceHighlightMesh) faceHighlightMesh.visible = false;
-            return;
-          }
-        }
-        if (cornerHighlightMesh) cornerHighlightMesh.visible = false;
-
-        // Check face hover
-        if (cubeMesh) {
-          const intersects = raycaster.intersectObject(cubeMesh);
-          if (intersects.length > 0 && intersects[0].face) {
-            const index = Math.floor(intersects[0].face.materialIndex);
-            if (faceHighlightMesh) {
-              faceHighlightMesh.position.set(0, 0, 0);
-              faceHighlightMesh.rotation.set(0, 0, 0);
-              if (index === 0) {
-                // Right (+X)
-                faceHighlightMesh.position.set(1.01, 0, 0);
-                faceHighlightMesh.rotation.y = Math.PI / 2;
-              } else if (index === 1) {
-                // Left (-X)
-                faceHighlightMesh.position.set(-1.01, 0, 0);
-                faceHighlightMesh.rotation.y = -Math.PI / 2;
-              } else if (index === 2) {
-                // Back (+Y)
-                faceHighlightMesh.position.set(0, 1.01, 0);
-                faceHighlightMesh.rotation.x = -Math.PI / 2;
-              } else if (index === 3) {
-                // Front (-Y)
-                faceHighlightMesh.position.set(0, -1.01, 0);
-                faceHighlightMesh.rotation.x = Math.PI / 2;
-              } else if (index === 4) {
-                // Top (+Z)
-                faceHighlightMesh.position.set(0, 0, 1.01);
-              } else if (index === 5) {
-                // Bottom (-Z)
-                faceHighlightMesh.position.set(0, 0, -1.01);
-                faceHighlightMesh.rotation.x = Math.PI;
-              }
-              faceHighlightMesh.visible = true;
-            }
-            return;
-          }
-        }
-        if (faceHighlightMesh) faceHighlightMesh.visible = false;
-      };
-
-      const onCubeMouseMove = (event: MouseEvent) => {
-        if (!cubeRenderer) return;
-        const rect = cubeRenderer.domElement.getBoundingClientRect();
-        mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-        mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-        updateHighlightByRay();
-      };
-
-      const onCubeMouseLeave = () => {
-        if (faceHighlightMesh) faceHighlightMesh.visible = false;
-        if (cornerHighlightMesh) cornerHighlightMesh.visible = false;
-      };
-
-      const onCubeClick = (event: MouseEvent) => {
-        if (!cubeRenderer) return;
-        const rect = cubeRenderer.domElement.getBoundingClientRect();
-        mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
-        mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
-
-        if (cubeCamera) {
-          raycaster.setFromCamera(mouse, cubeCamera);
-
-          // Check 8 corners first
-          for (const c of corners) {
-            const hits = raycaster.intersectObject(c.mesh);
-            if (hits.length > 0) {
-              const target = calculateViewCameraPos(c.view);
-              if (target) smoothTransitionTo(target.pos, target.center);
-              else setViewRef.current(c.view);
-              return;
-            }
-          }
-
-          if (cubeMesh) {
-            const intersects = raycaster.intersectObject(cubeMesh);
-            if (intersects.length > 0 && intersects[0].face) {
-              const index = Math.floor(intersects[0].face.materialIndex);
-              const viewMap: ("right" | "left" | "back" | "front" | "top" | "iso")[] = [
-                "right",
-                "left",
-                "back",
-                "front",
-                "top",
-                "iso",
-              ];
-
-              const target = calculateViewCameraPos(viewMap[index] || "iso");
-              if (target) smoothTransitionTo(target.pos, target.center);
-              else setViewRef.current(viewMap[index] || "iso");
-            }
-          }
-        }
-      };
-
-      cubeRenderer.domElement.addEventListener("mousemove", onCubeMouseMove);
-      cubeRenderer.domElement.addEventListener("mouseleave", onCubeMouseLeave);
-      cubeRenderer.domElement.addEventListener("click", onCubeClick);
-    }
-
+    let frame = 0;
     const tick = (now: number) => {
       frame = requestAnimationFrame(tick);
       if (!Number.isFinite(now)) now = performance.now();
 
-      // Smooth camera transition when user clicks ViewCube - slower, cinematic & silky smooth (~800ms)
       if (animProgress < 1) {
         const elapsed = Math.max(0, now - lastFrameTime);
         lastFrameTime = now;
-        // 600 ms regardless of frame rate, instead of 0.02 per rendered frame.
         animProgress = Math.min(1, animProgress + elapsed / 600);
-        // Quintic ease-out formula for super smooth, gentle glide into position
-        const t = animProgress - 1;
-        const ease = t * t * t * t * t + 1;
+        const step = animProgress - 1;
+        const ease = step * step * step * step * step + 1;
         camera.position.lerpVectors(animStartPos, animEndPos, ease);
         controls.target.lerpVectors(animStartTarget, animEndTarget, ease);
         controls.update();
         renderDirtyRef.current = true;
       }
 
-      // Turntable exhibition rotation when explicitly toggled by user
       if (turntableRef.current) {
         controls.autoRotate = true;
-        controls.autoRotateSpeed = 0.35; // Gentle, cinematic exhibition turntable speed
+        controls.autoRotateSpeed = 0.35;
       } else {
         controls.autoRotate = false;
       }
 
-      // Ease towards the exploded-view framing; new slider values retarget it.
-      const fit = explodeFitRef.current;
-      if (fit) {
-        camera.position.lerp(fit.pos, 0.12);
-        controls.target.lerp(fit.look, 0.12);
-        if (camera.position.distanceTo(fit.pos) < 0.5) explodeFitRef.current = null;
+      const fitTarget = explodeFitRef.current;
+      if (fitTarget) {
+        camera.position.lerp(fitTarget.pos, 0.12);
+        controls.target.lerp(fitTarget.look, 0.12);
+        if (camera.position.distanceTo(fitTarget.pos) < 0.5) explodeFitRef.current = null;
         renderDirtyRef.current = true;
       }
 
@@ -2116,8 +554,6 @@ export function Viewer({
       if (renderDirtyRef.current) {
         renderDirtyRef.current = false;
         gridMaterial.uniforms.uCamera.value.copy(camera.position);
-        // Direct renderer every frame: same antialiasing, tone mapping and
-        // pixel ratio while idle or dragging.
         renderer.render(scene, camera);
         if (statsEl) {
           statsEl.textContent = `${renderer.info.render.calls} calls · ${Math.round(
@@ -2126,14 +562,7 @@ export function Viewer({
         }
       }
       positionNotePins();
-
-      if (cubeRenderer && cubeScene && cubeCamera) {
-        // Sync cube camera rotation with main scene camera
-        const dir = camera.position.clone().sub(controls.target).normalize();
-        cubeCamera.position.copy(dir.multiplyScalar(6.2)); // Distance 6.2 accommodates larger compass ring without clipping
-        cubeCamera.lookAt(0, 0, 0);
-        cubeRenderer.render(cubeScene, cubeCamera);
-      }
+      viewCube.render(camera, controls);
     };
     tick(performance.now());
 
@@ -2152,152 +581,20 @@ export function Viewer({
       disposables: [],
     };
 
-    /**
-     * Library thumbnail: render once with the helpers hidden and copy the pixels in
-     * the same frame. A canvas without preserveDrawingBuffer is cleared as soon as
-     * the frame ends, which is why the old "capture later" produced a flat colour.
-     *
-     * The camera is a fixed isometric framing of the model bounds, so the preview
-     * never depends on where the user left the camera and a 3600 mm ladder is not
-     * cropped at either end.
-     */
-    onCaptureReadyRef.current?.(() => {
-      const state = stateRef.current;
-      const currentModel = modelRef.current;
-      if (!state || !currentModel?.bounds) return null;
-
-      const wasVisible = {
-        grid: state.grid.visible,
-        refPlanes: state.refPlanesGroup.visible,
-        connectors: state.connectorsGroup.visible,
-        handles: state.handlesGroup.visible,
-      };
-
-      const width = 480;
-      const height = 270;
-      const previousSize = new THREE.Vector2();
-      state.renderer.getSize(previousSize);
-      const previousPixelRatio = state.renderer.getPixelRatio();
-      const previousPosition = state.camera.position.clone();
-      const previousQuaternion = state.camera.quaternion.clone();
-      const previousAspect = state.camera.aspect;
-      const previousNear = state.camera.near;
-      const previousFar = state.camera.far;
-      const previousTarget = state.controls.target.clone();
-      const previousBackground = state.scene.background;
-
-      let image: string | null = null;
-      try {
-        state.grid.visible = false;
-        state.refPlanesGroup.visible = false;
-        state.connectorsGroup.visible = false;
-        state.handlesGroup.visible = false;
-        // Library thumbnails use the same warm paper background as the library cards.
-        state.scene.background = new THREE.Color(0xf4f2ec);
-
-        // Render at exactly 16:9 so the JPEG can be used without a square crop.
-        state.renderer.setPixelRatio(1);
-        state.renderer.setSize(width, height, false);
-
-        const { min, max } = currentModel.bounds;
-        const center = new THREE.Vector3(
-          (min.x + max.x) / 2,
-          (min.y + max.y) / 2,
-          (min.z + max.z) / 2,
-        );
-        const radius = Math.max(
-          new THREE.Vector3(max.x - min.x, max.y - min.y, max.z - min.z).length() / 2,
-          60,
-        );
-        const verticalFov = (state.camera.fov * Math.PI) / 180;
-        const horizontalFov = 2 * Math.atan(Math.tan(verticalFov / 2) * (width / height));
-        const fitFov = Math.min(verticalFov, horizontalFov);
-        const distance = (radius / Math.sin(fitFov / 2)) * 1.18;
-
-        state.camera.up.set(0, 0, 1);
-        state.camera.aspect = width / height;
-        state.camera.near = Math.max(0.1, distance - radius * 4);
-        state.camera.far = distance + radius * 6;
-        state.camera.position.copy(center).addScaledVector(
-          new THREE.Vector3(0.7, -0.7, 0.56).normalize(),
-          distance,
-        );
-        state.camera.lookAt(center);
-        state.camera.updateProjectionMatrix();
-
-        state.renderer.render(state.scene, state.camera);
-        const source = state.renderer.domElement;
-
-        const off = document.createElement("canvas");
-        off.width = width;
-        off.height = height;
-        const context = off.getContext("2d");
-        if (context && source.width && source.height) {
-          // Light background for the library regardless of the studio theme.
-          context.fillStyle = "#f4f2ec";
-          context.fillRect(0, 0, width, height);
-          context.drawImage(source, 0, 0, source.width, source.height, 0, 0, width, height);
-
-          // A nearly uniform image means nothing was drawn: let the card use its icon.
-          const pixels = context.getImageData(0, 0, width, height).data;
-          let sum = 0;
-          let sumSquares = 0;
-          let count = 0;
-          for (let index = 0; index < pixels.length; index += 16) {
-            const luminance =
-              0.2126 * pixels[index] + 0.7152 * pixels[index + 1] + 0.0722 * pixels[index + 2];
-            sum += luminance;
-            sumSquares += luminance * luminance;
-            count += 1;
-          }
-          const mean = sum / Math.max(1, count);
-          const deviation = Math.sqrt(Math.max(0, sumSquares / Math.max(1, count) - mean * mean));
-          image = deviation < 6 ? null : off.toDataURL("image/jpeg", 0.86);
-        }
-      } catch {
-        image = null;
-      } finally {
-        state.grid.visible = wasVisible.grid;
-        state.refPlanesGroup.visible = wasVisible.refPlanes;
-        state.connectorsGroup.visible = wasVisible.connectors;
-        state.handlesGroup.visible = wasVisible.handles;
-
-        state.renderer.setPixelRatio(previousPixelRatio);
-        state.renderer.setSize(previousSize.x, previousSize.y, false);
-        state.camera.position.copy(previousPosition);
-        state.camera.quaternion.copy(previousQuaternion);
-        state.camera.aspect = previousAspect;
-        state.camera.near = previousNear;
-        state.camera.far = previousFar;
-        state.camera.updateProjectionMatrix();
-        state.controls.target.copy(previousTarget);
-        state.controls.update();
-        state.scene.background = previousBackground;
+    onCaptureReadyRef.current?.(() =>
+      captureViewerThumbnail(stateRef.current, modelRef.current, () => {
         renderDirtyRef.current = true;
-      }
-
-      return image;
-    });
+      }),
+    );
 
     const partCache = partCacheRef.current;
 
     return () => {
       onCaptureReadyRef.current?.(null);
       cancelAnimationFrame(frame);
-      if (hoverFrame) cancelAnimationFrame(hoverFrame);
       observer.disconnect();
-      renderer.domElement.removeEventListener("pointermove", onHoverMove);
-      renderer.domElement.removeEventListener("mousemove", onHoverMove);
-      renderer.domElement.removeEventListener("pointerleave", onHoverLeave);
-      renderer.domElement.removeEventListener("mouseleave", onHoverLeave);
-      renderer.domElement.removeEventListener("contextmenu", onContextMenu);
-      renderer.domElement.removeEventListener("mousedown", onCanvasMouseDown);
-      window.removeEventListener("mousemove", onCanvasMouseMove);
-      window.removeEventListener("mouseup", onCanvasMouseUp);
-      renderer.domElement.removeEventListener("click", onCanvasClick);
-      renderer.domElement.removeEventListener("pointerdown", onSectionPointerDown, true);
-      window.removeEventListener("pointermove", onSectionPointerMove);
-      window.removeEventListener("pointerup", onSectionPointerUp);
+      detachInteractions();
+      viewCube.dispose();
       controls.dispose();
       grid.geometry.dispose();
       gridMaterial.dispose();
@@ -2315,16 +612,22 @@ export function Viewer({
       partCache.clear();
       if (renderer.domElement.parentElement === host) host.removeChild(renderer.domElement);
       if (statsEl && statsEl.parentElement === host) host.removeChild(statsEl);
-      if (cubeRenderer && cubeHost && cubeRenderer.domElement.parentElement === cubeHost) {
-        cubeHost.removeChild(cubeRenderer.domElement);
-        cubeRenderer.dispose();
-      }
       stateRef.current = null;
     };
-  }, [positionNotePins]);
+  }, [
+    positionNotePins,
+    pickingSectionRef,
+    sectionArrowRef,
+    sectionDragRef,
+    sectionDragMovedRef,
+    sectionDragDataRef,
+    sectionCapRef,
+    setSectionCustom,
+    setSectionAxis,
+    setSectionT,
+    setPickingSection,
+  ]);
 
-  // Theme also drives the opaque canvas background; the post-processing target
-  // needs a solid clear colour so MSAA resolves clean edges.
   useEffect(() => {
     const state = stateRef.current;
     if (!state) return;
@@ -2332,8 +635,6 @@ export function Viewer({
     renderDirtyRef.current = true;
   }, [theme]);
 
-  // Bật/Tắt đổ bóng: tắt shadow map của renderer + nguồn sáng và ẩn mặt phẳng hứng bóng,
-  // đồng thời buộc biên dịch lại vật liệu để shader nhận cờ shadow mới.
   useEffect(() => {
     const state = stateRef.current;
     if (!state) return;
@@ -2346,11 +647,13 @@ export function Viewer({
       const mesh = object as THREE.Mesh;
       if (!mesh.isMesh) return;
       const material = mesh.material;
-      if (Array.isArray(material))
+      if (Array.isArray(material)) {
         material.forEach((item) => {
           item.needsUpdate = true;
         });
-      else if (material) material.needsUpdate = true;
+      } else if (material) {
+        material.needsUpdate = true;
+      }
     });
   }, [shadowsEnabled]);
 
@@ -2359,64 +662,12 @@ export function Viewer({
     const current = modelRef.current;
     if (!state || !current?.bounds) return;
 
-    const { min, max } = current.bounds;
-    const center = new THREE.Vector3((min.x + max.x) / 2, (min.y + max.y) / 2, (min.z + max.z) / 2);
-    const radius = Math.max(
-      new THREE.Vector3(max.x - min.x, max.y - min.y, max.z - min.z).length() / 2,
-      120,
+    const { pos, center, distance } = computeCameraPreset(
+      current.bounds,
+      state.camera.fov,
+      direction,
     );
-    const distance = (radius / Math.sin((state.camera.fov * Math.PI) / 360)) * 1.15;
-    const dCorner = distance * 0.7;
-
-    const offset = new THREE.Vector3();
-    switch (direction) {
-      case "top":
-        offset.set(0, -0.001, distance);
-        break;
-      case "front": // -Y
-        offset.set(0, -distance, 0);
-        break;
-      case "back": // +Y
-        offset.set(0, distance, 0);
-        break;
-      case "left": // -X
-        offset.set(-distance, 0, 0);
-        break;
-      case "right": // +X
-        offset.set(distance, 0, 0);
-        break;
-      // 8 Corners of the cube
-      case "tfr": // Top-Front-Right (+X, -Y, +Z)
-      case "iso":
-        offset.set(dCorner, -dCorner, dCorner * 0.8);
-        break;
-      case "tfl": // Top-Front-Left (-X, -Y, +Z)
-        offset.set(-dCorner, -dCorner, dCorner * 0.8);
-        break;
-      case "tbr": // Top-Back-Right (+X, +Y, +Z)
-        offset.set(dCorner, dCorner, dCorner * 0.8);
-        break;
-      case "tbl": // Top-Back-Left (-X, +Y, +Z)
-        offset.set(-dCorner, dCorner, dCorner * 0.8);
-        break;
-      case "bfr": // Bottom-Front-Right (+X, -Y, -Z)
-        offset.set(dCorner, -dCorner, -dCorner * 0.5);
-        break;
-      case "bfl": // Bottom-Front-Left (-X, -Y, -Z)
-        offset.set(-dCorner, -dCorner, -dCorner * 0.5);
-        break;
-      case "bbr": // Bottom-Back-Right (+X, +Y, -Z)
-        offset.set(dCorner, dCorner, -dCorner * 0.5);
-        break;
-      case "bbl": // Bottom-Back-Left (-X, +Y, -Z)
-        offset.set(-dCorner, dCorner, -dCorner * 0.5);
-        break;
-      default:
-        offset.set(distance * 0.7, -distance * 0.7, distance * 0.55);
-        break;
-    }
-
-    state.camera.position.copy(center).add(offset);
+    state.camera.position.copy(pos);
     state.camera.near = Math.max(1, distance / 400);
     state.camera.far = distance * 12;
     state.camera.updateProjectionMatrix();
@@ -2433,449 +684,11 @@ export function Viewer({
     setView("iso");
   }, [setView]);
 
-  // Parts live in their own effect: the assembly animation only changes how many parts
-  // are visible, so it must not re-run the overlay, reference-plane and connector work.
-  useEffect(() => {
-    const state = stateRef.current;
-    if (!state) return;
-
-    const partCache = partCacheRef.current;
-    const shapeKeys = shapeKeysRef.current;
-
-    const dropEntry = (entry: PartCacheEntry) => {
-      state.content.remove(entry.group);
-      for (const item of entry.disposables) item.dispose();
-    };
-
-    if (!model) {
-      for (const entry of partCache.values()) dropEntry(entry);
-      partCache.clear();
-      state.renderer.shadowMap.needsUpdate = true;
-      return;
-    }
-
-    const limitParts = visiblePartCount > 0 ? visiblePartCount : model.parts.length;
-    // Parts that are not placed yet stay in the scene as faint ghosts instead of
-    // floating around the origin while the rest of the family assembles.
-    const partsToRender = model.parts;
-    const wanted = new Set<string>();
-    const materialsKey = materials
-      .map((material) => `${material.name}:${material.color ?? ""}`)
-      .join(",");
-    const modelExtent = model?.bounds
-      ? Math.max(model.bounds.size.x, model.bounds.size.y, model.bounds.size.z, 500)
-      : 1000;
-    const silhouetteWidth = Math.max(0.7, Math.min(modelExtent * 0.0018, 4));
-
-    const activeSelectedIds = new Set(
-      [selectedPartId, ...pickedPartIds].filter((id): id is string => Boolean(id)),
-    );
-    const styleOf = (part: ResolvedPart, ghost = false) => {
-      const isClearance =
-        part.id.toLowerCase().includes("clearance") ||
-        part.name.toLowerCase().includes("clearance");
-      const props = partMaterialProps(part, materials);
-      return {
-        name: part.name,
-        color: partColor(part, materials),
-        metalness: props.metalness,
-        roughness: props.roughness,
-        isSelected: activeSelectedIds.has(part.id),
-        isTransparent: transparentPartIds.includes(part.id) || isClearance,
-        isClearance,
-        hasIssue: issuePartIds.includes(part.id),
-        isAffected: highlightPartIds.includes(part.id),
-        isAnimating: Boolean(animatingPartName) && part.name === animatingPartName,
-        isGhost: ghost,
-        isHovered: part.id === hoveredPartId,
-        // Other parts recede a little so the selection reads at a glance.
-        isDimmed:
-          activeSelectedIds.size > 0 &&
-          dimOthers &&
-          !activeSelectedIds.has(part.id) &&
-          !ghost &&
-          !isClearance,
-      };
-    };
-
-    const applyStyle = (entry: PartCacheEntry, style: ReturnType<typeof styleOf>) => {
-      const { meshMaterial: material, edgeMaterial } = entry;
-      entry.group.name = style.name;
-      for (const child of entry.group.children) child.name = style.name;
-      // Selection keeps the block solid; only "Make transparent" in the context menu
-      // turns a part see-through.
-      const transparent = style.isTransparent || style.isGhost || style.isDimmed;
-      const transparencyChanged = material.transparent !== transparent;
-      material.color.set(style.color);
-      if (style.isSelected) {
-        // 25% accent tint, visible on both the light and the dark palette.
-        material.color.lerp(new THREE.Color(0x4f9dff), 0.25);
-      }
-      material.metalness = style.metalness;
-      material.roughness = style.roughness;
-      material.envMapIntensity = style.isTransparent || style.isGhost ? 0.5 : 1.15;
-      material.transparent = transparent;
-      material.opacity = style.isGhost
-        ? 0.1
-        : style.isDimmed
-          ? 0.85
-          : style.isTransparent
-            ? style.isClearance
-              ? 0.07
-              : 0.35
-            : 1;
-      material.depthWrite = !transparent;
-      material.emissive.set(style.isSelected ? 0x2f6fd0 : style.color);
-      material.emissiveIntensity = style.isSelected ? 0.25 : style.isAnimating ? 0.55 : 0;
-      material.polygonOffsetFactor = style.isSelected ? -1 : 1;
-      if (transparencyChanged) material.needsUpdate = true;
-
-      edgeMaterial.visible = true;
-
-      if (style.isSelected) {
-        // Accent outline around the selection.
-        edgeMaterial.color.setHex(0x2f6fd0);
-        edgeMaterial.opacity = 0.95;
-        edgeMaterial.transparent = true;
-      } else if (style.isHovered) {
-        // Thin hover outline.
-        edgeMaterial.color.setHex(0x4f9dff);
-        edgeMaterial.opacity = 0.85;
-        edgeMaterial.transparent = true;
-      } else if (style.isGhost) {
-        edgeMaterial.color.setHex(0x8a9199);
-        edgeMaterial.opacity = 0.12;
-        edgeMaterial.transparent = true;
-      } else if (style.hasIssue) {
-        edgeMaterial.color.setHex(0xcf222e); // cảnh báo bố trí: viền đỏ
-        edgeMaterial.opacity = 0.9;
-        edgeMaterial.transparent = true;
-      } else if (style.isAffected) {
-        edgeMaterial.color.setHex(0xd28a00); // parameter impact: viền hổ phách
-        edgeMaterial.opacity = 0.85;
-        edgeMaterial.transparent = true;
-      } else if (style.isAnimating) {
-        edgeMaterial.color.setHex(0x2f7d5b); // green edge on the part that just appeared
-        edgeMaterial.opacity = 0.95;
-        edgeMaterial.transparent = true;
-      } else if (style.isClearance) {
-        edgeMaterial.color.setHex(0xd8a53a); // viền vàng mảnh cho vùng clearance
-        edgeMaterial.opacity = 0.55;
-        edgeMaterial.transparent = true;
-      } else if (style.isTransparent) {
-        edgeMaterial.color.setHex(0x30373b);
-        edgeMaterial.opacity = 0.2;
-        edgeMaterial.transparent = true;
-      } else {
-        edgeMaterial.color.setHex(theme === "dark" ? 0xc4ccd1 : 0x252c31);
-        edgeMaterial.opacity = 0.54;
-        edgeMaterial.transparent = true;
-      }
-
-      if (entry.silhouette) {
-        const silhouetteMaterial = entry.silhouette.material as THREE.ShaderMaterial;
-        entry.silhouette.visible = !style.isTransparent && !style.isGhost;
-        silhouetteMaterial.uniforms.outlineColor.value.setHex(
-          theme === "dark" ? 0xc4ccd1 : 0x171d21,
-        );
-        silhouetteMaterial.uniforms.outlineOpacity.value = style.isSelected
-          ? 0.55
-          : 0.34;
-      }
-
-      for (const child of entry.group.children) {
-        if (child instanceof THREE.Mesh && child !== entry.silhouette) {
-          child.castShadow = !style.isTransparent && !style.isGhost;
-        }
-      }
-    };
-
-    const buildEntry = (
-      part: ResolvedPart,
-      geometryKey: string,
-      styleKey: string,
-      built: BuiltPartGeometry,
-      ghost = false,
-    ): PartCacheEntry => {
-      const disposables: { dispose: () => void }[] = [];
-      const group = new THREE.Group();
-      group.name = part.id;
-
-      const geometry = built.geometry;
-      const meshMaterial = new THREE.MeshStandardMaterial({
-        polygonOffset: true,
-        polygonOffsetUnits: 1,
-      });
-      const edgeGeometry = built.edges;
-      const edgeMaterial = new THREE.LineBasicMaterial({ transparent: true });
-      disposables.push(geometry, meshMaterial, edgeGeometry, edgeMaterial);
-
-      const count = Math.max(1, part.array.count);
-      let entryStencil: { back: THREE.Mesh; front: THREE.Mesh } | null = null;
-      let silhouette: THREE.Mesh | undefined;
-
-      if (count === 1) {
-        const silhouetteMaterial = new THREE.ShaderMaterial({
-          uniforms: {
-            outlineColor: {
-              value: new THREE.Color(themeRef.current === "dark" ? 0xc4ccd1 : 0x171d21),
-            },
-            outlineOpacity: { value: 0.34 },
-            outlineWidth: { value: silhouetteWidth },
-          },
-          vertexShader: `
-            #include <common>
-            #include <clipping_planes_pars_vertex>
-            attribute vec3 normal;
-            uniform float outlineWidth;
-            void main() {
-              vec3 expanded = position + normalize(normal) * outlineWidth;
-              vec4 mvPosition = modelViewMatrix * vec4(expanded, 1.0);
-              gl_Position = projectionMatrix * mvPosition;
-              #include <clipping_planes_vertex>
-            }
-          `,
-          fragmentShader: `
-            #include <common>
-            #include <clipping_planes_pars_fragment>
-            uniform vec3 outlineColor;
-            uniform float outlineOpacity;
-            void main() {
-              #include <clipping_planes_fragment>
-              gl_FragColor = vec4(outlineColor, outlineOpacity);
-            }
-          `,
-          side: THREE.BackSide,
-          clipping: true,
-          transparent: true,
-          depthWrite: false,
-          depthTest: true,
-        });
-        silhouette = new THREE.Mesh(geometry, silhouetteMaterial);
-        silhouette.renderOrder = -1;
-        silhouette.userData = { silhouette: true };
-        group.add(silhouette);
-        disposables.push(silhouetteMaterial);
-      }
-
-      if (count > 1) {
-        // Repeated parts (bolts, fins, louvres) are one draw call, not one per copy.
-        const instanced = new THREE.InstancedMesh(geometry, meshMaterial, count);
-        const matrix = new THREE.Matrix4();
-        for (let index = 0; index < count; index += 1) {
-          const offset = { x: 0, y: 0, z: 0 };
-          offset[part.array.axis] = part.array.spacing * index;
-          matrix.makeTranslation(offset.x, offset.y, offset.z);
-          instanced.setMatrixAt(index, matrix);
-        }
-        instanced.instanceMatrix.needsUpdate = true;
-        instanced.computeBoundingSphere();
-        instanced.name = part.name;
-        instanced.userData = { partId: part.id, partName: part.name };
-        instanced.receiveShadow = true;
-        group.add(instanced);
-
-        const mergedEdges = instanceEdgeGeometry(
-          edgeGeometry,
-          count,
-          part.array.axis,
-          part.array.spacing,
-        );
-        if (mergedEdges) {
-          disposables.push(mergedEdges);
-          const outline = new THREE.LineSegments(mergedEdges, edgeMaterial);
-          outline.userData = { partId: part.id };
-          group.add(outline);
-        }
-      } else {
-        const mesh = new THREE.Mesh(geometry, meshMaterial);
-        mesh.name = part.name;
-        mesh.userData = { partId: part.id, partName: part.name };
-        mesh.receiveShadow = true;
-        group.add(mesh);
-
-        const clone = new THREE.LineSegments(edgeGeometry, edgeMaterial);
-        clone.userData = { partId: part.id };
-        group.add(clone);
-
-        // Stencil pair for the section cap: back faces += 1, front faces -= 1, so
-        // only the solid wall of a closed part is non-zero where the plane cuts it.
-        const stencilBase = {
-          colorWrite: false,
-          depthWrite: false,
-          depthTest: false,
-          stencilWrite: true,
-          stencilFunc: THREE.AlwaysStencilFunc,
-          transparent: false,
-        };
-        const stencilBackMaterial = new THREE.MeshBasicMaterial({
-          ...stencilBase,
-          side: THREE.BackSide,
-          stencilFail: THREE.IncrementWrapStencilOp,
-          stencilZFail: THREE.IncrementWrapStencilOp,
-          stencilZPass: THREE.IncrementWrapStencilOp,
-        });
-        const stencilFrontMaterial = new THREE.MeshBasicMaterial({
-          ...stencilBase,
-          side: THREE.FrontSide,
-          stencilFail: THREE.DecrementWrapStencilOp,
-          stencilZFail: THREE.DecrementWrapStencilOp,
-          stencilZPass: THREE.DecrementWrapStencilOp,
-        });
-        disposables.push(stencilBackMaterial, stencilFrontMaterial);
-
-        const stencilBack = new THREE.Mesh(geometry, stencilBackMaterial);
-        const stencilFront = new THREE.Mesh(geometry, stencilFrontMaterial);
-        for (const proxy of [stencilBack, stencilFront]) {
-          proxy.visible = false;
-          proxy.frustumCulled = false;
-          proxy.renderOrder = 1;
-          group.add(proxy);
-        }
-        entryStencil = { back: stencilBack, front: stencilFront };
-      }
-
-      state.content.add(group);
-      const entry: PartCacheEntry = {
-        geometryKey,
-        styleKey,
-        group,
-        meshMaterial,
-        edgeMaterial,
-        ...(silhouette ? { silhouette } : {}),
-        ...(entryStencil ? { stencilBack: entryStencil.back, stencilFront: entryStencil.front } : {}),
-        disposables,
-      };
-      applyStyle(entry, styleOf(part, ghost));
-      return entry;
-    };
-
-    let styleChanged = false;
-    const pending: { part: ResolvedPart; geometryKey: string; styleKey: string; ghost: boolean }[] =
-      [];
-
-    for (const [index, part] of partsToRender.entries()) {
-      if (hiddenPartIds.includes(part.id)) continue;
-      const ghost = visiblePartCount > 0 && index >= limitParts;
-
-      const isClearance =
-        part.id.toLowerCase().includes("clearance") ||
-        part.name.toLowerCase().includes("clearance");
-
-      // In Coarse mode, hide clearance zones and small fasteners/bolts to preview Revit Coarse behavior
-      const isSmallDetail = /(bolt|nut|screw|washer|pin|label|tag|indicator|hole)/i.test(
-        part.name || "",
-      );
-      if (detailLevel === "coarse" && (isClearance || isSmallDetail)) continue;
-
-      wanted.add(part.id);
-
-      let shapeKey = shapeKeys.get(part);
-      if (!shapeKey) {
-        shapeKey = `${JSON.stringify(part.solid)}|${JSON.stringify(part.cuts)}|${JSON.stringify(part.array)}`;
-        shapeKeys.set(part, shapeKey);
-      }
-
-      // Geometry only depends on the resolved shape. Name/material/colour changes
-      // are style-only and must not cut the solid again.
-      const geometryKey = `${shapeKey}|${previewQuality}`;
-      const style = styleOf(part, ghost);
-      const styleKey = [
-        part.name,
-        part.material ?? "",
-        part.color ?? "",
-        materialsKey,
-        style.isSelected ? "selected" : "",
-        style.isTransparent ? "transparent" : "",
-        style.isClearance ? "clearance" : "",
-        style.hasIssue ? "issue" : "",
-        style.isAffected ? "affected" : "",
-        style.isAnimating ? "hot" : "",
-        style.isGhost ? "ghost" : "",
-        style.isHovered ? "hover" : "",
-        style.isDimmed ? "dim" : "",
-        theme,
-      ].join("|");
-
-      const existing = partCache.get(part.id);
-      if (existing && existing.geometryKey === geometryKey) {
-        // Only the highlight/selection changed: recolour instead of re-cutting the solid.
-        if (existing.styleKey !== styleKey) {
-          applyStyle(existing, style);
-          existing.styleKey = styleKey;
-          styleChanged = true;
-        }
-        continue;
-      }
-
-      if (existing) dropEntry(existing);
-      pending.push({ part, geometryKey, styleKey, ghost });
-    }
-
-    for (const [id, entry] of partCache) {
-      if (wanted.has(id)) continue;
-      dropEntry(entry);
-      partCache.delete(id);
-    }
-
-    // Build several parts in flight instead of one per frame. The worker still
-    // serialises the actual geometry work, but waiting for rAF between every part
-    // made a 58-part assembly take almost a second longer than necessary.
-    let cancelled = false;
-    let cursor = 0;
-    let inFlight = 0;
-    let scheduled = false;
-
-    const schedule = () => {
-      if (cancelled || scheduled) return;
-      scheduled = true;
-      requestAnimationFrame(() => {
-        scheduled = false;
-        pump();
-      });
-    };
-
-    const pump = () => {
-      if (cancelled) return;
-
-      while (inFlight < 3 && cursor < pending.length) {
-        const { part, geometryKey, styleKey, ghost } = pending[cursor];
-        cursor += 1;
-        inFlight += 1;
-
-        void buildPartGeometryAsync(part, previewQuality)
-          .then((built) => {
-            if (cancelled) {
-              built.geometry.dispose();
-              built.edges.dispose();
-              return;
-            }
-
-            partCache.set(part.id, buildEntry(part, geometryKey, styleKey, built, ghost));
-            state.renderer.shadowMap.needsUpdate = true;
-            renderDirtyRef.current = true;
-          })
-          .catch((error) => {
-            console.warn("Could not build part geometry", part.id, error);
-          })
-          .finally(() => {
-            inFlight -= 1;
-            if (!cancelled && (cursor < pending.length || inFlight > 0)) schedule();
-          });
-      }
-    };
-
-    if (pending.length > 0) {
-      schedule();
-    } else if (styleChanged) {
-      state.renderer.shadowMap.needsUpdate = true;
-      renderDirtyRef.current = true;
-    }
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
+  usePartMeshes({
+    stateRef,
+    partCacheRef,
+    renderDirtyRef,
+    themeRef,
     model,
     materials,
     selectedPartId,
@@ -2891,9 +704,9 @@ export function Viewer({
     detailLevel,
     previewQuality,
     theme,
-  ]);
+  });
 
-  // Explode: push each part away from the model centre. Positions are restored at 0%.
+  // Explode: push each part away from the model centre.
   useEffect(() => {
     const state = stateRef.current;
     if (!state) return;
@@ -2901,10 +714,10 @@ export function Viewer({
     const amount = explode / 100;
     const center = bounds
       ? new THREE.Vector3(
-          (bounds.min.x + bounds.max.x) / 2,
-          (bounds.min.y + bounds.max.y) / 2,
-          (bounds.min.z + bounds.max.z) / 2,
-        )
+        (bounds.min.x + bounds.max.x) / 2,
+        (bounds.min.y + bounds.max.y) / 2,
+        (bounds.min.z + bounds.max.z) / 2,
+      )
       : new THREE.Vector3();
     const extent = bounds ? Math.max(bounds.size.x, bounds.size.y, bounds.size.z, 1) : 1;
 
@@ -2928,9 +741,10 @@ export function Viewer({
     state.renderer.shadowMap.needsUpdate = true;
     renderDirtyRef.current = true;
 
-    // Keep the whole family in view while the slider moves: ease the camera to a
-    // distance that fits the exploded bounds instead of snapping on every tick.
-    if (bounds) {
+    const explodeChanged = prevExplodeRef.current !== explode;
+    prevExplodeRef.current = explode;
+
+    if (explodeChanged && bounds) {
       const box = new THREE.Box3().setFromObject(state.content);
       if (!box.isEmpty()) {
         const boxCenter = box.getCenter(new THREE.Vector3());
@@ -2966,113 +780,13 @@ export function Viewer({
       return;
     }
 
-    const { min, max, size } = model.bounds;
-    const group = new THREE.Group();
-    const extent = Math.max(size.x, size.y, size.z, 400);
-    const offset = extent * 0.1;
-    // depthTest off: the dimension lines and labels stay visible from every angle.
-    const material = new THREE.LineBasicMaterial({ color: 0x2f6feb, depthTest: false });
-
-    const addLine = (from: [number, number, number], to: [number, number, number]) => {
-      const geometry = new THREE.BufferGeometry().setFromPoints([
-        new THREE.Vector3(...from),
-        new THREE.Vector3(...to),
-      ]);
-      group.add(new THREE.Line(geometry, material));
-    };
-
-    const addLabel = (text: string, x: number, y: number, z: number) => {
-      const canvas = document.createElement("canvas");
-      canvas.width = 256;
-      canvas.height = 64;
-      const context = canvas.getContext("2d");
-      if (!context) return;
-      context.fillStyle = "rgba(255,255,255,0.92)";
-      context.fillRect(0, 0, 256, 64);
-      context.strokeStyle = "#2f6feb";
-      context.lineWidth = 3;
-      context.strokeRect(2, 2, 252, 60);
-      context.fillStyle = "#1f2328";
-      context.font = "bold 30px 'Segoe UI', Arial, sans-serif";
-      context.textAlign = "center";
-      context.textBaseline = "middle";
-      context.fillText(text, 128, 34);
-
-      const sprite = new THREE.Sprite(
-        new THREE.SpriteMaterial({
-          map: new THREE.CanvasTexture(canvas),
-          transparent: true,
-          depthTest: false,
-        }),
-      );
-      const height = extent * 0.05;
-      sprite.scale.set(height * (256 / 64), height, 1);
-      sprite.position.set(x, y, z);
-      group.add(sprite);
-    };
-
-    // Dimensions follow the corner nearest the camera, so they never sit behind the
-    // model and read the same way at every ISO angle.
-    const camera = stateRef.current?.camera;
-    const middle = new THREE.Vector3(
-      (min.x + max.x) / 2,
-      (min.y + max.y) / 2,
-      (min.z + max.z) / 2,
-    );
-    const view = camera ? camera.position.clone().sub(middle) : new THREE.Vector3(1, -1, 1);
-    const sx = view.x >= 0 ? 1 : -1;
-    const sy = view.y >= 0 ? 1 : -1;
-    const sz = view.z >= 0 ? 1 : -1;
-    const nearY = sy > 0 ? max.y : min.y;
-    const nearX = sx > 0 ? max.x : min.x;
-    const nearZ = sz > 0 ? max.z : min.z;
-
-    // X: along the near Y/Z edge.
-    const xLineY = nearY + sy * offset;
-    const xLineZ = nearZ + sz * offset * 0.2;
-    addLine([min.x, xLineY, xLineZ], [max.x, xLineY, xLineZ]);
-    addLine([min.x, nearY, xLineZ], [min.x, xLineY, xLineZ]);
-    addLine([max.x, nearY, xLineZ], [max.x, xLineY, xLineZ]);
-    addLabel(
-      `${formatNumber(Math.round(size.x))} ${units}`,
-      (min.x + max.x) / 2,
-      xLineY,
-      xLineZ + sz * offset * 0.35,
-    );
-
-    // Y: along the near X/Z edge.
-    const yLineX = nearX + sx * offset;
-    const yLineZ = nearZ + sz * offset * 0.2;
-    addLine([yLineX, min.y, yLineZ], [yLineX, max.y, yLineZ]);
-    addLine([nearX, min.y, yLineZ], [yLineX, min.y, yLineZ]);
-    addLine([nearX, max.y, yLineZ], [yLineX, max.y, yLineZ]);
-    addLabel(
-      `${formatNumber(Math.round(size.y))} ${units}`,
-      yLineX + sx * offset * 0.35,
-      (min.y + max.y) / 2,
-      yLineZ,
-    );
-
-    // Z: along the near X/Y edge.
-    const zLineX = nearX + sx * offset;
-    const zLineY = nearY + sy * offset;
-    addLine([zLineX, zLineY, min.z], [zLineX, zLineY, max.z]);
-    addLine([nearX, zLineY, min.z], [zLineX, zLineY, min.z]);
-    addLine([nearX, zLineY, max.z], [zLineX, zLineY, max.z]);
-    addLabel(
-      `${formatNumber(Math.round(size.z))} ${units}`,
-      zLineX + sx * offset * 0.35,
-      zLineY,
-      (min.z + max.z) / 2,
-    );
-
+    const group = buildDimensionsGroup(model.bounds, state.camera, units, formatNumber);
     state.scene.add(group);
     dimensionsRef.current = group;
     renderDirtyRef.current = true;
   }, [showDimensions, model, units, dimView, formatNumber]);
 
-  // Cuts the add-in will skip (thin prism) are shown as dashed ghosts so the preview
-  // matches what Revit will build.
+  // Ghost outlines for cuts skipped on thin prisms in Revit.
   useEffect(() => {
     const state = stateRef.current;
     if (!state) return;
@@ -3091,52 +805,7 @@ export function Viewer({
       return;
     }
 
-    const material = new THREE.LineDashedMaterial({
-      color: 0xd28a00,
-      dashSize: 10,
-      gapSize: 6,
-      depthTest: false,
-    });
-    const group = new THREE.Group();
-
-    for (const part of model.parts) {
-      if (!skippedCutPartIds.includes(part.id)) continue;
-      for (const cut of part.cuts ?? []) {
-        let base: THREE.BufferGeometry | null = null;
-        const position = new THREE.Vector3();
-
-        if (cut.kind === "box") {
-          base = new THREE.BoxGeometry(
-            Math.abs(cut.size.x) || 1,
-            Math.abs(cut.size.y) || 1,
-            Math.abs(cut.size.z) || 1,
-          );
-          position.set(cut.origin.x, cut.origin.y, cut.origin.z);
-        } else if (cut.kind === "cylinder") {
-          const height = Math.abs(cut.height) || 1;
-          const radius = Math.abs(cut.radius) || 1;
-          base = new THREE.CylinderGeometry(radius, radius, height, 24);
-          const axis = cut.axis ?? "z";
-          if (axis === "x") base.rotateZ(Math.PI / 2);
-          else if (axis === "z") base.rotateX(Math.PI / 2);
-          position.set(cut.base.x, cut.base.y, cut.base.z);
-          const direction = Math.sign(cut.height) || 1;
-          if (axis === "x") position.x += (direction * height) / 2;
-          else if (axis === "y") position.y += (direction * height) / 2;
-          else position.z += (direction * height) / 2;
-        }
-
-        if (!base) continue;
-        const edges = new THREE.EdgesGeometry(base);
-        base.dispose();
-        const line = new THREE.LineSegments(edges, material);
-        line.computeLineDistances();
-        line.position.copy(position);
-        line.renderOrder = 3;
-        group.add(line);
-      }
-    }
-
+    const group = buildGhostCutsGroup(model, skippedCutPartIds);
     state.scene.add(group);
     ghostCutsRef.current = group;
     renderDirtyRef.current = true;
@@ -3158,7 +827,7 @@ export function Viewer({
     return () => window.removeEventListener("keydown", onKey);
   }, [measuring]);
 
-  // Zoom the camera to a part when an issue is clicked in the chat.
+  // Zoom the camera to a part when clicked in the parameter/issues list.
   useEffect(() => {
     const state = stateRef.current;
     if (!state || !focusPartId) return;
@@ -3205,315 +874,8 @@ export function Viewer({
     renderDirtyRef.current = true;
   }, [focusNote]);
 
-  // Section box: one global clipping plane in front of the chosen axis.
-  useEffect(() => {
-    const state = stateRef.current;
-    if (!state) return;
-
-    renderDirtyRef.current = true;
-    const modelKey = model?.bounds
-      ? `${model.bounds.size.x.toFixed(1)},${model.bounds.size.y.toFixed(1)},${model.bounds.size.z.toFixed(1)}`
-      : "none";
-    const buildKey =
-      sectionAxis === "off" || !model?.bounds
-        ? "off"
-        : sectionAxis === "custom"
-          ? sectionCustom
-            ? `custom:${sectionCustom.normal
-                .toArray()
-                .map((v) => v.toFixed(4))
-                .join(",")}:${sectionCustom.base
-                .toArray()
-                .map((v) => v.toFixed(2))
-                .join(",")}:${modelKey}`
-            : "custom-none"
-          : `axis:${sectionAxis}:${modelKey}`;
-
-    if (buildKey !== sectionBuildKeyRef.current) {
-      const previousPlane = sectionPlaneRef.current;
-      if (previousPlane) {
-        state.scene.remove(previousPlane);
-        previousPlane.traverse((child) => {
-          const mesh = child as THREE.Mesh;
-          mesh.geometry?.dispose();
-          const material = mesh.material as THREE.Material | THREE.Material[] | undefined;
-          if (Array.isArray(material)) material.forEach((item) => item.dispose());
-          else material?.dispose();
-          if ((child as THREE.Sprite).isSprite) {
-            (child as THREE.Sprite).material.map?.dispose();
-          }
-        });
-        sectionPlaneRef.current = null;
-        sectionArrowRef.current = null;
-        sectionOutlineRef.current = null;
-        sectionHandleLabelRef.current = null;
-      }
-      sectionBuildKeyRef.current = buildKey;
-    }
-
-    if (sectionAxis === "off" || !model?.bounds) {
-      state.renderer.clippingPlanes = [];
-      if (sectionCapRef.current) sectionCapRef.current.visible = false;
-      for (const entry of partCacheRef.current.values()) {
-        if (entry.stencilBack) entry.stencilBack.visible = false;
-        if (entry.stencilFront) entry.stencilFront.visible = false;
-      }
-      state.renderer.shadowMap.needsUpdate = true;
-      renderDirtyRef.current = true;
-      return;
-    }
-
-    const { min, max, size } = model.bounds;
-    const center = new THREE.Vector3((min.x + max.x) / 2, (min.y + max.y) / 2, (min.z + max.z) / 2);
-    const extent = Math.max(size.x, size.y, size.z, 400);
-
-    let normal: THREE.Vector3 | null = null;
-    let planePoint: THREE.Vector3 | null = null;
-
-    // Travel range of a diagonal plane = the model's projected extent on its normal.
-    const customRange = sectionCustom
-      ? Math.abs(sectionCustom.normal.x) * size.x +
-        Math.abs(sectionCustom.normal.y) * size.y +
-        Math.abs(sectionCustom.normal.z) * size.z
-      : extent;
-
-    if (sectionAxis === "custom" && sectionCustom) {
-      // Plane picked from a face: it slides along that face normal.
-      normal = sectionCustom.normal.clone().normalize();
-      const offset = (sectionT - 0.5) * customRange;
-      planePoint = sectionCustom.base.clone().addScaledVector(normal, offset);
-    } else if (sectionAxis !== "custom") {
-      const axis = sectionAxis;
-      const lo = min[axis];
-      const hi = max[axis];
-      const position = lo + (hi - lo) * sectionT;
-      normal = new THREE.Vector3(
-        axis === "x" ? -1 : 0,
-        axis === "y" ? -1 : 0,
-        axis === "z" ? -1 : 0,
-      );
-      planePoint = new THREE.Vector3(
-        axis === "x" ? position : center.x,
-        axis === "y" ? position : center.y,
-        axis === "z" ? position : center.z,
-      );
-    }
-
-    if (!normal || !planePoint) {
-      state.renderer.clippingPlanes = [];
-      state.renderer.shadowMap.needsUpdate = true;
-      renderDirtyRef.current = true;
-      return;
-    }
-
-    state.renderer.clippingPlanes = [new THREE.Plane(normal.clone(), -normal.dot(planePoint))];
-
-    // Keep the arrow on the plane, near the middle of the model.
-    const planeCenter = center
-      .clone()
-      .addScaledVector(normal, -center.clone().sub(planePoint).dot(normal));
-
-    const polygon = planeCrossSection(model.bounds, normal, planePoint);
-    const handleHeight = Math.max(extent * 0.05, 50);
-    const polygonCentroid =
-      polygon.length >= 3
-        ? polygon
-            .reduce((acc, item) => acc.add(item), new THREE.Vector3())
-            .divideScalar(polygon.length)
-        : planeCenter.clone();
-    // Push the billboard handle clear of the clip plane so it is never cut in half.
-    const handlePoint = polygonCentroid.clone().addScaledVector(normal, handleHeight * 0.75);
-
-    let group = sectionPlaneRef.current;
-    if (!group) {
-      group = new THREE.Group();
-      state.scene.add(group);
-      sectionPlaneRef.current = group;
-    }
-
-    let outlineGroup = sectionOutlineRef.current;
-    if (!outlineGroup) {
-      outlineGroup = new THREE.Group();
-      group.add(outlineGroup);
-      sectionOutlineRef.current = outlineGroup;
-    }
-
-    // The cross-section changes as the plane slides, so rebuild its two loops.
-    for (const child of [...outlineGroup.children]) {
-      outlineGroup.remove(child);
-      const line = child as THREE.Line;
-      line.geometry?.dispose();
-      (line.material as THREE.Material | undefined)?.dispose();
-    }
-
-    if (polygon.length >= 3) {
-      const border = new THREE.LineLoop(
-        new THREE.BufferGeometry().setFromPoints(polygon),
-        new THREE.LineBasicMaterial({ color: 0x2f6feb, transparent: true, opacity: 0.9 }),
-      );
-      border.renderOrder = 990;
-      outlineGroup.add(border);
-
-      const inset = polygon.map((item) =>
-        item.clone().sub(polygonCentroid).multiplyScalar(0.97).add(polygonCentroid),
-      );
-      const inner = new THREE.LineLoop(
-        new THREE.BufferGeometry().setFromPoints(inset),
-        new THREE.LineBasicMaterial({ color: 0x2f6feb, transparent: true, opacity: 0.25 }),
-      );
-      inner.renderOrder = 990;
-      outlineGroup.add(inner);
-    }
-
-    let handle = sectionArrowRef.current;
-    if (!handle) {
-      const canvas = document.createElement("canvas");
-      canvas.width = 256;
-      canvas.height = 96;
-      const ctx = canvas.getContext("2d");
-      if (ctx) {
-        ctx.beginPath();
-        ctx.roundRect(5, 5, 246, 86, 26);
-        ctx.fillStyle = "rgba(247,250,255,0.98)";
-        ctx.shadowColor = "rgba(20, 30, 50, 0.28)";
-        ctx.shadowBlur = 10;
-        ctx.shadowOffsetY = 4;
-        ctx.fill();
-        ctx.shadowColor = "transparent";
-        ctx.shadowBlur = 0;
-        ctx.shadowOffsetY = 0;
-        ctx.strokeStyle = "#2f6feb";
-        ctx.lineWidth = 5;
-        ctx.stroke();
-
-        ctx.strokeStyle = "#2f6feb";
-        ctx.lineWidth = 8;
-        ctx.lineCap = "round";
-        ctx.lineJoin = "round";
-        ctx.beginPath();
-        ctx.moveTo(102, 36);
-        ctx.lineTo(128, 20);
-        ctx.lineTo(154, 36);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.moveTo(102, 60);
-        ctx.lineTo(128, 76);
-        ctx.lineTo(154, 60);
-        ctx.stroke();
-      }
-
-      const texture = new THREE.CanvasTexture(canvas);
-      texture.anisotropy = 4;
-      handle = new THREE.Sprite(
-        new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false }),
-      );
-      handle.renderOrder = 1000;
-      group.add(handle);
-      sectionArrowRef.current = handle;
-    }
-
-    handle.scale.set(handleHeight * (256 / 96), handleHeight, 1);
-    handle.position.copy(handlePoint);
-
-    // Live position chip next to the grip.
-    let handleLabel = sectionHandleLabelRef.current;
-    if (!handleLabel) {
-      const labelCanvas = document.createElement("canvas");
-      labelCanvas.width = 256;
-      labelCanvas.height = 72;
-      const labelTexture = new THREE.CanvasTexture(labelCanvas);
-      labelTexture.anisotropy = 4;
-      handleLabel = new THREE.Sprite(
-        new THREE.SpriteMaterial({ map: labelTexture, transparent: true, depthTest: false }),
-      );
-      handleLabel.renderOrder = 1001;
-      group.add(handleLabel);
-      sectionHandleLabelRef.current = handleLabel;
-    }
-
-    const sectionValueMm =
-      sectionAxis === "custom"
-        ? Math.round((sectionT - 0.5) * customRange)
-        : Math.round(min[sectionAxis] + (max[sectionAxis] - min[sectionAxis]) * sectionT);
-    const sectionValueText = formatNumber(sectionValueMm);
-    const labelText =
-      sectionAxis === "custom"
-        ? t.viewerSectionFace(sectionValueText)
-        : `${sectionAxis.toUpperCase()} · ${sectionValueText} mm`;
-
-    const labelMaterial = handleLabel.material as THREE.SpriteMaterial;
-    const labelCanvas = labelMaterial.map?.image as HTMLCanvasElement | undefined;
-    const labelContext = labelCanvas?.getContext("2d");
-    if (labelContext && handleLabel.userData.text !== labelText) {
-      handleLabel.userData.text = labelText;
-      labelContext.clearRect(0, 0, 256, 72);
-      labelContext.beginPath();
-      labelContext.roundRect(4, 4, 248, 64, 18);
-      labelContext.fillStyle = "rgba(255,255,255,0.95)";
-      labelContext.fill();
-      labelContext.strokeStyle = "#2f6feb";
-      labelContext.lineWidth = 3;
-      labelContext.stroke();
-      labelContext.fillStyle = "#1f2328";
-      labelContext.font = "bold 26px 'Segoe UI', Arial, sans-serif";
-      labelContext.textAlign = "center";
-      labelContext.textBaseline = "middle";
-      labelContext.fillText(labelText, 128, 37);
-      if (labelMaterial.map) labelMaterial.map.needsUpdate = true;
-    }
-
-    const sectionLabelHeight = Math.max(extent * 0.035, 30);
-    handleLabel.scale.set(sectionLabelHeight * (256 / 72), sectionLabelHeight, 1);
-    handleLabel.position.copy(handlePoint).add(new THREE.Vector3(0, 0, handleHeight * 1.15));
-
-    // Stencil cap: only closed parts write stencil, so hollow interiors stay open.
-    const cap = sectionCapRef.current;
-    const canCap = model.parts.length < 200;
-    const active = sectionFill && canCap;
-    if (cap) {
-      cap.visible = active;
-      if (active) {
-        const capWidth =
-          sectionAxis === "x"
-            ? size.y
-            : sectionAxis === "custom"
-              ? Math.max(size.x, size.y)
-              : size.x;
-        const capHeight =
-          sectionAxis === "z"
-            ? size.y
-            : sectionAxis === "custom"
-              ? Math.max(size.y, size.z)
-              : size.z;
-        cap.position.copy(planePoint);
-        cap.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal.clone().normalize());
-        cap.scale.set(Math.max(capWidth, 1) * 1.02, Math.max(capHeight, 1) * 1.02, 1);
-      }
-    }
-    for (const entry of partCacheRef.current.values()) {
-      if (entry.stencilBack) entry.stencilBack.visible = active;
-      if (entry.stencilFront) entry.stencilFront.visible = active;
-    }
-
-    const dragOrigin =
-      sectionAxis === "custom" && sectionCustom ? sectionCustom.base.clone() : center.clone();
-    const dragRange =
-      sectionAxis === "custom" ? customRange : Math.max(max[sectionAxis] - min[sectionAxis], 1);
-    sectionDragDataRef.current = {
-      origin: dragOrigin,
-      normal: normal.clone(),
-      range: dragRange,
-      // Axis planes slide against their normal (-axis), face planes along it.
-      sign: sectionAxis === "custom" ? 1 : -1,
-    };
-
-    state.renderer.shadowMap.needsUpdate = true;
-    renderDirtyRef.current = true;
-  }, [sectionAxis, sectionT, model, sectionCustom, sectionFill, t, formatNumber]);
-
   useEffect(() => {
     if (measuring) return;
-
     clearMeasurements();
   }, [measuring]);
 
@@ -3542,6 +904,7 @@ export function Viewer({
     return () => window.removeEventListener("keydown", onKey);
   }, [measuring]);
 
+  // Reference planes, direct-manipulation shape handles, and MEP connectors.
   useEffect(() => {
     const state = stateRef.current;
     if (!state) return;
@@ -3552,6 +915,7 @@ export function Viewer({
     renderDirtyRef.current = true;
 
     if (!model) {
+      hasFittedRef.current = false;
       state.refPlanesGroup.clear();
       state.handlesGroup.clear();
       state.connectorsGroup.clear();
@@ -3568,7 +932,6 @@ export function Viewer({
     gridMaterial.uniforms.uFadeStart.value = Math.max(size * 2.5, 5000);
     gridMaterial.uniforms.uFadeEnd.value = Math.max(size * 12, 22000);
 
-    // Fit the key light and its shadow frustum to the model so the shadow stays crisp.
     if (model.bounds) {
       const { min, max } = model.bounds;
       const center = new THREE.Vector3(
@@ -3596,1412 +959,110 @@ export function Viewer({
       state.renderer.shadowMap.needsUpdate = true;
     }
 
-    // Reference Planes (Revit Style Green Dashed Lines & Translucent Planes)
     state.refPlanesGroup.clear();
     state.handlesGroup.clear();
 
-    // Shape Handles (Revit Blue Arrows for Direct Dimension Manipulation)
-    state.handlesGroup.clear();
-
-    // Hiện handle khi người dùng click chọn 1 Part cụ thể
     const selectedPart =
       selectedPartId && model ? model.parts.find((p) => p.id === selectedPartId) : null;
 
     if (selectedPart) {
       state.handlesGroup.visible = true;
-
-      // Tính bounds riêng của Part đang được chọn
-      const { geometry: partGeom } = buildPartGeometry(selectedPart);
-      partGeom.computeBoundingBox();
-      const pBox = partGeom.boundingBox;
-
-      if (pBox) {
-        const center = new THREE.Vector3(
-          (pBox.min.x + pBox.max.x) / 2,
-          (pBox.min.y + pBox.max.y) / 2,
-          (pBox.min.z + pBox.max.z) / 2,
-        );
-        const sizeX = Math.max(pBox.max.x - pBox.min.x, 10);
-        const sizeY = Math.max(pBox.max.y - pBox.min.y, 10);
-        const sizeZ = Math.max(pBox.max.z - pBox.min.z, 10);
-        const minDimension = Math.min(sizeX, sizeY, sizeZ);
-
-        // Auto-scale shape handles to fit part size
-        const scaleFactor = Math.min(1.0, Math.max(0.18, minDimension / 500));
-
-        // Tìm parameter phù hợp nhất với Part đang chọn
-        const partNameKeywords = selectedPart.name.toLowerCase().split(/\s+/);
-        const findParamForPartAxis = (
-          axisKeywords: string[],
-          fallbackName: string,
-          fallbackVal: number,
-        ) => {
-          // Ưu tiên param có chứa cả tên part lẫn keyword trục (vd: Casing Length, Flange Thickness,...)
-          const exactMatch = parameters.find(
-            (p) =>
-              partNameKeywords.some((pk) => pk.length > 2 && p.name.toLowerCase().includes(pk)) &&
-              axisKeywords.some((ak) => p.name.toLowerCase().includes(ak.toLowerCase())) &&
-              typeof p.value === "number",
-          );
-          if (exactMatch && typeof exactMatch.value === "number") {
-            return { name: exactMatch.name, val: exactMatch.value };
-          }
-          const axisMatch = parameters.find(
-            (p) =>
-              axisKeywords.some((ak) => p.name.toLowerCase().includes(ak.toLowerCase())) &&
-              typeof p.value === "number",
-          );
-          return {
-            name: axisMatch ? axisMatch.name : fallbackName,
-            val: axisMatch && typeof axisMatch.value === "number" ? axisMatch.value : fallbackVal,
-          };
-        };
-
-        const xParam = findParamForPartAxis(
-          ["length", "width", "od", "diameter", "radius"],
-          `${selectedPart.name} X`,
-          sizeX,
-        );
-        const yParam = findParamForPartAxis(
-          ["depth", "width", "od", "diameter", "radius"],
-          `${selectedPart.name} Y`,
-          sizeY,
-        );
-        const zParam = findParamForPartAxis(
-          ["height", "thickness", "length"],
-          `${selectedPart.name} Z`,
-          sizeZ,
-        );
-
-        const createShapeHandle = (
-          pos: THREE.Vector3,
-          dir: THREE.Vector3,
-          axis: "x" | "y" | "z",
-          sign: number,
-          paramInfo: { name: string; val: number },
-        ) => {
-          const handle = new THREE.Group();
-          handle.position.copy(pos);
-
-          const arrowLength = 70 * scaleFactor;
-          const arrowHead = 95 * scaleFactor;
-          const arrowRadius = 32 * scaleFactor;
-
-          const coneGeom = new THREE.ConeGeometry(arrowRadius, arrowHead, 16);
-          coneGeom.translate(0, arrowHead / 2 + arrowLength, 0);
-
-          const stemGeom = new THREE.CylinderGeometry(
-            11 * scaleFactor,
-            11 * scaleFactor,
-            arrowLength,
-            12,
-          );
-          stemGeom.translate(0, arrowLength / 2, 0);
-
-          const handleMat = new THREE.MeshStandardMaterial({
-            color: 0x0078d4, // Revit blue handle
-            roughness: 0.2,
-            metalness: 0.2,
-            depthTest: false,
-          });
-          state.disposables.push(coneGeom, stemGeom, handleMat);
-
-          const coneMesh = new THREE.Mesh(coneGeom, handleMat);
-          const stemMesh = new THREE.Mesh(stemGeom, handleMat);
-          coneMesh.renderOrder = 999;
-          stemMesh.renderOrder = 999;
-
-          const q = new THREE.Quaternion().setFromUnitVectors(
-            new THREE.Vector3(0, 1, 0),
-            dir.clone().normalize(),
-          );
-          handle.quaternion.copy(q);
-
-          handle.add(coneMesh);
-          handle.add(stemMesh);
-
-          handle.userData = {
-            isShapeHandle: true,
-            axis,
-            dir: sign,
-            paramName: paramInfo.name,
-            currentVal: paramInfo.val,
-          };
-
-          state.handlesGroup.add(handle);
-        };
-
-        // +X handle
-        createShapeHandle(
-          new THREE.Vector3(pBox.max.x, center.y, center.z),
-          new THREE.Vector3(1, 0, 0),
-          "x",
-          1,
-          xParam,
-        );
-        // -X handle
-        createShapeHandle(
-          new THREE.Vector3(pBox.min.x, center.y, center.z),
-          new THREE.Vector3(-1, 0, 0),
-          "x",
-          -1,
-          xParam,
-        );
-        // +Y handle
-        createShapeHandle(
-          new THREE.Vector3(center.x, pBox.max.y, center.z),
-          new THREE.Vector3(0, 1, 0),
-          "y",
-          1,
-          yParam,
-        );
-        // -Y handle
-        createShapeHandle(
-          new THREE.Vector3(center.x, pBox.min.y, center.z),
-          new THREE.Vector3(0, -1, 0),
-          "y",
-          -1,
-          yParam,
-        );
-        // +Z handle
-        createShapeHandle(
-          new THREE.Vector3(center.x, center.y, pBox.max.z),
-          new THREE.Vector3(0, 0, 1),
-          "z",
-          1,
-          zParam,
-        );
-      }
-      partGeom.dispose();
+      populatePartHandles(state, selectedPart, parameters);
     } else {
       state.handlesGroup.visible = false;
     }
 
     if (showPlanes && model.bounds) {
-      // Keep the plane frame close to the model: a full-grid frame tints the whole viewport.
-      const modelExtent = Math.max(
-        model.bounds.size.x,
-        model.bounds.size.y,
-        model.bounds.size.z,
-        400,
-      );
-      const planeExtent = modelExtent * 1.4;
-      const halfExt = planeExtent / 2;
-
-      const refLineMat = new THREE.LineDashedMaterial({
-        color: 0x2e8540, // Revit Reference Plane Green
-        dashSize: 45,
-        gapSize: 25,
-        linewidth: 1.5,
-        transparent: true,
-        opacity: 0.5,
-      });
-      state.disposables.push(refLineMat);
-
-      // Reference planes read as green dashed lines in Revit; fills only wash the view out.
-      // Center (Front/Back) plane: Y = 0, drawn as an outline on the floor.
-      const xzGeom = new THREE.PlaneGeometry(planeExtent, planeExtent);
-      xzGeom.rotateX(Math.PI / 2);
-      const xzOutline = new THREE.LineSegments(new THREE.EdgesGeometry(xzGeom), refLineMat);
-      xzOutline.computeLineDistances();
-      xzOutline.position.set(0, 0, 0);
-      state.refPlanesGroup.add(xzOutline);
-      state.disposables.push(xzGeom, xzOutline.geometry);
-
-      // Center (Left/Right) plane: X = 0.
-      const yzGeom = new THREE.PlaneGeometry(planeExtent, planeExtent);
-      yzGeom.rotateY(Math.PI / 2);
-      const yzOutline = new THREE.LineSegments(new THREE.EdgesGeometry(yzGeom), refLineMat);
-      yzOutline.computeLineDistances();
-      state.refPlanesGroup.add(yzOutline);
-      state.disposables.push(yzGeom, yzOutline.geometry);
-
-      // Reference cross lines through Origin
-      // X-Axis line (along X)
-      const xLinePts = [new THREE.Vector3(-halfExt, 0, 0), new THREE.Vector3(halfExt, 0, 0)];
-      const xLineGeom = new THREE.BufferGeometry().setFromPoints(xLinePts);
-      const xLine = new THREE.Line(xLineGeom, refLineMat);
-      xLine.computeLineDistances();
-      state.refPlanesGroup.add(xLine);
-      state.disposables.push(xLineGeom);
-
-      // Y-Axis line (along Y)
-      const yLinePts = [new THREE.Vector3(0, -halfExt, 0), new THREE.Vector3(0, halfExt, 0)];
-      const yLineGeom = new THREE.BufferGeometry().setFromPoints(yLinePts);
-      const yLine = new THREE.Line(yLineGeom, refLineMat);
-      yLine.computeLineDistances();
-      state.refPlanesGroup.add(yLine);
-      state.disposables.push(yLineGeom);
-
-      // Z-Axis line (along Z)
-      const zLinePts = [new THREE.Vector3(0, 0, -200), new THREE.Vector3(0, 0, halfExt)];
-      const zLineGeom = new THREE.BufferGeometry().setFromPoints(zLinePts);
-      const zLine = new THREE.Line(zLineGeom, refLineMat);
-      zLine.computeLineDistances();
-      state.refPlanesGroup.add(zLine);
-      state.disposables.push(zLineGeom);
-
-      // One plane per length parameter — the same skeleton the Revit add-in builds,
-      // so the studio shows where the family's reference planes will sit.
-      const bounds = model.bounds;
-      const centerX = (bounds.min.x + bounds.max.x) / 2;
-      const centerY = (bounds.min.y + bounds.max.y) / 2;
-      const centerZ = (bounds.min.z + bounds.max.z) / 2;
-      const margin = Math.max(bounds.size.x, bounds.size.y, bounds.size.z, 300) * 0.12;
-      const spanX = Math.max(bounds.size.x + margin * 2, 300);
-      const spanY = Math.max(bounds.size.y + margin * 2, 300);
-      const spanZ = Math.max(bounds.size.z + margin * 2, 300);
-
-      // Very light line work: a dozen overlapping planes would otherwise tint the model.
-      const paramLineMat = new THREE.LineDashedMaterial({
-        color: 0x2e8540,
-        dashSize: 40,
-        gapSize: 30,
-        transparent: true,
-        opacity: 0.4,
-      });
-      state.disposables.push(paramLineMat);
-
-      const axisForParameter = (name: string): "x" | "y" | "z" => {
-        const text = name.toLowerCase();
-        if (
-          text.includes("width") ||
-          text.includes("length") ||
-          text.includes("left") ||
-          text.includes("right")
-        ) {
-          return "x";
-        }
-        if (text.includes("depth") || text.includes("front") || text.includes("back")) return "y";
-        return "z";
-      };
-
-      let drawn = 0;
-      for (const parameter of parameters) {
-        if (drawn >= 12) break;
-        if (parameter.type !== "Length") continue;
-        if (parameter.formula) continue;
-        if (typeof parameter.value !== "number" || Math.abs(parameter.value) < 1) continue;
-
-        const value = Math.abs(parameter.value);
-        const axis = axisForParameter(parameter.name);
-        const near = (a: number, b: number) => Math.abs(a - b) <= 1;
-
-        let coordinate: number;
-        let width: number;
-        let height: number;
-        let rotate: (geometry: THREE.PlaneGeometry) => void;
-        let place: (mesh: THREE.Object3D) => void;
-
-        if (axis === "x") {
-          // Envelope dimensions sit on the far face, anything else is placed half-way out.
-          coordinate =
-            near(bounds.max.x, value) || near(bounds.size.x, value)
-              ? bounds.max.x
-              : centerX + value / 2;
-          width = spanY;
-          height = spanZ;
-          rotate = (geometry) => geometry.rotateY(Math.PI / 2);
-          place = (mesh) => mesh.position.set(coordinate, centerY, centerZ);
-        } else if (axis === "y") {
-          coordinate =
-            near(bounds.max.y, value) || near(bounds.size.y, value)
-              ? bounds.max.y
-              : centerY + value / 2;
-          width = spanX;
-          height = spanZ;
-          rotate = (geometry) => geometry.rotateX(Math.PI / 2);
-          place = (mesh) => mesh.position.set(centerX, coordinate, centerZ);
-        } else {
-          coordinate = near(bounds.size.z, value) ? bounds.max.z : bounds.min.z + value;
-          width = spanX;
-          height = spanY;
-          rotate = () => undefined;
-          place = (mesh) => mesh.position.set(centerX, centerY, coordinate);
-        }
-
-        // Outline only: a dozen filled planes would tint the whole model green.
-        const planeGeom = new THREE.PlaneGeometry(width, height);
-        rotate(planeGeom);
-
-        const outlineGeom = new THREE.EdgesGeometry(planeGeom);
-        const outline = new THREE.LineSegments(outlineGeom, paramLineMat);
-        outline.computeLineDistances();
-        place(outline);
-        state.refPlanesGroup.add(outline);
-        state.disposables.push(planeGeom, outlineGeom);
-
-        drawn += 1;
-      }
+      populateRefPlanes(state, model.bounds, parameters);
     }
 
-    // -------------------------------------------------------------
-    // MEP Connectors 3D Symbols (Revit Style Flow Arrows & Rings)
-    // -------------------------------------------------------------
     state.connectorsGroup.clear();
     state.connectorsGroup.visible = Boolean(showConnectors);
-
-    if (showConnectors && model.connectors && model.connectors.length > 0) {
-      for (const conn of model.connectors) {
-        const connGroup = new THREE.Group();
-        connGroup.position.set(conn.origin.x, conn.origin.y, conn.origin.z);
-
-        // System color mapping
-        let colorHex = 0x0969da; // Default Blue
-        if (conn.systemType.includes("SupplyAir"))
-          colorHex = 0x1f883d; // Green
-        else if (conn.systemType.includes("ReturnAir"))
-          colorHex = 0xd9381e; // Red/Magenta
-        else if (conn.systemType.includes("HydronicSupply"))
-          colorHex = 0x0969da; // Blue
-        else if (conn.systemType.includes("HydronicReturn"))
-          colorHex = 0xd47600; // Orange
-        else if (conn.systemType.includes("Sanitary")) colorHex = 0x8250df; // Purple
-
-        const arrowDir = new THREE.Vector3(
-          conn.directionVector.x,
-          conn.directionVector.y,
-          conn.directionVector.z,
-        ).normalize();
-
-        // Connector Boundary Rim / Ring
-        if (conn.shape === "round") {
-          const radius = (conn.diameter || 50) / 2;
-          const torusGeom = new THREE.TorusGeometry(radius, 4, 12, 32);
-          const torusMat = new THREE.MeshBasicMaterial({ color: colorHex });
-          state.disposables.push(torusGeom, torusMat);
-          const torus = new THREE.Mesh(torusGeom, torusMat);
-
-          // Align torus normal with arrow direction
-          const defaultNormal = new THREE.Vector3(0, 0, 1);
-          const quat = new THREE.Quaternion().setFromUnitVectors(defaultNormal, arrowDir);
-          torus.quaternion.copy(quat);
-          connGroup.add(torus);
-        } else {
-          const w = conn.width || 200;
-          const h = conn.height || 200;
-          const rectGeom = new THREE.BoxGeometry(w, h, 6);
-          const rectEdges = new THREE.LineSegments(
-            new THREE.EdgesGeometry(rectGeom),
-            new THREE.LineBasicMaterial({ color: colorHex, linewidth: 2 }),
-          );
-          state.disposables.push(rectGeom);
-
-          // Connector box local axes: X = width, Y = height, Z = flow direction.
-          // setFromUnitVectors alone leaves the roll undefined, so an X-facing
-          // connector maps its width into world Z and looks rotated 90 degrees.
-          const up =
-            Math.abs(arrowDir.z) < 0.9 ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(0, 1, 0);
-          const widthAxis = new THREE.Vector3().crossVectors(up, arrowDir).normalize();
-          const heightAxis = new THREE.Vector3().crossVectors(arrowDir, widthAxis).normalize();
-          const basis = new THREE.Matrix4().makeBasis(widthAxis, heightAxis, arrowDir);
-          rectEdges.quaternion.setFromRotationMatrix(basis);
-          connGroup.add(rectEdges);
-        }
-
-        // Flow Arrow helper
-        const arrowLength = 75;
-        const arrowHelper = new THREE.ArrowHelper(
-          arrowDir,
-          new THREE.Vector3(0, 0, 0),
-          arrowLength,
-          colorHex,
-          24,
-          16,
-        );
-        connGroup.add(arrowHelper);
-
-        // 3D Flow Label: IN / OUT badge with size (e.g. "IN · Ø50" or "OUT · 300×200")
-        try {
-          const dir = (conn.direction ?? "bidirectional").toLowerCase();
-          const dirLabel = dir === "in" ? "IN" : dir === "out" ? "OUT" : "BIDI";
-          const isRound = conn.shape !== "rectangular";
-          const sizeStr = isRound
-            ? `Ø${conn.diameter ?? 50}`
-            : `${conn.width ?? 200}×${conn.height ?? 200}`;
-          const badgeText = `${dirLabel} · ${sizeStr}`;
-
-          const canvas = document.createElement("canvas");
-          canvas.width = 256;
-          canvas.height = 64;
-          const ctx = canvas.getContext("2d");
-          if (ctx) {
-            ctx.clearRect(0, 0, 256, 64);
-            ctx.beginPath();
-            ctx.roundRect(4, 4, 248, 56, 14);
-            ctx.fillStyle =
-              dir === "in"
-                ? "rgba(31, 136, 61, 0.92)"
-                : dir === "out"
-                  ? "rgba(207, 34, 46, 0.92)"
-                  : "rgba(9, 105, 218, 0.92)";
-            ctx.fill();
-            ctx.strokeStyle = "#ffffff";
-            ctx.lineWidth = 2.5;
-            ctx.stroke();
-
-            ctx.fillStyle = "#ffffff";
-            ctx.font = "bold 26px 'Segoe UI', Arial, sans-serif";
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.fillText(badgeText, 128, 32);
-          }
-
-          const texture = new THREE.CanvasTexture(canvas);
-          texture.anisotropy = 4;
-          const spriteMat = new THREE.SpriteMaterial({
-            map: texture,
-            depthTest: false,
-            transparent: true,
-          });
-          state.disposables.push(texture, spriteMat);
-          const sprite = new THREE.Sprite(spriteMat);
-          sprite.scale.set(65, 16.25, 1);
-          sprite.position.copy(arrowDir).multiplyScalar(arrowLength + 22);
-          sprite.renderOrder = 999;
-          connGroup.add(sprite);
-        } catch {}
-
-        state.connectorsGroup.add(connGroup);
-      }
+    if (showConnectors) {
+      populateConnectors(state, model);
     }
 
-    const initialLoad = !hasFittedRef.current;
-    if (initialLoad) {
+    if (!hasFittedRef.current || (fitSignal > 0 && fitSignal !== lastFitSignalRef.current)) {
       fit();
       hasFittedRef.current = true;
+      lastFitSignalRef.current = fitSignal;
     }
-  }, [model, parameters, showGrid, showPlanes, showConnectors, selectedPartId, fit]);
+  }, [model, parameters, showGrid, showPlanes, showConnectors, selectedPartId, fit, fitSignal]);
 
   const dims = formatDimensions(model?.bounds ?? null, units);
-
-  const sectionMm = (() => {
-    if (!model?.bounds || sectionAxis === "off") return null;
-    const { min, max, size } = model.bounds;
-    if (sectionAxis === "custom") {
-      if (!sectionCustom) return null;
-      const range =
-        Math.abs(sectionCustom.normal.x) * size.x +
-        Math.abs(sectionCustom.normal.y) * size.y +
-        Math.abs(sectionCustom.normal.z) * size.z;
-      return { value: Math.round((sectionT - 0.5) * range), range };
-    }
-    const lo = min[sectionAxis];
-    const hi = max[sectionAxis];
-    return { value: Math.round(lo + (hi - lo) * sectionT), range: hi - lo };
-  })();
-
-  const applySectionMm = (value: number) => {
-    if (!model?.bounds || sectionAxis === "off" || !Number.isFinite(value)) return;
-    const { min, max, size } = model.bounds;
-    if (sectionAxis === "custom") {
-      if (!sectionCustom) return;
-      const range =
-        Math.abs(sectionCustom.normal.x) * size.x +
-        Math.abs(sectionCustom.normal.y) * size.y +
-        Math.abs(sectionCustom.normal.z) * size.z;
-      setSectionT(Math.min(1, Math.max(0, 0.5 + value / Math.max(range, 1))));
-      return;
-    }
-    const lo = min[sectionAxis];
-    const hi = max[sectionAxis];
-    setSectionT(Math.min(1, Math.max(0, (value - lo) / Math.max(hi - lo, 1))));
-  };
 
   return (
     <div className="viewer">
       <div ref={hostRef} style={{ position: "absolute", inset: 0 }} />
-
-      <div className="viewer-tools">
-        <button type="button" className="tool tool-primary" onClick={fit} title={t.fitView}>
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.4"
-          >
-            <path d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4" />
-          </svg>
-          <span className="tool-label">{t.fitView}</span>
-        </button>
-        <button
-          type="button"
-          className={`tool ${showGrid ? "active" : ""}`}
-          onClick={onToggleGrid}
-          title={t.grid}
-        >
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.2"
-          >
-            <path d="M2 2h12v12H2zM2 6h12M2 10h12M6 2v12M10 2v12" />
-          </svg>
-          <span className="tool-label">{t.grid}</span>
-        </button>
-        <button
-          type="button"
-          className={`tool ${shadowsEnabled ? "active" : ""}`}
-          onClick={() => setShadowsEnabled((curr) => !curr)}
-          title={t.shadows}
-        >
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 16 16"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.3"
-          >
-            <circle cx="8" cy="7" r="3" />
-            <path d="M8 1v1.6M8 11.4V13M2 7h1.6M12.4 7H14M3.8 2.8l1.1 1.1M10.5 9.5l1.1 1.1M12.2 2.8l-1.1 1.1M5.1 9.5l-1.1 1.1" />
-          </svg>
-          <span className="tool-label">{t.shadows}</span>
-        </button>
-        {onTogglePlanes && (
-          <button
-            type="button"
-            className={`tool ${showPlanes ? "active" : ""}`}
-            onClick={onTogglePlanes}
-            title={t.refPlanes}
-          >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.3"
-            >
-              <path strokeDasharray="3 2" d="M8 1v14M1 8h14" />
-            </svg>
-          </button>
-        )}
-        <button
-          type="button"
-          className="tool viewer-tools-more"
-          onClick={() => setToolsMenuOpen((current) => !current)}
-          title={t.moreViewerTools}
-          aria-expanded={toolsMenuOpen}
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
-            <circle cx="5" cy="12" r="1.2" />
-            <circle cx="12" cy="12" r="1.2" />
-            <circle cx="19" cy="12" r="1.2" />
-          </svg>
-        </button>
-        <button
-          type="button"
-          className={`tool tool-primary ${sectionAxis !== "off" ? "active" : ""}`}
-          onClick={() => {
-            if (sectionAxis === "off") {
-              setSectionT(1);
-              setSectionAxis("x");
-            } else {
-              setSectionAxis("off");
-              setPickingSection(false);
-            }
-          }}
-          title={t.section}
-        >
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-          >
-            <path d="M3 7l9-4 9 4-9 4-9-4z" />
-            <path d="M3 12l9 4 9-4M3 17l9 4 9-4" />
-          </svg>
-          <span className="tool-label">{t.section}</span>
-        </button>
-        <button
-          type="button"
-          className={`tool tool-primary ${measuring ? "active" : ""}`}
-          onClick={() => setMeasuring((current) => !current)}
-          title={t.measure}
-        >
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-          >
-            <path d="M3 15 15 3l6 6L9 21l-6-6z" />
-            <path d="M7 11l2 2M10 8l2 2M13 5l2 2" />
-          </svg>
-          <span className="tool-label">{t.measure}</span>
-        </button>
-        <span className="tool-sep" aria-hidden="true" />
-        <button
-          type="button"
-          className={`tool tool-primary ${detailLevel === "coarse" ? "active" : ""}`}
-          onClick={() => setDetailLevel((cur) => (cur === "coarse" ? "fine" : "coarse"))}
-          title={detailLevel === "coarse" ? t.viewerToFine : t.viewerToCoarse}
-        >
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-          >
-            <rect x="3" y="3" width="18" height="18" rx="2" />
-            <path d="M3 9h18M9 21V9" />
-          </svg>
-          <span className="tool-label">{detailLevel === "coarse" ? t.coarse : t.fine}</span>
-        </button>
-        {onToggleConnectors && (
-          <button
-            type="button"
-            className={`tool tool-primary ${showConnectors ? "active" : ""}`}
-            onClick={onToggleConnectors}
-            title={t.connectorsTooltip}
-          >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 16 16"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.3"
-            >
-              <circle cx="8" cy="8" r="6" />
-              <path d="M8 4v8M5 7l3-3 3 3" />
-            </svg>
-            <span className="tool-label">{t.connectors}</span>
-          </button>
-        )}
-        <button
-          type="button"
-          className={`tool ${turntableActive ? "active" : ""}`}
-          onClick={() => setTurntableActive((curr) => !curr)}
-          title={t.viewerTurntableHint}
-        >
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
-            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
-          </svg>
-          <span className="tool-label">360°</span>
-        </button>
-        <button
-          type="button"
-          className={`tool ${dimOthers ? "active" : ""}`}
-          onClick={() => setDimOthers((current) => !current)}
-          title={t.dimOthers}
-        >
-          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
-            <circle cx="8" cy="8" r="5.5" strokeDasharray="3 2" />
-            <circle cx="8" cy="8" r="2" fill="currentColor" stroke="none" />
-          </svg>
-          <span className="tool-label">{t.dimOthers}</span>
-        </button>
-        <button
-          type="button"
-          className={`tool ${explodeOpen ? "active" : ""}`}
-          onClick={() => {
-            setExplodeOpen((current) => !current);
-            if (explodeOpen) setExplode(0);
-          }}
-          title={t.explode}
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-            <path d="M12 3v5M12 16v5M3 12h5M16 12h5M5.6 5.6l3.5 3.5M14.9 14.9l3.5 3.5M18.4 5.6l-3.5 3.5M9.1 14.9l-3.5 3.5" />
-          </svg>
-          <span className="tool-label">{t.explode}</span>
-        </button>
-        <button
-          type="button"
-          className={`tool ${showDimensions ? "active" : ""}`}
-          onClick={() => setShowDimensions((current) => !current)}
-          title={t.dimensions}
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-            <path d="M3 17h18M3 14v6M21 14v6M7 20l-4-3 4-3M17 20l4-3-4-3" />
-          </svg>
-          <span className="tool-label">{t.dimensions}</span>
-        </button>
-        <button type="button" className="tool" onClick={saveImage} title={t.saveImage}>
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
-            <rect x="3" y="4" width="18" height="16" rx="2" />
-            <circle cx="8.5" cy="9.5" r="1.5" />
-            <path d="m4 17 5-5 4 4 3-3 4 4" />
-          </svg>
-          <span className="tool-label">{t.saveImage}</span>
-        </button>
-        {hiddenPartIds.length > 0 && onUnhideAll && (
-          <button
-            type="button"
-            className="tool unhide-all-btn"
-            onClick={onUnhideAll}
-            title={t.viewerUnhideAllHint}
-          >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-              <circle cx="12" cy="12" r="3" />
-            </svg>
-            <span className="tool-label">
-              {t.viewerUnhideCount(formatNumber(hiddenPartIds.length))}
-            </span>
-          </button>
-        )}
-      </div>
-
-      {explodeOpen && (
-        <div className="viewer-explode-panel floating">
-          <span>
-            {t.explode} · {formatNumber(explode)}%
-          </span>
-          <input
-            type="range"
-            min={0}
-            max={100}
-            step={1}
-            value={explode}
-            aria-label={t.explode}
-            onChange={(event) => setExplode(Number(event.target.value))}
-          />
-        </div>
-      )}
-
-      {toolsMenuOpen && (
-        <div className="viewer-more-menu">
-          <button type="button" onClick={() => { setToolsMenuOpen(false); onToggleGrid(); }}>
-            {t.grid}
-          </button>
-          <button type="button" onClick={() => { setToolsMenuOpen(false); setShadowsEnabled((v) => !v); }}>
-            {t.shadows}
-          </button>
-          {onTogglePlanes && (
-            <button type="button" onClick={() => { setToolsMenuOpen(false); onTogglePlanes(); }}>
-              {t.refPlanes}
-            </button>
-          )}
-          <button type="button" onClick={() => { setToolsMenuOpen(false); setTurntableActive((v) => !v); }}>
-            {t.turnaround}
-          </button>
-          <button type="button" onClick={() => { setToolsMenuOpen(false); setDimOthers((v) => !v); }}>
-            {t.dimOthers}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setToolsMenuOpen(false);
-              setExplodeOpen(true);
-            }}
-          >
-            {t.explode}
-          </button>
-          <button type="button" onClick={() => { setToolsMenuOpen(false); setShowDimensions((v) => !v); }}>
-            {t.dimensions}
-          </button>
-          <button type="button" onClick={() => { setToolsMenuOpen(false); saveImage(); }}>
-            {t.saveImage}
-          </button>
-          {hiddenPartIds.length > 0 && onUnhideAll && (
-            <button type="button" onClick={() => { setToolsMenuOpen(false); onUnhideAll(); }}>
-              {t.unhideAll}
-            </button>
-          )}
-        </div>
-      )}
-
-      {sectionAxis !== "off" && (
-        <div className="section-card">
-          <div className="section-card-head">
-            <span>{t.section}</span>
-            <button
-              type="button"
-              className="modal-close"
-              onClick={() => setSectionAxis("off")}
-              aria-label={t.viewerCloseSection}
-            >
-              ×
-            </button>
-          </div>
-          <div className="section-axis">
-            {(["x", "y", "z"] as const).map((axis) => (
-              <button
-                key={axis}
-                type="button"
-                className={sectionAxis === axis ? "active" : ""}
-                onClick={() => {
-                  setSectionAxis(axis);
-                  setPickingSection(false);
-                  setSectionT(1);
-                }}
-              >
-                {axis.toUpperCase()}
-              </button>
-            ))}
-            <button
-              type="button"
-              className={sectionAxis === "custom" ? "active" : ""}
-              onClick={() => setPickingSection(true)}
-              title={t.viewerPickSection}
-            >
-              ⌖
-            </button>
-          </div>
-
-          <label
-            className="section-fill-toggle"
-            title={
-              model && model.parts.length >= 200 ? t.viewerSectionFillDisabled : t.sectionFill
-            }
-          >
-            <input
-              type="checkbox"
-              checked={sectionFill}
-              disabled={Boolean(model && model.parts.length >= 200)}
-              onChange={(event) => setSectionFill(event.target.checked)}
-            />
-            <span>{t.sectionFill}</span>
-          </label>
-
-          {pickingSection && <div className="section-hint">{t.viewerPickSectionHint}</div>}
-
-          {sectionAxis === "custom" && sectionCustom && (
-            <button
-              type="button"
-              className="section-flip"
-              onClick={() =>
-                setSectionCustom((current) =>
-                  current ? { ...current, normal: current.normal.clone().negate() } : current,
-                )
-              }
-            >
-              {t.viewerFlipSection}
-            </button>
-          )}
-
-          <div className="section-value">
-            <input
-              type="number"
-              step={10}
-              value={sectionMm?.value ?? 0}
-              onChange={(event) => applySectionMm(Number(event.target.value))}
-              disabled={!sectionMm}
-              aria-label={t.viewerSectionPosition}
-            />
-            <span>mm</span>
-          </div>
-          <div className="section-tip">{t.viewerSectionTip}</div>
-        </div>
-      )}
-
-      {model && dims && <div className="viewer-dims">{dims}</div>}
-
-      {hoverInfo && (
-        <div className="viewer-hover-tip" style={{ left: hoverInfo.x + 14, top: hoverInfo.y + 14 }}>
-          {hoverInfo.name}
-        </div>
-      )}
-
-      {measuring && !measureLabel && (
-        <div className="measure-badge">{t.viewerMeasureHint}</div>
-      )}
-      {measureLabel && (
-        <div className="measure-badge">
-          <span>{measureLabel}</span>
-          {measureCount > 0 && (
-            <button type="button" onClick={clearMeasurements}>
-              {t.viewerClearMeasurements(formatNumber(measureCount))}
-            </button>
-          )}
-        </div>
-      )}
-
-      <div className="viewcube-container" ref={cubeHostRef} title={t.alignView} />
-
-      {!model && (
-        <div className="viewer-empty">
-          <div className="chat-empty-icon" aria-hidden="true">
-            <svg
-              width="36"
-              height="36"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.3"
-            >
-              <path d="M3 7l9-4 9 4-9 4-9-4z" />
-              <path d="M3 12l9 4 9-4M3 17l9 4 9-4" />
-            </svg>
-          </div>
-          <strong>{t.viewerEmptyTitle}</strong>
-          <p>{t.viewerEmptyBody}</p>
-          <button
-            type="button"
-            className="viewer-empty-suggestion"
-            onClick={() => onLoadSample?.()}
-            disabled={!onLoadSample}
-          >
-            {t.viewerTryPrefix} {t.viewerTrySample}
-          </button>
-        </div>
-      )}
-
-      {activeHandle && (
-        <div
-          className="viewer-handle-tooltip"
-          style={{
-            left: `${activeHandle.screenX}px`,
-            top: `${activeHandle.screenY}px`,
-          }}
-        >
-          <span className="name">{activeHandle.label}</span>
-          <span className="val">
-            {formatNumber(activeHandle.value)} {units}
-          </span>
-        </div>
-      )}
-
-      <div className="viewer-note-pins">
-        {notes.map((note, index) => {
-          const exists = Boolean(model?.parts.some((part) => part.id === note.partId));
-          return (
-            <button
-              key={note.id}
-              ref={(node) => {
-                if (node) notePinRefs.current.set(note.id, node);
-                else notePinRefs.current.delete(note.id);
-              }}
-              type="button"
-              className={`viewer-note-pin${note.status === "resolved" ? " resolved" : ""}${
-                exists ? "" : " stale"
-              }`}
-              style={{ left: 0, top: 0, display: "none" }}
-              title={`${note.text}${exists ? "" : ` · ${t.viewerNoteChanged}`}`}
-              onClick={(event) => {
-                event.stopPropagation();
-                onFocusNoteRef.current?.(note);
-              }}
-            >
-              {index + 1}
-            </button>
-          );
-        })}
-      </div>
-
-      {noteComposer && (
-        <form
-          className="viewer-note-composer"
-          style={{ left: `${noteComposer.x}px`, top: `${noteComposer.y}px` }}
-          onSubmit={(event) => {
-            event.preventDefault();
-            const text = noteComposer.text.trim();
-            if (!text || !onAddNote) return;
-            onAddNote({
-              partId: noteComposer.partId,
-              partName: noteComposer.partName,
-              point: noteComposer.point,
-              normal: noteComposer.normal,
-              text,
-            });
-            setNoteComposer(null);
-          }}
-        >
-          <div className="note-composer-part">{noteComposer.partName}</div>
-          <textarea
-            autoFocus
-            rows={3}
-            maxLength={2000}
-            value={noteComposer.text}
-            placeholder={t.viewerNotePlaceholder}
-            onChange={(event) =>
-              setNoteComposer((current) =>
-                current ? { ...current, text: event.target.value } : current,
-              )
-            }
-            onKeyDown={(event) => {
-              if (event.key === "Escape") {
-                event.preventDefault();
-                setNoteComposer(null);
-              }
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                event.currentTarget.form?.requestSubmit();
-              }
-            }}
-          />
-          <div className="note-composer-actions">
-            <button type="button" className="btn-ghost" onClick={() => setNoteComposer(null)}>
-              {t.viewerNoteCancel}
-            </button>
-            <button type="submit" className="btn-primary" disabled={!noteComposer.text.trim()}>
-              {t.viewerNoteSave}
-            </button>
-          </div>
-        </form>
-      )}
-
-      {contextMenu && (
-        <div
-          className="viewer-context-menu"
-          style={{
-            left: `${contextMenu.x}px`,
-            top: `${contextMenu.y}px`,
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="menu-header">
-            <span className="menu-part-icon" />
-            <span className="menu-part-name" title={contextMenu.partName}>
-              {pickedPartIds.length > 1 && pickedPartIds.includes(contextMenu.partId)
-                ? t.viewerSelectedParts(formatNumber(pickedPartIds.length))
-                : contextMenu.partName}
-            </span>
-          </div>
-          <div className="menu-divider" />
-
-          <button
-            type="button"
-            className="menu-item"
-            onClick={() => {
-              const ids =
-                pickedPartIds.length > 1 && pickedPartIds.includes(contextMenu.partId)
-                  ? pickedPartIds
-                  : [contextMenu.partId];
-              const targets = ids
-                .map((id) => {
-                  const part = model?.parts.find((item) => item.id === id);
-                  if (!part) return null;
-                  return { partId: part.id, partName: part.name };
-                })
-                .filter((target): target is ChatTarget => Boolean(target));
-              if (targets.length > 0) onSendPartsToChatRef.current?.(targets);
-              setContextMenu(null);
-            }}
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
-              <path d="M8 9h8M8 13h5" />
-            </svg>
-            <span>{t.viewerSendToChat}</span>
-          </button>
-
-          <button
-            type="button"
-            className="menu-item"
-            onClick={() => {
-              if (!contextMenu.point) {
-                setContextMenu(null);
-                return;
-              }
-              setNoteComposer({
-                partId: contextMenu.partId,
-                partName: contextMenu.partName,
-                x: Math.max(8, Math.min(contextMenu.x, window.innerWidth - 270)),
-                y: Math.max(8, Math.min(contextMenu.y, window.innerHeight - 190)),
-                point: {
-                  x: contextMenu.point.x,
-                  y: contextMenu.point.y,
-                  z: contextMenu.point.z,
-                },
-                normal: contextMenu.surfaceNormal
-                  ? {
-                      x: contextMenu.surfaceNormal.x,
-                      y: contextMenu.surfaceNormal.y,
-                      z: contextMenu.surfaceNormal.z,
-                    }
-                  : undefined,
-                text: "",
-              });
-              setContextMenu(null);
-            }}
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M12 21s7-5.2 7-11a7 7 0 1 0-14 0c0 5.8 7 11 7 11z" />
-              <circle cx="12" cy="10" r="2.2" />
-            </svg>
-            <span>{t.viewerAddNoteHere}</span>
-          </button>
-
-          <div className="menu-divider" />
-
-          <button
-            type="button"
-            className="menu-item"
-            onClick={() => {
-              onToggleHidePart?.(contextMenu.partId);
-              setContextMenu(null);
-            }}
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              {hiddenPartIds.includes(contextMenu.partId) ? (
-                <>
-                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                  <circle cx="12" cy="12" r="3" />
-                </>
-              ) : (
-                <>
-                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
-                  <line x1="1" y1="1" x2="23" y2="23" />
-                </>
-              )}
-            </svg>
-            <span>
-              {hiddenPartIds.includes(contextMenu.partId)
-                ? t.viewerUnhidePart
-                : t.viewerHidePart}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            className="menu-item"
-            onClick={() => {
-              onToggleTransparentPart?.(contextMenu.partId);
-              setContextMenu(null);
-            }}
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z" />
-              <path d="M12 6a6 6 0 0 0 0 12z" fill="currentColor" opacity="0.6" />
-            </svg>
-            <span>
-              {transparentPartIds.includes(contextMenu.partId)
-                ? t.viewerMakeSolid
-                : t.viewerMakeGhost}
-            </span>
-          </button>
-
-          <div className="menu-divider" />
-
-          <button
-            type="button"
-            className="menu-item"
-            onClick={() => {
-              // Isolate element: hide all other parts except this one
-              if (model) {
-                const otherIds = model.parts
-                  .map((p) => p.id)
-                  .filter((id) => id !== contextMenu.partId);
-                // hide all other parts
-                otherIds.forEach((id) => {
-                  if (!hiddenPartIds.includes(id)) {
-                    onToggleHidePart?.(id);
-                  }
-                });
-              }
-              setContextMenu(null);
-            }}
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <rect x="3" y="3" width="18" height="18" rx="2" strokeDasharray="3 3" />
-              <rect x="7" y="7" width="10" height="10" fill="currentColor" fillOpacity="0.3" />
-            </svg>
-            <span>{t.viewerIsolate}</span>
-          </button>
-
-          <button
-            type="button"
-            className="menu-item"
-            title={t.viewerSectionThroughPart}
-            onClick={() => {
-              if (contextMenu.normal && contextMenu.center) {
-                setSectionCustom({
-                  normal: contextMenu.normal.clone(),
-                  base: contextMenu.center.clone(),
-                });
-                setSectionAxis("custom");
-                setSectionT(0.5);
-                setPickingSection(false);
-              }
-              setContextMenu(null);
-            }}
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
-              <path d="M3 3h18v18H3z" strokeDasharray="3 3" />
-              <path d="M3 12h18" />
-              <path d="M12 3v18" opacity="0.4" />
-            </svg>
-            <span>{t.viewerSectionFromPart}</span>
-          </button>
-
-          {(hiddenPartIds.length > 0 || transparentPartIds.length > 0) && (
-            <>
-              <div className="menu-divider" />
-              {hiddenPartIds.length > 0 && (
-                <button
-                  type="button"
-                  className="menu-item secondary"
-                  onClick={() => {
-                    onUnhideAll?.();
-                    setContextMenu(null);
-                  }}
-                >
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  >
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                    <circle cx="12" cy="12" r="3" />
-                  </svg>
-                  <span>{t.viewerUnhideCount(formatNumber(hiddenPartIds.length))}</span>
-                </button>
-              )}
-              {transparentPartIds.length > 0 && (
-                <button
-                  type="button"
-                  className="menu-item secondary"
-                  onClick={() => {
-                    onResetTransparent?.();
-                    setContextMenu(null);
-                  }}
-                >
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                  >
-                    <circle cx="12" cy="12" r="10" />
-                  </svg>
-                  <span>{t.viewerResetTransparency}</span>
-                </button>
-              )}
-            </>
-          )}
-        </div>
-      )}
-
-      {animatingPartName && !status && (
-        <div className="viewer-assembly-badge">
-          <span className="assembly-pulse" />
-          <span>
-            {t.assembling}: <strong>{animatingPartName}</strong> (
-            {formatNumber(visiblePartCount)}/{formatNumber(model?.parts.length ?? 0)})
-          </span>
-        </div>
-      )}
-
-      {selectedPartId && (
-        <div className="viewer-selected-chip">
-          <span className="dot" />
-          <span>
-            {t.part}:{" "}
-            <strong>
-              {pickedPartIds.length > 1
-                ? t.viewerSelectedParts(formatNumber(pickedPartIds.length))
-                : model?.parts.find((p) => p.id === selectedPartId)?.name || selectedPartId}
-            </strong>
-          </span>
-          {onToggleHidePart && (
-            <button
-              type="button"
-              className="chip-action-btn"
-              title={t.viewerHidePartHint}
-              onClick={() => {
-                onToggleHidePart(selectedPartId);
-                onSelectPart?.(null);
-              }}
-            >
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
-                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
-                <line x1="1" y1="1" x2="23" y2="23" />
-              </svg>
-              <span>· {t.viewerHideShort}</span>
-            </button>
-          )}
-          <button
-            type="button"
-            className="chip-close"
-            title={t.viewerDeselect}
-            onClick={() => onSelectPart?.(null)}
-          >
-            ×
-          </button>
-        </div>
-      )}
-
-      {model && (
-        <div className="viewer-caption">
-          {t.viewerModelCaption(
-            formatNumber(model.parts.length),
-            formatNumber(model.instances),
-          )}
-        </div>
-      )}
+      <ViewerOverlays
+        model={model}
+        units={units}
+        dims={dims}
+        showGrid={showGrid}
+        onToggleGrid={onToggleGrid}
+        shadowsEnabled={shadowsEnabled}
+        setShadowsEnabled={setShadowsEnabled}
+        showPlanes={Boolean(showPlanes)}
+        onTogglePlanes={onTogglePlanes}
+        toolsMenuOpen={toolsMenuOpen}
+        setToolsMenuOpen={setToolsMenuOpen}
+        sectionAxis={section.sectionAxis}
+        setSectionAxis={section.setSectionAxis}
+        setSectionT={section.setSectionT}
+        sectionCustom={section.sectionCustom}
+        setSectionCustom={section.setSectionCustom}
+        pickingSection={section.pickingSection}
+        setPickingSection={section.setPickingSection}
+        sectionFill={section.sectionFill}
+        setSectionFill={section.setSectionFill}
+        sectionMm={section.sectionMm}
+        applySectionMm={section.applySectionMm}
+        measuring={measuring}
+        setMeasuring={setMeasuring}
+        detailLevel={detailLevel}
+        setDetailLevel={setDetailLevel}
+        showConnectors={Boolean(showConnectors)}
+        onToggleConnectors={onToggleConnectors}
+        turntableActive={turntableActive}
+        setTurntableActive={setTurntableActive}
+        dimOthers={dimOthers}
+        setDimOthers={setDimOthers}
+        explodeOpen={explodeOpen}
+        setExplodeOpen={setExplodeOpen}
+        explode={explode}
+        setExplode={setExplode}
+        showDimensions={showDimensions}
+        setShowDimensions={setShowDimensions}
+        hiddenPartIds={hiddenPartIds}
+        transparentPartIds={transparentPartIds}
+        onToggleHidePart={onToggleHidePart}
+        onUnhideAll={onUnhideAll}
+        onToggleTransparentPart={onToggleTransparentPart}
+        onResetTransparent={onResetTransparent}
+        onSelectPart={onSelectPart}
+        onSendPartsToChatRef={onSendPartsToChatRef}
+        onAddNote={onAddNote}
+        onFocusNoteRef={onFocusNoteRef}
+        onLoadSample={onLoadSample}
+        fit={fit}
+        saveImage={saveImage}
+        hoverInfo={hoverInfo}
+        measureLabel={measureLabel}
+        measureCount={measureCount}
+        clearMeasurements={clearMeasurements}
+        cubeHostRef={cubeHostRef}
+        activeHandle={activeHandle}
+        notes={notes}
+        notePinRefs={notePinRefs}
+        noteComposer={noteComposer}
+        setNoteComposer={setNoteComposer}
+        contextMenu={contextMenu}
+        setContextMenu={setContextMenu}
+        pickedPartIds={pickedPartIds}
+        selectedPartId={selectedPartId}
+        animatingPartName={animatingPartName}
+        visiblePartCount={visiblePartCount}
+      />
     </div>
   );
 }

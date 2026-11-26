@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import {
   buildParameterGraph,
   collectPartDependencies,
@@ -12,10 +12,15 @@ import {
   type ResolvedParameter,
 } from "@family/spec-core";
 import { parameterDisplay, parameterUnit, type Units } from "../lib/format";
-import { TypesPanel } from "./TypesPanel";
-import { NotesPanel } from "./NotesPanel";
 import { useI18n } from "../lib/i18n";
 import type { ModelNote } from "../lib/annotations";
+
+const TypesPanel = lazy(() =>
+  import("./TypesPanel").then((m) => ({ default: m.TypesPanel })),
+);
+const NotesPanel = lazy(() =>
+  import("./NotesPanel").then((m) => ({ default: m.NotesPanel })),
+);
 
 interface Props {
   spec: FamilySpec;
@@ -896,30 +901,34 @@ export function ParameterPanel({
         </div>
       )}
       {tab === "notes" && (
-        <NotesPanel
-          notes={notes}
-          partIds={spec.parts.map((part) => part.id)}
-          sending={notesSending}
-          onFocusNote={(note) => onFocusNote?.(note)}
-          onUpdateNote={(id, text) => onUpdateNote?.(id, text)}
-          onDeleteNote={(id) => onDeleteNote?.(id)}
-          onToggleResolved={(id) => onToggleNoteResolved?.(id)}
-          onSendNote={(note) => onSendNote?.(note)}
-          onSendAll={() => onSendAllNotes?.()}
-        />
+        <Suspense fallback={null}>
+          <NotesPanel
+            notes={notes}
+            partIds={spec.parts.map((part) => part.id)}
+            sending={notesSending}
+            onFocusNote={(note) => onFocusNote?.(note)}
+            onUpdateNote={(id, text) => onUpdateNote?.(id, text)}
+            onDeleteNote={(id) => onDeleteNote?.(id)}
+            onToggleResolved={(id) => onToggleNoteResolved?.(id)}
+            onSendNote={(note) => onSendNote?.(note)}
+            onSendAll={() => onSendAllNotes?.()}
+          />
+        </Suspense>
       )}
       {tab === "types" && (
-        <TypesPanel
-          spec={spec}
-          resolved={analysis.parameters.parameters}
-          units={units}
-          types={types}
-          onChange={onChangeTypes}
-          onPreview={onPreviewType}
-          onExport={onExportTypes}
-          exporting={exportingTypes}
-          previewActive={previewTypeActive}
-        />
+        <Suspense fallback={null}>
+          <TypesPanel
+            spec={spec}
+            resolved={analysis.parameters.parameters}
+            units={units}
+            types={types}
+            onChange={onChangeTypes}
+            onPreview={onPreviewType}
+            onExport={onExportTypes}
+            exporting={exportingTypes}
+            previewActive={previewTypeActive}
+          />
+        </Suspense>
       )}
     </section>
   );

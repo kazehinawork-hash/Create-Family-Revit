@@ -240,27 +240,28 @@ viết kèm đơn vị (`140mm`, `1ft`).
 Revit kiểm tra đơn vị trong formula nên hằng số cộng/trừ phải có đơn vị: `[Casing Height] - 140mm`
 chứ không phải `- 140`.
 
-Schema đầy đủ: [`spec/family-spec.schema.json`](spec/family-spec.schema.json) ·
+Schema đầy đủ: [`spec/family-spec.schema.json`](spec/family-spec.schema.json) · Hỗ trợ macro thép tấm [`trayRun`](packages/spec-core/src/macros.ts) cho thang/máng cáp và tự động di trú spec cũ (`specVersion: 2`) qua [`packages/spec-core/src/migrate.ts`](packages/spec-core/src/migrate.ts). ·
 Ví dụ: [`spec/examples/fcu-080.json`](spec/examples/fcu-080.json) (viết tay),
 [`spec/examples/pump-dn80.json`](spec/examples/pump-dn80.json) (do agent sinh bằng DeepSeek V4 Pro) và
 [`spec/examples/ystrainer-dn80.json`](spec/examples/ystrainer-dn80.json) (Y lọc DN80, preset thử
-nghiệm hình học bo cong: thân frustum, nhánh 45° loft lệch tâm, bích/nắp prism có lỗ khoan) và
+nghiệm hình học bo cong: thân frustum, nhánh 45° loft lệch tâm, bích/nắp prism có lỗ khoan),
 [`spec/examples/ystrainer-tube.json`](spec/examples/ystrainer-tube.json) (Y lọc dùng `tube`
-trục bất kỳ cho nhánh, bích và nắp vuông góc trục nhánh).
+trục bất kỳ cho nhánh, bích và nắp vuông góc trục nhánh) và thư mục [`spec/examples/legacy/`](spec/examples/legacy) chứa mẫu cũ để test migrate.
 
 ## 6. Cấu trúc
 
 ```
-packages/spec-core/   types + parser biểu thức + resolve tham số/hình học (dùng chung web & server)
-web/                  studio: chat, viewer Three.js, parameter panel
-server/               Express: /api/design (SSE), /api/build, /api/health
-  prompts/designer.md prompt thiết kế
+packages/spec-core/   types + macros + migrate + parser biểu thức + resolve (dùng chung web & server)
+web/                  studio: chat, viewer Three.js, parameter/types/notes/library panel
+server/               Express: /api/design (SSE), /api/build, /api/v1/*, /api/health
+  prompts/designer.md prompt thiết kế (tách block có điều kiện qua prompt-blocks.js)
   prompts/repair.md   prompt sửa lỗi sau khi validate
 revit-addin/
   FamilyAgent.Core/   bản C# của spec-core (parser, resolver) — test được ngoài Revit
   FamilyAgent.Addin/  add-in Revit 2024: ribbon, bridge HTTP, dựng family
   FamilyAgent.SelfTest/ console test cho Core
-spec/                 JSON Schema + spec mẫu
+bench/                24 đề benchmark thiết kế, script chấm điểm + xuất báo cáo & ảnh preview
+spec/                 JSON Schema + spec mẫu (+ examples/legacy/)
 scripts/              dev runner, parity TS↔C#, thử design qua HTTP
 ```
 
@@ -273,6 +274,8 @@ và bounds từng part, tolerance 0.01 mm).
 ```bash
 npm test          # spec-core + server + web + self-test C# + parity TS↔C#
 npm run parity    # chỉ chạy so khớp resolver TS và C#
+npm run bench:ci  # kiểm tra script & scorer benchmark với --stub (không phải số đo model thật)
+npm run bench     # chạy benchmark qua LLM thật (--mode both --runs 1 --limit N)
 npm run test:e2e  # Playwright: studio shell + API validation
 npm run lint      # ESLint
 npm run addin:test
@@ -332,7 +335,7 @@ node scripts/try-design.mjs "Horizontal fan coil 080, 1910 x 1600 x 560 casing"
   vẫn theo trục X/Y/Z hoặc `plane` cố định.
 - Formula nào Revit từ chối (sai đơn vị, tham chiếu vòng) sẽ được thay bằng giá trị đã tính,
   kèm cảnh báo trong kết quả build.
-- Chưa tạo nhiều type, chưa có tag/schedule/annotation.
+- Hỗ trợ nhiều **Family Type** (tab Types: nhập CSV/XLSX, preview, Type Catalog `.txt`, export multi-type) và **Ghi chú 3D** (tab Notes, ghim điểm gửi thẳng cho Agent); chưa có tag/schedule tự động trong Revit.
 - Add-in build cho đúng phiên bản Revit đang cài:
   `install.ps1 -RevitVersion 2025 -p:RevitInstallDir "..."` nếu cần bản khác.
 

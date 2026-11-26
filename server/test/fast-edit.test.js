@@ -180,3 +180,196 @@ test("extended fast-edit: rename, colour, material assignment", () => {
   assert.equal(assign?.kind, "material-assign");
   assert.equal(assign?.partId, "web-a");
 });
+
+function trayCrossSpec() {
+  return {
+    schemaVersion: "1.0",
+    name: "Ngã 4 Máng Cáp",
+    category: "Cable Tray Fitting",
+    units: "mm",
+    parameters: [
+      { name: "Tray Width", type: "Length", value: 400 },
+      { name: "Tray Height", type: "Length", value: 100 },
+      { name: "Sheet Thickness", type: "Length", value: 1.5 },
+      { name: "Leg Length", type: "Length", value: 300 },
+      { name: "Flange Width", type: "Length", value: 15 },
+      { name: "Bend Angle", type: "Angle", value: 90 },
+      { name: "Half Width", type: "Length", formula: "[Tray Width] / 2" },
+    ],
+    materials: [],
+    parts: [{ id: "body", name: "Body", solid: { kind: "box" } }],
+    connectors: [],
+  };
+}
+
+test("Vietnamese dictionary resolves unique parameters with/without diacritics and units", () => {
+  const cases = [
+    ["Đổi chiều rộng thành 600 mm", "Tray Width", 600],
+    ["doi chieu rong thanh 600", "Tray Width", 600],
+    ["bề rộng = 50 cm", "Tray Width", 500],
+    ["sua rong 450", "Tray Width", 450],
+    ["đổi chiều cao thành 150 mm", "Tray Height", 150],
+    ["tang cao them 25mm", "Tray Height", 125],
+    ["giam chieu cao 20", "Tray Height", 80],
+    ["đổi độ dày thành 2 mm", "Sheet Thickness", 2],
+    ["sua day ve 2.5", "Sheet Thickness", 2.5],
+    ["chỉnh chiều dài nhánh thành 450 mm", "Leg Length", 450],
+    ["doi dai nhanh thanh 0.5 m", "Leg Length", 500],
+    ["dai nhanh = 350", "Leg Length", 350],
+    ["đổi mép gập thành 20 mm", "Flange Width", 20],
+    ["mep gap: 25", "Flange Width", 25],
+    ["giam goc 15", "Bend Angle", 75],
+  ];
+
+  for (const [prompt, expectedName, expectedValue] of cases) {
+    const edit = parseFastParameterEdit(prompt, trayCrossSpec());
+    assert.ok(edit, `expected fast-edit match for: ${prompt}`);
+    assert.equal(edit.name, expectedName, prompt);
+    assert.equal(edit.value, expectedValue, prompt);
+  }
+});
+
+test("Vietnamese 'lên X' / 'xuống X' sets target value while 'thêm/bớt' and bare 'tăng/giảm' stay relative", () => {
+  const absoluteCases = [
+    ["tăng chiều cao lên 150", "Tray Height", 150],
+    ["tang chieu cao len 150 mm", "Tray Height", 150],
+    ["nâng chiều dài nhánh lên 0.45 m", "Leg Length", 450],
+    ["giảm chiều rộng xuống 300", "Tray Width", 300],
+    ["giam chieu cao xuong 80 mm", "Tray Height", 80],
+    ["hạ góc xuống 30 độ", "Bend Angle", 30],
+    ["chỉnh chiều cao lên 120", "Tray Height", 120],
+  ];
+
+  for (const [prompt, expectedName, expectedValue] of absoluteCases) {
+    const edit = parseFastParameterEdit(prompt, trayCrossSpec());
+    assert.ok(edit, `expected target-level edit for: ${prompt}`);
+    assert.equal(edit.name, expectedName, prompt);
+    assert.equal(edit.value, expectedValue, prompt);
+  }
+
+  const relativeCases = [
+    ["tăng chiều cao thêm 50", "Tray Height", 150],
+    ["tăng chiều cao 50", "Tray Height", 150],
+    ["giảm chiều cao bớt 20", "Tray Height", 80],
+    ["giảm chiều cao 20", "Tray Height", 80],
+    ["giảm chiều rộng 100 mm", "Tray Width", 300],
+  ];
+
+  for (const [prompt, expectedName, expectedValue] of relativeCases) {
+    const edit = parseFastParameterEdit(prompt, trayCrossSpec());
+    assert.ok(edit, `expected relative edit for: ${prompt}`);
+    assert.equal(edit.name, expectedName, prompt);
+    assert.equal(edit.value, expectedValue, prompt);
+  }
+
+  const multi = parseFastParameterEdit(
+    "tăng chiều cao lên 150 và giảm chiều rộng xuống 300",
+    trayCrossSpec(),
+  );
+  assert.deepEqual(
+    multi?.changes?.map((c) => [c.name, c.value]),
+    [
+      ["Tray Height", 150],
+      ["Tray Width", 300],
+    ],
+  );
+});
+
+test("Vietnamese dictionary resolves compound multi-edit and numbered suffixes", () => {
+  const multi = parseFastParameterEdit(
+    "doi chieu rong thanh 600 mm va chieu cao thanh 120, day = 2",
+    trayCrossSpec(),
+  );
+  const changes = multi?.changes ?? [];
+  assert.equal(changes.length, 3);
+  assert.deepEqual(
+    changes.map((c) => [c.name, c.value]),
+    [
+      ["Tray Width", 600],
+      ["Tray Height", 120],
+      ["Sheet Thickness", 2],
+    ],
+  );
+
+  // Numbered parameter disambiguation works in Vietnamese
+  const leg1 = parseFastParameterEdit("tăng chiều rộng 1 thêm 50 mm", teeSpec());
+  assert.deepEqual(leg1, { name: "Ladder Width 1", type: "Length", value: 450 });
+});
+
+test("Vietnamese dictionary escalates to model when parameter target is ambiguous", () => {
+  // teeSpec has both "Ladder Width 1" and "Ladder Width 2"
+  assert.equal(parseFastParameterEdit("Đổi chiều rộng thành 600 mm", teeSpec()), null);
+  assert.equal(parseFastParameterEdit("doi chieu rong thanh 600", teeSpec()), null);
+
+  // AHU spec with both Casing Width and Coil Width -> generic "chiều rộng" must escalate to model
+  const ahuSpec = {
+    schemaVersion: "1.0",
+    name: "AHU",
+    category: "Mechanical Equipment",
+    units: "mm",
+    parameters: [
+      { name: "Casing Width", type: "Length", value: 1200 },
+      { name: "Coil Width", type: "Length", value: 900 },
+      { name: "Casing Height", type: "Length", value: 1000 },
+      { name: "Coil Height", type: "Length", value: 700 },
+    ],
+    materials: [],
+    parts: [{ id: "casing", name: "Casing", solid: { kind: "box" } }],
+  };
+  assert.equal(parseFastParameterEdit("đổi chiều rộng thành 1400 mm", ahuSpec), null);
+  assert.equal(parseFastParameterEdit("tăng chiều rộng lên 1400", ahuSpec), null);
+  assert.equal(parseFastParameterEdit("giảm chiều rộng xuống 800", ahuSpec), null);
+  assert.equal(parseFastParameterEdit("đổi chiều cao thành 1100", ahuSpec), null);
+  assert.deepEqual(parseFastParameterEdit("đổi Casing Width thành 1400", ahuSpec), {
+    name: "Casing Width",
+    type: "Length",
+    value: 1400,
+  });
+
+  // Cable tray with Tray Width, Flange Width (claimed by "mép gập"), and derived Half Width -> "chiều rộng" still resolves Tray Width
+  assert.deepEqual(parseFastParameterEdit("đổi chiều rộng thành 600", trayCrossSpec()), {
+    name: "Tray Width",
+    type: "Length",
+    value: 600,
+  });
+  assert.deepEqual(parseFastParameterEdit("giảm chiều rộng xuống 300", trayCrossSpec()), {
+    name: "Tray Width",
+    type: "Length",
+    value: 300,
+  });
+  assert.deepEqual(parseFastParameterEdit("đổi mép gập thành 20 mm", trayCrossSpec()), {
+    name: "Flange Width",
+    type: "Length",
+    value: 20,
+  });
+
+  // Spec with two equally primary heights -> ambiguous
+  const twoHeights = {
+    schemaVersion: "1.0",
+    name: "Two Heights",
+    category: "Duct Fitting",
+    units: "mm",
+    parameters: [
+      { name: "Duct Height", type: "Length", value: 300 },
+      { name: "Tray Height", type: "Length", value: 200 },
+    ],
+    materials: [],
+    parts: [{ id: "body", name: "Body", solid: { kind: "box" } }],
+  };
+  assert.equal(parseFastParameterEdit("doi chieu cao thanh 250 mm", twoHeights), null);
+
+  // Spec with only derived/formula width cannot be fast-edited
+  const formulaOnly = {
+    schemaVersion: "1.0",
+    name: "Formula Width",
+    category: "Cable Tray Fitting",
+    units: "mm",
+    parameters: [
+      { name: "Tray Length", type: "Length", value: 1000 },
+      { name: "Tray Width", type: "Length", formula: "[Tray Length] / 2" },
+    ],
+    materials: [],
+    parts: [{ id: "body", name: "Body", solid: { kind: "box" } }],
+  };
+  assert.equal(parseFastParameterEdit("đổi chiều rộng thành 400", formulaOnly), null);
+});

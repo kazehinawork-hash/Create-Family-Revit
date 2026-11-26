@@ -29,10 +29,12 @@ interface Props {
   lod: Lod;
   onLod: (lod: Lod) => void;
   onBuild?: () => void;
+  onExportRfa?: () => void;
   onExportPortable?: () => void;
   exportingPortable?: boolean;
   canBuild: boolean;
   building?: boolean;
+  revitConnected?: boolean;
   onSaveModel?: () => void;
   onSaveModelAs?: () => void;
   onUndo?: () => void;
@@ -165,6 +167,8 @@ export function TopBar({
   onLod,
   onBuild,
   building,
+  revitConnected = false,
+  onExportRfa,
   onExportPortable,
   exportingPortable,
   canBuild,
@@ -299,18 +303,18 @@ export function TopBar({
           </button>
         )}
 
-        {onExportPortable && (
+        {(onExportRfa || onExportPortable) && (
           <button
             type="button"
             className="btn-primary"
-            onClick={onExportPortable}
+            onClick={onExportRfa ?? onExportPortable}
             disabled={!canBuild || exportingPortable || building}
-            title={t.exportRfaHint}
+            title={revitConnected ? t.exportRfaRevitHint : t.exportRfaHint}
           >
-            {exportingPortable ? (
+            {exportingPortable || building ? (
               <>
                 <span className="spinner" style={{ width: 11, height: 11, borderTopColor: "#fff" }} />
-                <span>{t.exportingRfa}</span>
+                <span>{building ? t.building : t.exportingRfa}</span>
               </>
             ) : (
               <>
@@ -492,6 +496,22 @@ export function TopBar({
                 >
                   <span className="more-dot" />
                   <span>{building ? t.building : t.buildRevit}</span>
+                </button>
+              )}
+
+              {hasSpec && onExportPortable && (
+                <button
+                  type="button"
+                  className="more-item"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onExportPortable();
+                  }}
+                  disabled={!canBuild || building || exportingPortable}
+                  title={t.exportPortableMenuHint}
+                >
+                  <Icon name="download" />
+                  <span>{exportingPortable ? t.exportingRfa : t.exportPortableMenu}</span>
                 </button>
               )}
 

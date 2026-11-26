@@ -1,4 +1,3 @@
-import { readSheet } from "read-excel-file/browser";
 import type { FamilyParameter, FamilyTypeEntry } from "@family/spec-core";
 
 export interface ImportColumn {
@@ -128,6 +127,7 @@ export async function readTable(file: File): Promise<string[][]> {
     throw new Error("Chỉ đọc được .xlsx — mở file trong Excel và lưu lại dạng .xlsx.");
   }
 
+  const { readSheet } = await import("read-excel-file/browser");
   const rows = await readSheet(file);
   return rows.map((row) =>
     row.map((cell) => {

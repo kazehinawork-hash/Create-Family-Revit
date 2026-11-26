@@ -2,7 +2,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { buildSystemPrompt, selectBlocks, splitPromptBlocks } from "../server/src/prompt-blocks.js";
+import {
+  DEFAULT_BUDGET,
+  REQUIRED_BLOCKS,
+  buildSystemPrompt,
+  selectBlocks,
+  splitPromptBlocks,
+} from "../server/src/prompt-blocks.js";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const file = path.join(here, "..", "server", "prompts", "designer.md");
@@ -14,7 +20,7 @@ for (const block of blocks) console.log(String(block.body.length).padStart(6), b
 
 const briefs = {
   "cable-ladder": "Thang cáp 400x100, 6 bậc thang, hai đầu connector, LOD 400",
-  "ahu": "AHU 12000 CFM, coil, filter, fan, casing, LOD 300",
+  ahu: "AHU 12000 CFM, coil, filter, fan, casing, LOD 300",
   "duct-tee": "Duct tee 45 độ, nhánh 300x200, LOD 350",
 };
 
@@ -24,8 +30,37 @@ for (const [name, brief] of Object.entries(briefs)) {
     console.log(
       `${name} ${JSON.stringify(options)} -> ${prompt.length} chars | ${used.length} blocks | dropped: ${dropped.join(", ")}`,
     );
+
+    const requiredForTurn = options.patch
+      ? REQUIRED_BLOCKS.filter((title) => title !== "Output shape")
+      : REQUIRED_BLOCKS;
+    for (const reqBlock of requiredForTurn) {
+      if (!used.includes(reqBlock) || dropped.includes(reqBlock)) {
+        throw new Error(`Required block "${reqBlock}" missing/dropped for ${name} ${JSON.stringify(options)}`);
+      }
+    }
+    if (prompt.length > DEFAULT_BUDGET) {
+      throw new Error(
+        `Prompt ${prompt.length} exceeds DEFAULT_BUDGET=${DEFAULT_BUDGET} for ${name} ${JSON.stringify(options)}`,
+      );
+    }
   }
 }
 
 const wanted = selectBlocks({ text: briefs["cable-ladder"] });
 console.log("cable-ladder selected:", [...wanted].join(" | "));
+
+for (const macros of [false, true]) {
+  const { prompt, blocks: used, dropped } = buildSystemPrompt(md, {
+    text: briefs["cable-ladder"],
+    options: { macros },
+  });
+  const hasCenterlineRule = /tâm góc theo đường tim/i.test(prompt);
+  const hasTrayRun = /\btrayRun\b/.test(prompt);
+  console.log(
+    `AGENT_MACROS=${macros ? "1" : "0"} (cable-ladder) -> ${prompt.length} chars | ${used.length} blocks | centerlineRule=${hasCenterlineRule} | trayRun=${hasTrayRun} | dropped: ${dropped.join(", ")}`,
+  );
+  if (!hasCenterlineRule) {
+    throw new Error(`Missing centerline leg-length rule when AGENT_MACROS=${macros ? "1" : "0"}`);
+  }
+}

@@ -1,4 +1,6 @@
 import { expressionDependencies } from "./expr.js";
+import { expandMacros } from "./macros.js";
+import { CURRENT_SPEC_VERSION, migrateSpec } from "./migrate.js";
 import { paramKey } from "./parameters.js";
 import {
   CATEGORIES,
@@ -13,6 +15,7 @@ import {
   type Issue,
   type ParameterGroup,
   type ParameterType,
+  type SpecMacro,
 } from "./types.js";
 
 type Json = Record<string, unknown>;
@@ -683,9 +686,28 @@ export interface ValidationResult {
   issues: Issue[];
 }
 
-export function validateSpec(raw: unknown): ValidationResult {
-  const issues: Issue[] = [];
-  const root: Json = isObject(raw) ? raw : {};
+export interface ValidateOptions {
+  /** Allow sheet-metal macros (`macros: [...]`) to expand during validation. Defaults to true. */
+  allowMacros?: boolean;
+}
+
+export function validateSpec(raw: unknown, options: ValidateOptions = {}): ValidationResult {
+  const allowMacros = options.allowMacros !== false;
+  const migrated = migrateSpec(raw);
+  const migratedRaw = isObject(raw) ? migrated.spec : raw;
+  const rawMacros = isObject(migratedRaw) && Array.isArray(migratedRaw.macros) ? migratedRaw.macros : [];
+  const expanded = allowMacros
+    ? expandMacros(migratedRaw)
+    : { spec: migratedRaw, issues: [] as Issue[], generated: new Map<string, string>() };
+  const issues: Issue[] = [...expanded.issues];
+  if (!allowMacros && rawMacros.length > 0) {
+    issues.push({
+      severity: "error",
+      path: "macros",
+      message: "Sheet-metal macros (trayRun) are disabled (AGENT_MACROS=0); define geometry with parts[] directly.",
+    });
+  }
+  const root: Json = isObject(expanded.spec) ? expanded.spec : {};
 
   if (!isObject(raw)) {
     issues.push({ severity: "error", path: "$", message: "The spec must be a JSON object" });
@@ -880,7 +902,8 @@ export function validateSpec(raw: unknown): ValidationResult {
   }
 
   const rawParts = Array.isArray(root.parts) ? root.parts : [];
-  if (!Array.isArray(root.parts) || rawParts.length === 0) {
+  const macroCount = allowMacros && Array.isArray(root.macros) ? root.macros.length : 0;
+  if ((!Array.isArray(root.parts) || rawParts.length === 0) && macroCount === 0) {
     issues.push({ severity: "error", path: "parts", message: "parts must be a non-empty array" });
   }
   if (rawParts.length > LIMITS.maxParts) {
@@ -1012,6 +1035,7 @@ export function validateSpec(raw: unknown): ValidationResult {
       cuts: Array.isArray(entry.cuts) ? (entry.cuts as FamilyPart["cuts"]) : [],
       array,
       anchor,
+      from: text(entry.from) || undefined,
     });
   });
 
@@ -1074,6 +1098,7 @@ export function validateSpec(raw: unknown): ValidationResult {
         flow: conn.flow as any,
         flowUnit: conn.flowUnit as any,
         pressureDrop: conn.pressureDrop as any,
+        from: text(conn.from) || undefined,
       }))
     : undefined;
 
@@ -1101,6 +1126,7 @@ export function validateSpec(raw: unknown): ValidationResult {
 
   const spec: FamilySpec = {
     schemaVersion: "1.0",
+    specVersion: CURRENT_SPEC_VERSION,
     name,
     typeName: text(root.typeName) || undefined,
     category: resolvedCategory,
@@ -1114,6 +1140,7 @@ export function validateSpec(raw: unknown): ValidationResult {
     description: text(root.description) || undefined,
     parameters,
     parts,
+    macros: Array.isArray(root.macros) ? (root.macros as SpecMacro[]) : undefined,
     connectors,
     materials,
     types,

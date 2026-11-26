@@ -1,0 +1,623 @@
+{
+  "id": "1793008058058-simple-wooden-chair-ch-01",
+  "name": "Simple Wooden Chair CH-01",
+  "group": "",
+  "spec": {
+    "name": "Simple Wooden Chair CH-01",
+    "schemaVersion": "1.0",
+    "typeName": "CH-01",
+    "category": "Furniture",
+    "template": "metric-furniture",
+    "units": "mm",
+    "revitVersion": "2024",
+    "description": "Ghế gỗ sồi tự nhiên CH-01 chuẩn LOD 400: khung chân 420 x 420 x 850 mm, mặt ngồi 440 x 430 mm nhô ra 10 mm ở mặt trước và hai mặt bên, dày 25 mm, cao 450 mm, tựa lưng nghiêng đều 5 độ từ Z = 450 mm lên Z = 850 mm về phía sau, 2 chân trước thẳng 35x35 mm, 2 chân sau ngả 5 độ, 4 giằng apron, 3 giằng chân và 2 tấm nan tựa lưng nghiêng theo mặt phẳng tựa.",
+    "parameters": [
+      {
+        "name": "Overall Width",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "description": "Chieu rong khung chan theo phuong X; mat ngoi rong hon 2 x Seat Overhang",
+        "value": 420
+      },
+      {
+        "name": "Overall Depth",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "description": "Chieu sau khung chan theo phuong Y; mat ngoi nho ra truoc 1 x Seat Overhang",
+        "value": 420
+      },
+      {
+        "name": "Overall Height",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "description": "Dinh chan sau tai Z = 850",
+        "value": 850
+      },
+      {
+        "name": "Seat Height",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "description": "Mat tren mat ngoi tai Z = 450, cung la tam quay cua tua lung",
+        "value": 450
+      },
+      {
+        "name": "Seat Thickness",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "description": "Do day mat ngoi",
+        "value": 25
+      },
+      {
+        "name": "Leg Section",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "description": "Tiet dien vuong chan ghe",
+        "value": 35
+      },
+      {
+        "name": "Leg Height",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "description": "Chieu cao chan tu san den day mat ngoi",
+        "formula": "[Seat Height] - [Seat Thickness]"
+      },
+      {
+        "name": "Back Leg Tilt",
+        "type": "Angle",
+        "group": "Dimensions",
+        "instance": false,
+        "description": "Goc nga cua chan sau",
+        "value": 5
+      },
+      {
+        "name": "Seat Corner Radius",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "description": "Bo tron 2 goc truoc mat ngoi",
+        "value": 10
+      },
+      {
+        "name": "Apron Height",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 50
+      },
+      {
+        "name": "Apron Thickness",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 20
+      },
+      {
+        "name": "Stretcher Height",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 30
+      },
+      {
+        "name": "Stretcher Thickness",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 20
+      },
+      {
+        "name": "Stretcher Elevation",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "description": "Cao do day thanh giang chan",
+        "value": 120
+      },
+      {
+        "name": "Top Slat Elevation",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "description": "Cao do day nan tua tren",
+        "value": 730
+      },
+      {
+        "name": "Top Slat Height",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 100
+      },
+      {
+        "name": "Middle Slat Elevation",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "description": "Cao do day nan tua giua",
+        "value": 580
+      },
+      {
+        "name": "Middle Slat Height",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 60
+      },
+      {
+        "name": "Slat Thickness",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 20
+      },
+      {
+        "name": "Slat Center Depth",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "description": "Y mat phang giua tua lung tai cao do Seat Height (Z = 450)",
+        "value": 200
+      },
+      {
+        "name": "Seat Overhang",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "description": "Do nho ra cua mat ngoi o mat truoc (-Y) va hai mat ben (+-X)",
+        "value": 10
+      },
+      {
+        "name": "Backrest Tilt",
+        "type": "Angle",
+        "group": "Dimensions",
+        "instance": false,
+        "description": "Goc nghieng tua lung quanh truc tai Z = Seat Height, nga ve phia sau (+Y)",
+        "value": 5
+      },
+      {
+        "name": "Manufacturer",
+        "type": "Text",
+        "group": "Identity Data",
+        "instance": false,
+        "value": "Simple Wood Co."
+      },
+      {
+        "name": "Model",
+        "type": "Text",
+        "group": "Identity Data",
+        "instance": false,
+        "value": "CH-01"
+      }
+    ],
+    "parts": [
+      {
+        "id": "front-left-leg",
+        "name": "Front Left Leg",
+        "material": "Natural Oak",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": "-[Overall Width] / 2 + [Leg Section] / 2",
+            "y": "-[Overall Depth] / 2 + [Leg Section] / 2",
+            "z": 0
+          },
+          "size": {
+            "x": "[Leg Section]",
+            "y": "[Leg Section]",
+            "z": "[Leg Height]"
+          }
+        },
+        "cuts": []
+      },
+      {
+        "id": "front-right-leg",
+        "name": "Front Right Leg",
+        "material": "Natural Oak",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": "[Overall Width] / 2 - [Leg Section] / 2",
+            "y": "-[Overall Depth] / 2 + [Leg Section] / 2",
+            "z": 0
+          },
+          "size": {
+            "x": "[Leg Section]",
+            "y": "[Leg Section]",
+            "z": "[Leg Height]"
+          }
+        },
+        "cuts": []
+      },
+      {
+        "id": "back-left-leg-lower",
+        "name": "Back Left Leg Lower",
+        "material": "Natural Oak",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": "-[Overall Width] / 2 + [Leg Section] / 2",
+            "y": "[Overall Depth] / 2 - [Leg Section] / 2",
+            "z": 0
+          },
+          "size": {
+            "x": "[Leg Section]",
+            "y": "[Leg Section]",
+            "z": "[Leg Height]"
+          }
+        },
+        "cuts": []
+      },
+      {
+        "id": "back-right-leg-lower",
+        "name": "Back Right Leg Lower",
+        "material": "Natural Oak",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": "[Overall Width] / 2 - [Leg Section] / 2",
+            "y": "[Overall Depth] / 2 - [Leg Section] / 2",
+            "z": 0
+          },
+          "size": {
+            "x": "[Leg Section]",
+            "y": "[Leg Section]",
+            "z": "[Leg Height]"
+          }
+        },
+        "cuts": []
+      },
+      {
+        "id": "back-left-leg-upper",
+        "name": "Back Left Leg Upper Raked",
+        "material": "Natural Oak",
+        "solid": {
+          "kind": "prism",
+          "plane": "yz",
+          "points": [
+            [
+              "[Overall Depth] / 2 - [Leg Section]",
+              "[Leg Height]"
+            ],
+            [
+              "[Overall Depth] / 2",
+              "[Leg Height]"
+            ],
+            [
+              "[Overall Depth] / 2 + tan([Back Leg Tilt]) * ([Overall Height] - [Leg Height])",
+              "[Overall Height]"
+            ],
+            [
+              "[Overall Depth] / 2 - [Leg Section] + tan([Back Leg Tilt]) * ([Overall Height] - [Leg Height])",
+              "[Overall Height]"
+            ]
+          ],
+          "from": "-[Overall Width] / 2",
+          "to": "-[Overall Width] / 2 + [Leg Section]"
+        },
+        "cuts": []
+      },
+      {
+        "id": "back-right-leg-upper",
+        "name": "Back Right Leg Upper Raked",
+        "material": "Natural Oak",
+        "solid": {
+          "kind": "prism",
+          "plane": "yz",
+          "points": [
+            [
+              "[Overall Depth] / 2 - [Leg Section]",
+              "[Leg Height]"
+            ],
+            [
+              "[Overall Depth] / 2",
+              "[Leg Height]"
+            ],
+            [
+              "[Overall Depth] / 2 + tan([Back Leg Tilt]) * ([Overall Height] - [Leg Height])",
+              "[Overall Height]"
+            ],
+            [
+              "[Overall Depth] / 2 - [Leg Section] + tan([Back Leg Tilt]) * ([Overall Height] - [Leg Height])",
+              "[Overall Height]"
+            ]
+          ],
+          "from": "[Overall Width] / 2 - [Leg Section]",
+          "to": "[Overall Width] / 2"
+        },
+        "cuts": []
+      },
+      {
+        "id": "seat-panel",
+        "name": "Seat Panel",
+        "material": "Natural Oak",
+        "solid": {
+          "kind": "prism",
+          "plane": "xy",
+          "points": [
+            [
+              "-[Overall Width] / 2 - [Seat Overhang] + [Seat Corner Radius]",
+              "-[Overall Depth] / 2 - [Seat Overhang]"
+            ],
+            [
+              "[Overall Width] / 2 + [Seat Overhang] - [Seat Corner Radius]",
+              "-[Overall Depth] / 2 - [Seat Overhang]"
+            ],
+            [
+              "[Overall Width] / 2 + [Seat Overhang] - 0.2929 * [Seat Corner Radius]",
+              "-[Overall Depth] / 2 - [Seat Overhang] + 0.2929 * [Seat Corner Radius]"
+            ],
+            [
+              "[Overall Width] / 2 + [Seat Overhang]",
+              "-[Overall Depth] / 2 - [Seat Overhang] + [Seat Corner Radius]"
+            ],
+            [
+              "[Overall Width] / 2 + [Seat Overhang]",
+              "[Overall Depth] / 2"
+            ],
+            [
+              "-[Overall Width] / 2 - [Seat Overhang]",
+              "[Overall Depth] / 2"
+            ],
+            [
+              "-[Overall Width] / 2 - [Seat Overhang]",
+              "-[Overall Depth] / 2 - [Seat Overhang] + [Seat Corner Radius]"
+            ],
+            [
+              "-[Overall Width] / 2 - [Seat Overhang] + 0.2929 * [Seat Corner Radius]",
+              "-[Overall Depth] / 2 - [Seat Overhang] + 0.2929 * [Seat Corner Radius]"
+            ]
+          ],
+          "from": "[Leg Height]",
+          "to": "[Seat Height]"
+        },
+        "cuts": [
+          {
+            "kind": "box",
+            "origin": {
+              "x": "-[Overall Width] / 2 + [Leg Section] / 2",
+              "y": "[Overall Depth] / 2 - [Leg Section] / 2",
+              "z": "[Leg Height]"
+            },
+            "size": {
+              "x": "[Leg Section]",
+              "y": "[Leg Section]",
+              "z": "[Seat Thickness]"
+            }
+          },
+          {
+            "kind": "box",
+            "origin": {
+              "x": "[Overall Width] / 2 - [Leg Section] / 2",
+              "y": "[Overall Depth] / 2 - [Leg Section] / 2",
+              "z": "[Leg Height]"
+            },
+            "size": {
+              "x": "[Leg Section]",
+              "y": "[Leg Section]",
+              "z": "[Seat Thickness]"
+            }
+          }
+        ]
+      },
+      {
+        "id": "apron-front",
+        "name": "Front Seat Apron",
+        "material": "Natural Oak",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": 0,
+            "y": "-[Overall Depth] / 2 + 5mm + [Apron Thickness] / 2",
+            "z": "[Seat Height] - [Seat Thickness] - [Apron Height]"
+          },
+          "size": {
+            "x": "[Overall Width] - 2 * [Leg Section]",
+            "y": "[Apron Thickness]",
+            "z": "[Apron Height]"
+          }
+        },
+        "cuts": []
+      },
+      {
+        "id": "apron-back",
+        "name": "Back Seat Apron",
+        "material": "Natural Oak",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": 0,
+            "y": "[Overall Depth] / 2 - 5mm - [Apron Thickness] / 2",
+            "z": "[Seat Height] - [Seat Thickness] - [Apron Height]"
+          },
+          "size": {
+            "x": "[Overall Width] - 2 * [Leg Section]",
+            "y": "[Apron Thickness]",
+            "z": "[Apron Height]"
+          }
+        },
+        "cuts": []
+      },
+      {
+        "id": "apron-left",
+        "name": "Left Seat Apron",
+        "material": "Natural Oak",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": "-[Overall Width] / 2 + 5mm + [Apron Thickness] / 2",
+            "y": 0,
+            "z": "[Seat Height] - [Seat Thickness] - [Apron Height]"
+          },
+          "size": {
+            "x": "[Apron Thickness]",
+            "y": "[Overall Depth] - 2 * [Leg Section]",
+            "z": "[Apron Height]"
+          }
+        },
+        "cuts": []
+      },
+      {
+        "id": "apron-right",
+        "name": "Right Seat Apron",
+        "material": "Natural Oak",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": "[Overall Width] / 2 - 5mm - [Apron Thickness] / 2",
+            "y": 0,
+            "z": "[Seat Height] - [Seat Thickness] - [Apron Height]"
+          },
+          "size": {
+            "x": "[Apron Thickness]",
+            "y": "[Overall Depth] - 2 * [Leg Section]",
+            "z": "[Apron Height]"
+          }
+        },
+        "cuts": []
+      },
+      {
+        "id": "stretcher-left",
+        "name": "Left Leg Stretcher",
+        "material": "Natural Oak",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": "-[Overall Width] / 2 + 10mm + [Stretcher Thickness] / 2",
+            "y": 0,
+            "z": "[Stretcher Elevation]"
+          },
+          "size": {
+            "x": "[Stretcher Thickness]",
+            "y": "[Overall Depth] - 2 * [Leg Section]",
+            "z": "[Stretcher Height]"
+          }
+        },
+        "cuts": []
+      },
+      {
+        "id": "stretcher-right",
+        "name": "Right Leg Stretcher",
+        "material": "Natural Oak",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": "[Overall Width] / 2 - 10mm - [Stretcher Thickness] / 2",
+            "y": 0,
+            "z": "[Stretcher Elevation]"
+          },
+          "size": {
+            "x": "[Stretcher Thickness]",
+            "y": "[Overall Depth] - 2 * [Leg Section]",
+            "z": "[Stretcher Height]"
+          }
+        },
+        "cuts": []
+      },
+      {
+        "id": "stretcher-center",
+        "name": "Center Leg Stretcher",
+        "material": "Natural Oak",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": 0,
+            "y": 0,
+            "z": "[Stretcher Elevation]"
+          },
+          "size": {
+            "x": "[Overall Width] - 2 * (10mm + [Stretcher Thickness])",
+            "y": "[Stretcher Thickness]",
+            "z": "[Stretcher Height]"
+          }
+        },
+        "cuts": []
+      },
+      {
+        "id": "backrest-top-slat",
+        "name": "Backrest Top Slat",
+        "material": "Natural Oak",
+        "solid": {
+          "kind": "prism",
+          "plane": "yz",
+          "points": [
+            [
+              "[Slat Center Depth] + tan([Backrest Tilt]) * ([Top Slat Elevation] - [Seat Height]) - [Slat Thickness] / 2",
+              "[Top Slat Elevation]"
+            ],
+            [
+              "[Slat Center Depth] + tan([Backrest Tilt]) * ([Top Slat Elevation] - [Seat Height]) + [Slat Thickness] / 2",
+              "[Top Slat Elevation]"
+            ],
+            [
+              "[Slat Center Depth] + tan([Backrest Tilt]) * ([Top Slat Elevation] + [Top Slat Height] - [Seat Height]) + [Slat Thickness] / 2",
+              "[Top Slat Elevation] + [Top Slat Height]"
+            ],
+            [
+              "[Slat Center Depth] + tan([Backrest Tilt]) * ([Top Slat Elevation] + [Top Slat Height] - [Seat Height]) - [Slat Thickness] / 2",
+              "[Top Slat Elevation] + [Top Slat Height]"
+            ]
+          ],
+          "from": "-[Overall Width] / 2 + [Leg Section]",
+          "to": "[Overall Width] / 2 - [Leg Section]"
+        },
+        "cuts": []
+      },
+      {
+        "id": "backrest-middle-slat",
+        "name": "Backrest Middle Slat",
+        "material": "Natural Oak",
+        "solid": {
+          "kind": "prism",
+          "plane": "yz",
+          "points": [
+            [
+              "[Slat Center Depth] + tan([Backrest Tilt]) * ([Middle Slat Elevation] - [Seat Height]) - [Slat Thickness] / 2",
+              "[Middle Slat Elevation]"
+            ],
+            [
+              "[Slat Center Depth] + tan([Backrest Tilt]) * ([Middle Slat Elevation] - [Seat Height]) + [Slat Thickness] / 2",
+              "[Middle Slat Elevation]"
+            ],
+            [
+              "[Slat Center Depth] + tan([Backrest Tilt]) * ([Middle Slat Elevation] + [Middle Slat Height] - [Seat Height]) + [Slat Thickness] / 2",
+              "[Middle Slat Elevation] + [Middle Slat Height]"
+            ],
+            [
+              "[Slat Center Depth] + tan([Backrest Tilt]) * ([Middle Slat Elevation] + [Middle Slat Height] - [Seat Height]) - [Slat Thickness] / 2",
+              "[Middle Slat Elevation] + [Middle Slat Height]"
+            ]
+          ],
+          "from": "-[Overall Width] / 2 + [Leg Section]",
+          "to": "[Overall Width] / 2 - [Leg Section]"
+        },
+        "cuts": []
+      }
+    ],
+    "materials": [
+      {
+        "name": "Natural Oak",
+        "color": "#b98a5a",
+        "metalness": 0,
+        "roughness": 0.55
+      }
+    ],
+    "notes": [
+      "Mat ngoi da duoc mo rong nho ra 10 mm o mat truoc (-Y) va hai mat ben (+-X): mat bang mat ngoi moi la 440 x 430 mm (khung chan van 420 x 420 mm), be day 25 mm, mat tren Z = 450 mm. Neu can do nho khac (vi du 15 mm hoac chi nho mat truoc), chi can doi tham so Seat Overhang.",
+      "Nua sau mat ngoi van giu nguyen canh sau tai Y = +210 mm de khong dung chan sau; 2 notch 35 x 35 mm tai 2 goc sau van giu de chan sau xuyen qua, khong bi overlap.",
+      "Tua lung duoc tham so hoa bang Backrest Tilt = 5 do, quay quanh truc nam ngang tai Z = Seat Height = 450 mm va nga dan ve phia sau (+Y). Slat Center Depth = 200 mm duoc dinh nghia la Y mat phang giua tua tai dung cao do Z = 450 mm; cao do nan tren cung dat Y ~ 229 mm, nam gon trong mat phang chan sau.",
+      "Goc nghieng tua lung (Backrest Tilt) va goc nga chan sau (Back Leg Tilt) dang deu la 5 do cho dong bo hinh hoc. Neu catalog dung chan sau 4,7 do va tua lung 5 do, vui long cho biet de tach rieng hai goc.",
+      "De giu dung gioi han 24 tham so: da luoc bo tham so text Material (vật liệu đã có trong materials array) va tham so dan xuat Back Leg Setback (cong thuc tan(Back Leg Tilt) * (Overall Height - Leg Height) duoc viet truc tiep trong hinh hoc). Vui lòng xác nhận nếu cần giữ lại.",
+      "Bo tron 10 mm tai 2 goc truoc mat ngoi duoc xap xi bang 2 diem cung 45 do trong prism (he hinh hoc khong ho tro fillet that). Neu can bo tron R15 hoac bo ca 4 goc, vui long cho biet.",
+      "Chieu day nan tua 20 mm, giang apron 20x50 mm, giang chan 20x30 mm lay theo mo ta ban ve goc; neu catalog dung 18 mm hoac 25x35 mm, vui long cho biet de chinh.",
+      "Quy uoc goc toa do: tam khung chan tai (0,0,0) tren mat san Z = 0; mat truoc quay ve -Y; mat ngoi nho ra ngoai khung o phia -Y va +-X.",
+      "Khong dung ren, dinh vit hay mong am chi tiet de tranh over-modeling; moi noi the hien bang khoi tiep giap dung vi tri (LOD 400 hinh hoc)."
+    ]
+  }
+}

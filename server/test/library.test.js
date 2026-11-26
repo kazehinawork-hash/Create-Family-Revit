@@ -428,3 +428,42 @@ test("invalid group names are rejected with 400", async () => {
   const moved = await api("PATCH", `/api/models/${saved.id}/group`, { group: "Nhóm:1" });
   assert.equal(moved.status, 400);
 });
+
+test("loading a legacy model migrates its spec in memory without overwriting the file on disk", async () => {
+  const id = "legacy-elbow-test";
+  const filePath = path.join(savedDir, `${id}.json`);
+  const legacyPayload = {
+    id,
+    name: "Legacy Elbow",
+    spec: {
+      schemaVersion: "1.0",
+      name: "Legacy Elbow",
+      category: "Cable Tray Fitting",
+      units: "mm",
+      parameters: [
+        { name: "Rung Length", type: "Length", value: 400 },
+        { name: "Rung Slot Length", type: "Length", value: 25 },
+        { name: "Rung Slot Spacing", type: "Length", formula: "([Rung Length] - [Rung Slot Length] - 1mm0mm) / 2" },
+      ],
+      parts: [
+        {
+          id: "rail",
+          name: "Rail",
+          solid: { kind: "box", origin: { x: 0, y: 0, z: 0 }, size: { x: "[Rung Length]", y: 15, z: 100 } },
+        },
+      ],
+    },
+  };
+  const diskBefore = JSON.stringify(legacyPayload);
+  fs.writeFileSync(filePath, diskBefore, "utf8");
+
+  const loaded = await api("GET", `/api/models/${id}`);
+  assert.equal(loaded.status, 200);
+  assert.equal(loaded.data.migrated, true);
+  assert.equal(loaded.data.spec.specVersion, 2);
+  assert.equal(
+    loaded.data.spec.parameters.find((p) => p.name === "Rung Slot Spacing").formula,
+    "([Rung Length] - [Rung Slot Length] - 10mm) / 2",
+  );
+  assert.equal(fs.readFileSync(filePath, "utf8"), diskBefore);
+});

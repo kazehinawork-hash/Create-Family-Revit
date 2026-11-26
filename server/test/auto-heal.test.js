@@ -86,3 +86,102 @@ test("does not touch a loft that already has two sections", () => {
   assert.equal(healed.parts.length, 1);
   assert.equal(healed.parts[0].id, "transition");
 });
+
+test("expands trayRun macros into parts, connectors and default material during auto-heal", () => {
+  const healed = autoHealSpec({
+    schemaVersion: "1.0",
+    name: "Máng cáp vát góc",
+    category: "Cable Tray Fitting",
+    units: "mm",
+    parameters: [
+      { name: "Tray Width", type: "Length", value: 400 },
+      { name: "Tray Height", type: "Length", value: 100 },
+      { name: "Sheet Thickness", type: "Length", value: 1.5 },
+      { name: "Flange Width", type: "Length", value: 15 },
+    ],
+    parts: [],
+    macros: [
+      {
+        kind: "trayRun",
+        id: "tray-main",
+        material: "Galvanized",
+        width: "[Tray Width]",
+        height: "[Tray Height]",
+        thickness: "[Sheet Thickness]",
+        flange: "[Flange Width]",
+        segments: [
+          { kind: "straight", length: 800 },
+          { kind: "bend", angle: 90, direction: "left" },
+          { kind: "straight", length: 600 },
+        ],
+      },
+    ],
+  });
+
+  assert.equal(healed.parts.length, 10);
+  assert.equal(healed.connectors.length, 2);
+  assert.ok(healed.materials.some((m) => m.name === "Galvanized"));
+  const analysis = analyzeSpec(healed);
+  assert.equal(analysis.ok, true);
+  assert.equal(analysis.errors.length, 0);
+});
+
+test("auto-heal adds mm to bare offset without corrupting multi-digit mm literals", () => {
+  const healed = autoHealSpec({
+    schemaVersion: "1.0",
+    name: "Formula unit safety",
+    category: "Generic Model",
+    units: "mm",
+    parameters: [
+      { name: "Width", type: "Length", value: 400 },
+      { name: "KeepUnit", type: "Length", formula: "[Width] - 10mm" },
+      { name: "AddUnit", type: "Length", formula: "[Width] - 25" },
+    ],
+    parts: [
+      {
+        id: "box",
+        name: "Box",
+        solid: { kind: "box", origin: { x: 0, y: 0, z: 0 }, size: { x: "[KeepUnit]", y: "[AddUnit]", z: 50 } },
+      },
+    ],
+  });
+
+  assert.equal(healed.parameters.find((p) => p.name === "KeepUnit").formula, "[Width] - 10mm");
+  assert.equal(healed.parameters.find((p) => p.name === "AddUnit").formula, "[Width] - 25mm");
+});
+
+test("autoHealSpec leaves macros unexpanded when allowMacros is false (AGENT_MACROS=0)", () => {
+  const healed = autoHealSpec(
+    {
+      schemaVersion: "1.0",
+      name: "No Macro Mode",
+      category: "Cable Tray Fitting",
+      units: "mm",
+      parameters: [
+        { name: "Tray Width", type: "Length", value: 400 },
+        { name: "Tray Height", type: "Length", value: 100 },
+        { name: "Sheet Thickness", type: "Length", value: 1.5 },
+        { name: "Flange Width", type: "Length", value: 15 },
+      ],
+      parts: [],
+      macros: [
+        {
+          kind: "trayRun",
+          id: "tray-main",
+          material: "Galvanized",
+          width: "[Tray Width]",
+          height: "[Tray Height]",
+          thickness: "[Sheet Thickness]",
+          flange: "[Flange Width]",
+          segments: [{ kind: "straight", length: 800 }],
+        },
+      ],
+    },
+    { allowMacros: false },
+  );
+
+  assert.equal(healed.parts.length, 0);
+  const analysis = analyzeSpec(healed, {}, { allowMacros: false });
+  assert.equal(analysis.ok, false);
+  assert.ok(analysis.errors.some((e) => e.path === "macros"));
+});

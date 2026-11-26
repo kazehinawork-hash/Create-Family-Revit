@@ -5,6 +5,7 @@
  * the geometry is generated locally instead of asking a model to draw it. The
  * model is only needed for the differences the user asks on top.
  */
+import { expandMacros } from "@family/spec-core";
 
 const DEFAULTS = {
   ladderWidth1: 400,
@@ -33,7 +34,8 @@ const RUNG_MATERIAL = MATERIALS[1].name;
 
 /** Which template family a request belongs to, or null. */
 export function matchTemplateFamily(prompt) {
-  const text = String(prompt ?? "")
+  const raw = String(prompt ?? "");
+  const text = raw
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/đ/gi, "d")
@@ -42,6 +44,13 @@ export function matchTemplateFamily(prompt) {
   if (/nga\s*tu|cross|chu\s*thap|four\s*way/.test(text)) return "cross";
   if (/nga\s*ba|\btee\b|three\s*way/.test(text)) return "tee";
   if (/\belbow\b|\bbend\b|khuyu|co\s*90|90\s*do/.test(text)) return "elbow";
+  if (
+    /\bstraight\b|thẳng|reducer|côn\s*thu|offset|chữ\s*z|chữ\s*u|u-turn|splice|tấm\s*nối|riser|co\s*lên|co\s*xuống|perforated|đục\s*lỗ|45/i.test(
+      raw,
+    )
+  ) {
+    return null;
+  }
   if (/thang\s*cap|cable\s*ladder|cable\s*tray|mitered/.test(text)) return "cross";
   return null;
 }
@@ -313,37 +322,6 @@ export function crossSpec(input = {}) {
   };
 }
 
-function straightArm(sign) {
-  const { sx, sy } = sign;
-  const points = [
-    ["0", "0"],
-    [`${sx} * [Total Length X] / 2`, "0"],
-    [`${sx} * [Total Length X] / 2`, `${sy} * [Ladder Width 1] / 2`],
-    ["0", `${sy} * [Ladder Width 1] / 2`],
-  ];
-  const label = sx > 0 ? "East" : "West";
-  const slug = sx > 0 ? "e" : "w";
-
-  return [
-    prismPart(
-      `corner-${slug}-web`,
-      `Corner Rail ${label} Web`,
-      BODY_MATERIAL,
-      points,
-      0,
-      "[Ladder Height]",
-    ),
-    prismPart(
-      `corner-${slug}-top`,
-      `Corner Rail ${label} Top Flange`,
-      BODY_MATERIAL,
-      points,
-      "[Ladder Height] - [Sheet Thickness]",
-      "[Ladder Height]",
-    ),
-  ];
-}
-
 export function elbowSpec(input = {}) {
   const options = { ...DEFAULTS, ...input };
 
@@ -360,28 +338,24 @@ export function elbowSpec(input = {}) {
     param("Connector Count", "Integer", { group: "Other", value: 2 }),
   ];
 
-  const parts = [...straightArm({ sx: 1, sy: 1 }), ...straightArm({ sx: 1, sy: -1 })];
-
-  const connectors = [
-    connector(
-      "main-in",
-      "Main In",
-      "-[Total Length X]",
-      0,
-      { x: -1, y: 0, z: 0 },
-      "[Ladder Width 1]",
-    ),
-    connector(
-      "branch-out",
-      "Branch Out",
-      0,
-      "[Total Length Y]",
-      { x: 0, y: 1, z: 0 },
-      "[Ladder Width 2]",
-    ),
+  const macros = [
+    {
+      kind: "trayRun",
+      id: "elbow-main",
+      material: BODY_MATERIAL,
+      width: "[Ladder Width 1]",
+      height: "[Ladder Height]",
+      thickness: "[Sheet Thickness]",
+      flange: "[Flange Width]",
+      segments: [
+        { kind: "straight", length: "[Total Length X]" },
+        { kind: "bend", angle: 90, direction: "left" },
+        { kind: "straight", length: "[Total Length Y]" },
+      ],
+    },
   ];
 
-  return {
+  const base = {
     schemaVersion: "1.0",
     name: "Cable Ladder Mitered Elbow",
     typeName: `TP-CLT-EL ${options.ladderWidth1}x${options.ladderWidth2}x${options.ladderHeight}`,
@@ -391,12 +365,20 @@ export function elbowSpec(input = {}) {
     description: "Khuỷu thang cáp vát góc 90° (Mitered Elbow).",
     parameters,
     materials: MATERIALS.map((material) => ({ ...material })),
-    parts: [...parts, ...rungs(Math.min(4, options.rungCount))],
-    connectors,
+    parts: [],
+    macros,
+    connectors: [],
     notes: [
-      "Khuôn mẫu Mitered Elbow dựng sẵn: 2 thành góc vát, 2 connector.",
+      "Khuôn mẫu Mitered Elbow dựng bằng macro trayRun: mối vát 45° khép kín, 2 connector.",
       ...assumptionNotes(options),
     ],
+  };
+
+  const expanded = expandMacros(base);
+  return {
+    ...base,
+    parts: Array.isArray(expanded.spec.parts) ? expanded.spec.parts : [],
+    connectors: Array.isArray(expanded.spec.connectors) ? expanded.spec.connectors : [],
   };
 }
 
