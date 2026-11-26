@@ -125,3 +125,27 @@ test("expands trayRun macros into parts, connectors and default material during 
   assert.equal(analysis.ok, true);
   assert.equal(analysis.errors.length, 0);
 });
+
+test("auto-heal adds mm to bare offset without corrupting multi-digit mm literals", () => {
+  const healed = autoHealSpec({
+    schemaVersion: "1.0",
+    name: "Formula unit safety",
+    category: "Generic Model",
+    units: "mm",
+    parameters: [
+      { name: "Width", type: "Length", value: 400 },
+      { name: "KeepUnit", type: "Length", formula: "[Width] - 10mm" },
+      { name: "AddUnit", type: "Length", formula: "[Width] - 25" },
+    ],
+    parts: [
+      {
+        id: "box",
+        name: "Box",
+        solid: { kind: "box", origin: { x: 0, y: 0, z: 0 }, size: { x: "[KeepUnit]", y: "[AddUnit]", z: 50 } },
+      },
+    ],
+  });
+
+  assert.equal(healed.parameters.find((p) => p.name === "KeepUnit").formula, "[Width] - 10mm");
+  assert.equal(healed.parameters.find((p) => p.name === "AddUnit").formula, "[Width] - 25mm");
+});

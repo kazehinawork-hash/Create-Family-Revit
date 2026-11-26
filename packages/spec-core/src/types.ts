@@ -248,6 +248,8 @@ export interface MepConnector {
 
 export interface FamilySpec {
   schemaVersion: "1.0";
+  /** Internal schema revision used to migrate legacy saved specs on load. */
+  specVersion?: number;
   name: string;
   typeName?: string;
   category: string;

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import express from "express";
-import { analyzeSpec } from "@family/spec-core";
+import { analyzeSpec, migrateSpec } from "@family/spec-core";
 import { config, ROOT } from "./config.js";
 import { design } from "./designer.js";
 import { buildFamily, buildMultiType, getBuildOutputRoots } from "./bridge.js";
@@ -1152,7 +1152,13 @@ app.get("/api/models/:id", (req, res) => {
       return;
     }
     const raw = fs.readFileSync(filePath, "utf8");
-    res.json(JSON.parse(raw));
+    const data = JSON.parse(raw);
+    if (data && typeof data === "object" && data.spec && typeof data.spec === "object") {
+      // Migrate in memory when loading legacy files; never overwrite disk until user saves.
+      const migrated = migrateSpec(data.spec);
+      return res.json({ ...data, spec: migrated.spec, migrated: migrated.migrated });
+    }
+    res.json(data);
   } catch (error) {
     res.status(500).json({ error: error?.message || String(error) });
   }
@@ -1253,7 +1259,12 @@ app.get("/api/models/:id/history/:stamp", (req, res) => {
       res.status(404).json({ error: "Revision not found" });
       return;
     }
-    res.json(JSON.parse(fs.readFileSync(filePath, "utf8")));
+    const data = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    if (data && typeof data === "object" && data.spec && typeof data.spec === "object") {
+      const migrated = migrateSpec(data.spec);
+      return res.json({ ...data, spec: migrated.spec, migrated: migrated.migrated });
+    }
+    res.json(data);
   } catch (error) {
     res.status(500).json({ error: error?.message || String(error) });
   }

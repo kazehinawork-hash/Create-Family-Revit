@@ -1,5 +1,6 @@
 import { expressionDependencies } from "./expr.js";
 import { expandMacros } from "./macros.js";
+import { CURRENT_SPEC_VERSION, migrateSpec } from "./migrate.js";
 import { paramKey } from "./parameters.js";
 import {
   CATEGORIES,
@@ -686,7 +687,8 @@ export interface ValidationResult {
 }
 
 export function validateSpec(raw: unknown): ValidationResult {
-  const expanded = expandMacros(raw);
+  const migrated = migrateSpec(raw);
+  const expanded = expandMacros(isObject(raw) ? migrated.spec : raw);
   const issues: Issue[] = [...expanded.issues];
   const root: Json = isObject(expanded.spec) ? expanded.spec : {};
 
@@ -1107,6 +1109,7 @@ export function validateSpec(raw: unknown): ValidationResult {
 
   const spec: FamilySpec = {
     schemaVersion: "1.0",
+    specVersion: CURRENT_SPEC_VERSION,
     name,
     typeName: text(root.typeName) || undefined,
     category: resolvedCategory,

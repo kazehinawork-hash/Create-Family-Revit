@@ -9,6 +9,7 @@ import {
 } from "react";
 import {
   analyzeSpec,
+  migrateSpec,
   paramKey,
   validateSpec,
   type FamilyParameter,
@@ -1761,7 +1762,8 @@ export function App() {
       setToast({ text: t.appRevisionUnreadable, tone: "error" });
       return;
     }
-    applySpec(revision.spec, { reset: true });
+    const migratedSpec = migrateSpec(revision.spec).spec as unknown as FamilySpec;
+    applySpec(migratedSpec, { reset: true });
     setCurrentModelId(historyModelId);
     setModelNotes(Array.isArray(revision.annotations) ? revision.annotations : []);
     setFocusNote(null);
@@ -1779,12 +1781,13 @@ export function App() {
     try {
       const detail = await fetchSavedModelDetail(id);
       if (detail && detail.spec) {
-        applySpec(detail.spec, { reset: true });
+        const migratedSpec = migrateSpec(detail.spec).spec as unknown as FamilySpec;
+        applySpec(migratedSpec, { reset: true });
         setCurrentModelId(detail.id);
         setModelNotes(Array.isArray(detail.annotations) ? detail.annotations : []);
         setFocusNote(null);
         setChatTargets([]);
-        if (detail.spec.lod) handleLod(detail.spec.lod);
+        if (migratedSpec.lod) handleLod(migratedSpec.lod);
         if (Array.isArray(detail.entries) && detail.entries.length > 0) {
           setEntries(detail.entries);
         } else {
@@ -1792,7 +1795,7 @@ export function App() {
             {
               id: newId(),
               role: "agent",
-              text: t.appModelReloaded(detail.spec.name),
+              text: t.appModelReloaded(migratedSpec.name),
             },
           ]);
         }
@@ -2276,8 +2279,9 @@ export function App() {
             if (action.kind === "use-sample" && action.sampleId) {
               void (async () => {
                 const loaded = await fetchSavedModelDetail(action.sampleId!);
-                const sampleSpec = (loaded?.spec ?? null) as FamilySpec | null;
-                if (!sampleSpec) return;
+                const rawSample = loaded?.spec ?? null;
+                if (!rawSample) return;
+                const sampleSpec = migrateSpec(rawSample).spec as unknown as FamilySpec;
                 applySpec(sampleSpec);
                 void handleSend(lastPromptRef.current, sampleSpec);
               })();

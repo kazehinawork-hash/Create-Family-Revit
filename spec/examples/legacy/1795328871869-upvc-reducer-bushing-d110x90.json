@@ -1,0 +1,328 @@
+{
+  "id": "1795328871869-upvc-reducer-bushing-d110x90",
+  "name": "uPVC Reducer Bushing D110x90",
+  "group": "",
+  "spec": {
+    "name": "uPVC Reducer Bushing D110x90",
+    "schemaVersion": "1.0",
+    "category": "Pipe Fitting",
+    "partType": "Transition",
+    "units": "mm",
+    "lod": 400,
+    "parameters": [
+      {
+        "name": "Total Length",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 61
+      },
+      {
+        "name": "Base Web Thickness",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 8
+      },
+      {
+        "name": "Socket Depth",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "formula": "[Total Length] - [Base Web Thickness]"
+      },
+      {
+        "name": "Outer Spigot OD",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 110
+      },
+      {
+        "name": "Outer Spigot ID",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 101.6
+      },
+      {
+        "name": "Inner Socket OD",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 97.6
+      },
+      {
+        "name": "Inner Socket ID",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 90
+      },
+      {
+        "name": "Bore Diameter",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 83.6
+      },
+      {
+        "name": "R1 Out",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "formula": "[Outer Spigot OD] / 2"
+      },
+      {
+        "name": "R1 In",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "formula": "[Outer Spigot ID] / 2"
+      },
+      {
+        "name": "R2 Out",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "formula": "[Inner Socket OD] / 2"
+      },
+      {
+        "name": "R2 In",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "formula": "[Inner Socket ID] / 2"
+      },
+      {
+        "name": "R Bore",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "formula": "[Bore Diameter] / 2"
+      },
+      {
+        "name": "Chamfer Rear Depth",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 2
+      },
+      {
+        "name": "Chamfer Front Depth",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 1.5
+      },
+      {
+        "name": "Emboss Height",
+        "type": "Length",
+        "group": "Dimensions",
+        "instance": false,
+        "value": 0.25
+      }
+    ],
+    "parts": [
+      {
+        "id": "rear_base_web",
+        "name": "Rear_Base_Web_&_Pipe_Stop",
+        "material": "uPVC_Industrial_Grey",
+        "solid": {
+          "kind": "cylinder",
+          "axis": "x",
+          "base": {
+            "x": "-[Total Length] / 2",
+            "y": 0,
+            "z": 0
+          },
+          "radius": "[R1 Out]",
+          "innerRadius": "[R Bore]",
+          "height": "[Base Web Thickness]"
+        },
+        "cuts": [
+          {
+            "kind": "revolve",
+            "axis": "x",
+            "origin": {
+              "x": "-[Total Length] / 2",
+              "y": 0,
+              "z": 0
+            },
+            "points": [
+              [
+                "[R1 Out] - [Chamfer Rear Depth]",
+                0
+              ],
+              [
+                "[R1 Out] + 0.5mm",
+                0
+              ],
+              [
+                "[R1 Out] + 0.5mm",
+                3.5
+              ],
+              [
+                "[R1 Out]",
+                3.5
+              ]
+            ],
+            "angle": 360,
+            "startAngle": 0
+          }
+        ]
+      },
+      {
+        "id": "outer_spigot_sleeve",
+        "name": "Outer_Spigot_Sleeve",
+        "material": "uPVC_Industrial_Grey",
+        "solid": {
+          "kind": "cylinder",
+          "axis": "x",
+          "base": {
+            "x": "-[Total Length] / 2 + [Base Web Thickness]",
+            "y": 0,
+            "z": 0
+          },
+          "radius": "[R1 Out]",
+          "innerRadius": "[R1 In]",
+          "height": "[Socket Depth]"
+        },
+        "cuts": []
+      },
+      {
+        "id": "inner_socket_sleeve",
+        "name": "Inner_Socket_Sleeve",
+        "material": "uPVC_Industrial_Grey",
+        "solid": {
+          "kind": "cylinder",
+          "axis": "x",
+          "base": {
+            "x": "-[Total Length] / 2 + [Base Web Thickness]",
+            "y": 0,
+            "z": 0
+          },
+          "radius": "[R2 Out]",
+          "innerRadius": "[R2 In]",
+          "height": "[Socket Depth]"
+        },
+        "cuts": [
+          {
+            "kind": "revolve",
+            "axis": "x",
+            "origin": {
+              "x": "[Total Length] / 2",
+              "y": 0,
+              "z": 0
+            },
+            "points": [
+              [
+                "[R2 In] - 0.5mm",
+                0
+              ],
+              [
+                "[R2 In] + [Chamfer Front Depth]",
+                0
+              ],
+              [
+                "[R2 In]",
+                -2.6
+              ],
+              [
+                "[R2 In] - 0.5mm",
+                -2.6
+              ]
+            ],
+            "angle": 360,
+            "startAngle": 0
+          }
+        ]
+      },
+      {
+        "id": "embossed_rim_markings",
+        "name": "Embossed_Rim_Markings",
+        "material": "uPVC_Industrial_Grey",
+        "solid": {
+          "kind": "box",
+          "origin": {
+            "x": "[Total Length] / 2 + [Emboss Height] / 2",
+            "y": 0,
+            "z": "-([R1 Out] + [R1 In]) / 2"
+          },
+          "size": {
+            "x": "[Emboss Height]",
+            "y": 22,
+            "z": 2.2
+          }
+        },
+        "cuts": []
+      }
+    ],
+    "connectors": [
+      {
+        "id": "spigot_end_connector",
+        "name": "Spigot_End_Connector",
+        "systemType": "Global",
+        "shape": "rectangular",
+        "direction": "out",
+        "host": "reference-plane",
+        "origin": {
+          "x": "-[Total Length] / 2",
+          "y": 0,
+          "z": 0
+        },
+        "directionVector": {
+          "x": -1,
+          "y": 0,
+          "z": 0
+        },
+        "diameter": "[Outer Spigot OD]"
+      },
+      {
+        "id": "socket_end_connector",
+        "name": "Socket_End_Connector",
+        "systemType": "Global",
+        "shape": "rectangular",
+        "direction": "out",
+        "host": "reference-plane",
+        "origin": {
+          "x": "[Total Length] / 2",
+          "y": 0,
+          "z": 0
+        },
+        "directionVector": {
+          "x": 1,
+          "y": 0,
+          "z": 0
+        },
+        "diameter": "[Inner Socket ID]"
+      }
+    ],
+    "materials": [
+      {
+        "name": "uPVC Grey",
+        "color": "#6E7880",
+        "metalness": 0,
+        "roughness": 0.45
+      },
+      {
+        "name": "uPVC_Grey",
+        "color": "#e8e8e8",
+        "metalness": 0.1,
+        "roughness": 0.4
+      },
+      {
+        "name": "uPVC_Industrial_Grey",
+        "color": "#8A9096",
+        "metalness": 0,
+        "roughness": 0.45
+      },
+      {
+        "name": "uPVC_Recess_DarkGrey",
+        "color": "#4E5258",
+        "metalness": 0,
+        "roughness": 0.55
+      }
+    ]
+  }
+}

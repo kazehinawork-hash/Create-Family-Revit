@@ -227,7 +227,7 @@ export function autoHealSpec(spec) {
         // Auto-fix bare subtraction/addition of bare numbers with mm if Length type: e.g. "[Height] - 140" -> "[Height] - 140mm"
         if (!param.type || param.type === "Length") {
           param.formula = param.formula.replace(
-            /(\[[^\]]+\]\s*[-+]\s*)(\d+(?:\.\d+)?)(?!\s*(?:mm|cm|m|ft|in|deg|°|\*|\/|[a-zA-Z]))/g,
+            /(\[[^\]]+\]\s*[-+]\s*)(\d+(?:\.\d+)?)(?![0-9.])(?!\s*(?:mm|cm|m|ft|in|deg|°|\*|\/|[a-zA-Z]))/g,
             "$1$2mm",
           );
         }

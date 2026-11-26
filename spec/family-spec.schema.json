@@ -8,6 +8,7 @@
   "additionalProperties": true,
   "properties": {
     "schemaVersion": { "const": "1.0" },
+    "specVersion": { "type": "integer", "minimum": 1 },
     "name": { "type": "string", "description": "Family name, also used for the .rfa file name." },
     "typeName": { "type": "string", "description": "Revit type name created inside the family." },
     "category": {
