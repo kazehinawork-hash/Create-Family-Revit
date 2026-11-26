@@ -317,7 +317,7 @@ async function designSingle({
       result.json = autoHealSpec(result.json);
     }
 
-    analysis = analyzeSpec(result.json);
+    analysis = analyzeSpec(result.json, {}, { allowMacros: config.agent.useMacros });
 
     if (
       !bestAnalysis ||
@@ -519,7 +519,9 @@ async function designInSteps(args) {
     }
   }
 
-  const finalAnalysis = spec ? analyzeSpec(spec) : analysis;
+  const finalAnalysis = spec
+    ? analyzeSpec(spec, {}, { allowMacros: config.agent.useMacros })
+    : analysis;
   if (finalAnalysis?.spec) finalAnalysis.spec.lod = level;
 
   return {
@@ -573,7 +575,7 @@ export async function designExperimental(options) {
     const nextSpec = edit ? applyFastParameterEdit(currentSpec, edit) : null;
     if (nextSpec) {
       emit({ type: "stage", stage: "checking", message: "Applying parameter change" });
-      const analysis = analyzeSpec(nextSpec);
+      const analysis = analyzeSpec(nextSpec, {}, { allowMacros: config.agent.useMacros });
       if (analysis.ok) {
         analysis.spec.lod = level;
         const graph = buildParameterGraph(nextSpec.parameters);
@@ -976,7 +978,7 @@ export async function designExperimental(options) {
     }
 
     if (currentSpec && isTimeoutError(error)) {
-      const analysis = analyzeSpec(currentSpec);
+      const analysis = analyzeSpec(currentSpec, {}, { allowMacros: config.agent.useMacros });
       if (analysis.ok) {
         analysis.spec.lod = level;
         const warnings = [

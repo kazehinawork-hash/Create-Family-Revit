@@ -21,3 +21,6 @@ saved-models/
 # Rule packs learned/edited while the studio runs belong to this machine.
 server/rules/overrides/
 server/rules/learned/
+
+# Local benchmark runs (large reports and generated preview PNGs)
+bench/results/

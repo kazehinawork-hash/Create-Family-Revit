@@ -102,20 +102,17 @@ npm run parity                     # Kiểm tra đối khớp resolver TS ↔ C#
 ```
 
 ### Benchmark thiết kế (`bench/`)
-Bộ 24 đề ([`bench/cases.json`](bench/cases.json)) tập trung vào phụ kiện thang/máng cáp (cút 90°/45°, Z-offset, chữ U, có nắp/không mép gập, tê/thập, côn thu, co lên/xuống, đục lỗ, tấm nối) kèm 4 mẫu MEP đối chứng, chấm điểm 0–100 theo:
-- Hợp lệ & đủ số part/connector (30đ)
+Bộ 24 đề ([`bench/cases.json`](bench/cases.json)) tập trung vào phụ kiện thang/máng cáp (cút 90°/45°, Z-offset, chữ U, có nắp/không mép gập, tê/thập, côn thu, co lên/xuống, đục lỗ, tấm nối) kèm 4 mẫu MEP đối chứng, chấm điểm 0–100 thuần hình học:
+- Hợp lệ & đủ số part/connector (25đ)
 - Sai số kích thước bao `bounds` theo trục ± tolerance (25đ)
-- Tham số bắt buộc & tỉ lệ tham số hóa (20đ)
-- Chi tiết bắt buộc & đặc trưng thép tấm: lỗ/rãnh (`holesOrSlots`), vát góc/miter (`miteredOrChamfer`), mép gập (`foldedFlange`) (25đ)
+- Tham số bắt buộc & tỉ lệ tham số hóa (15đ)
+- Toàn vẹn hình học: không chồng lấn nặng, liên thông khép kín, không warning `logic.geometry` (20đ)
+- Chi tiết bắt buộc & đặc trưng hình học: lỗ/rãnh thật (`cuts`/`holes`), vát góc/miter thật, mép gập mỏng ở mặt đỉnh (15đ)
 
 ```bash
-# Chạy CI stub (so sánh Trước vs Sau macro thép tấm, tạo report.json + comparison.md + PNG preview)
+# Chạy CI stub (CHỈ để kiểm tra script + scorer, không phải số đo model thật)
 npm run bench:ci
 
-# Chạy với model LLM thật qua pipeline thật
-node bench/run.mjs --model deepseek/deepseek-v4.1-flash --runs 1 --mode after
+# So sánh model thật Before (AGENT_MACROS=0) vs After (AGENT_MACROS=1) -> bench/results/latest/
+node bench/run.mjs --mode both --runs 3
 ```
-
-Kết quả baseline stub (`bench/results/latest/comparison.md`):
-- **Toàn bộ 24 đề:** Trước macro `11/24` đạt (`84.3/100`) → Sau macro `24/24` đạt (`98.5/100`).
-- **Nhóm 11 đề dùng macro `trayRun`:** Trước macro `0/11` đạt (`68.6/100`) → Sau macro `11/11` đạt (`99.6/100`).

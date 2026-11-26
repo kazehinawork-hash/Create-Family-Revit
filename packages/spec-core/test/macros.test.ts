@@ -204,4 +204,11 @@ describe("trayRun macro", () => {
     expect(macroList(straight)).toHaveLength(1);
     expect(macroList({})).toEqual([]);
   });
+
+  it("rejects macros cleanly when allowMacros is false", () => {
+    const blocked = analyzeSpec(straight, {}, { allowMacros: false });
+    expect(blocked.ok).toBe(false);
+    expect(blocked.errors.some((issue) => issue.path === "macros")).toBe(true);
+    expect(blocked.model.parts).toHaveLength(0);
+  });
 });

@@ -686,10 +686,27 @@ export interface ValidationResult {
   issues: Issue[];
 }
 
-export function validateSpec(raw: unknown): ValidationResult {
+export interface ValidateOptions {
+  /** Allow sheet-metal macros (`macros: [...]`) to expand during validation. Defaults to true. */
+  allowMacros?: boolean;
+}
+
+export function validateSpec(raw: unknown, options: ValidateOptions = {}): ValidationResult {
+  const allowMacros = options.allowMacros !== false;
   const migrated = migrateSpec(raw);
-  const expanded = expandMacros(isObject(raw) ? migrated.spec : raw);
+  const migratedRaw = isObject(raw) ? migrated.spec : raw;
+  const rawMacros = isObject(migratedRaw) && Array.isArray(migratedRaw.macros) ? migratedRaw.macros : [];
+  const expanded = allowMacros
+    ? expandMacros(migratedRaw)
+    : { spec: migratedRaw, issues: [] as Issue[], generated: new Map<string, string>() };
   const issues: Issue[] = [...expanded.issues];
+  if (!allowMacros && rawMacros.length > 0) {
+    issues.push({
+      severity: "error",
+      path: "macros",
+      message: "Sheet-metal macros (trayRun) are disabled (AGENT_MACROS=0); define geometry with parts[] directly.",
+    });
+  }
   const root: Json = isObject(expanded.spec) ? expanded.spec : {};
 
   if (!isObject(raw)) {
@@ -885,7 +902,7 @@ export function validateSpec(raw: unknown): ValidationResult {
   }
 
   const rawParts = Array.isArray(root.parts) ? root.parts : [];
-  const macroCount = Array.isArray(root.macros) ? root.macros.length : 0;
+  const macroCount = allowMacros && Array.isArray(root.macros) ? root.macros.length : 0;
   if ((!Array.isArray(root.parts) || rawParts.length === 0) && macroCount === 0) {
     issues.push({ severity: "error", path: "parts", message: "parts must be a non-empty array" });
   }

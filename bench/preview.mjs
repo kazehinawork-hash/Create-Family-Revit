@@ -4,7 +4,6 @@ import { createCanvas } from "@napi-rs/canvas";
 import { partBounds } from "../packages/spec-core/dist/index.js";
 
 function isoProject(x, y, z) {
-  // Standard isometric angle (30°): X right-down, Y left-down, Z up.
   const cos30 = Math.cos(Math.PI / 6);
   const sin30 = 0.5;
   return {
@@ -23,7 +22,12 @@ function resolveColor(part, materials) {
 }
 
 function boxFaces(b) {
-  const { minX, maxX, minY, maxY, minZ, maxZ } = b;
+  const minX = b.min.x;
+  const maxX = b.max.x;
+  const minY = b.min.y;
+  const maxY = b.max.y;
+  const minZ = b.min.z;
+  const maxZ = b.max.z;
   const corners = [
     [minX, minY, minZ],
     [maxX, minY, minZ],
@@ -35,10 +39,10 @@ function boxFaces(b) {
     [minX, maxY, maxZ],
   ];
   return [
-    { pts: [corners[4], corners[5], corners[6], corners[7]], shade: 1.08 }, // top
-    { pts: [corners[0], corners[1], corners[5], corners[4]], shade: 0.92 }, // -Y front
-    { pts: [corners[1], corners[2], corners[6], corners[5]], shade: 0.8 },  // +X right
-    { pts: [corners[3], corners[0], corners[4], corners[7]], shade: 0.86 }, // -X left
+    { pts: [corners[4], corners[5], corners[6], corners[7]], shade: 1.08 },
+    { pts: [corners[0], corners[1], corners[5], corners[4]], shade: 0.92 },
+    { pts: [corners[1], corners[2], corners[6], corners[5]], shade: 0.8 },
+    { pts: [corners[3], corners[0], corners[4], corners[7]], shade: 0.86 },
   ];
 }
 
@@ -68,17 +72,9 @@ function tint(hex, factor) {
   return `rgb(${r},${g},${b})`;
 }
 
-/**
- * Render an isometric PNG thumbnail directly from a resolved model without a browser.
- */
-export function renderPreviewPng(outFile, analysis, meta = {}) {
-  const width = 640;
-  const height = 400;
-  const canvas = createCanvas(width, height);
-  const ctx = canvas.getContext("2d");
-
+function drawPanel(ctx, x0, y0, width, height, analysis, meta = {}) {
   ctx.fillStyle = "#0f172a";
-  ctx.fillRect(0, 0, width, height);
+  ctx.fillRect(x0, y0, width, height);
 
   const model = analysis?.model;
   const parts = Array.isArray(model?.parts) ? model.parts : [];
@@ -122,8 +118,8 @@ export function renderPreviewPng(outFile, analysis, meta = {}) {
     );
     const cx = (minU + maxU) / 2;
     const cy = (minV + maxV) / 2;
-    const ox = width / 2;
-    const oy = (height - padBottom + padTop) / 2;
+    const ox = x0 + width / 2;
+    const oy = y0 + (height - padBottom + padTop) / 2;
 
     for (const face of rawFaces) {
       ctx.beginPath();
@@ -140,25 +136,57 @@ export function renderPreviewPng(outFile, analysis, meta = {}) {
       ctx.lineWidth = 0.8;
       ctx.stroke();
     }
+  } else {
+    ctx.fillStyle = "#64748b";
+    ctx.font = "bold 16px sans-serif";
+    ctx.fillText("INVALID / NO GEOMETRY", x0 + width / 2 - 96, y0 + height / 2 - 12);
   }
 
-  // Footer HUD
-  ctx.fillStyle = "rgba(15, 23, 42, 0.9)";
-  ctx.fillRect(0, height - 46, width, 46);
+  ctx.fillStyle = "rgba(15, 23, 42, 0.92)";
+  ctx.fillRect(x0, y0 + height - 46, width, 46);
   ctx.fillStyle = "#e2e8f0";
   ctx.font = "bold 14px sans-serif";
-  ctx.fillText(String(meta.label || analysis?.spec?.name || "Preview"), 16, height - 24);
+  ctx.fillText(String(meta.label || analysis?.spec?.name || "Preview"), x0 + 16, y0 + height - 24);
 
   ctx.fillStyle = "#94a3b8";
   ctx.font = "12px monospace";
   const b = model?.bounds?.size;
   const bStr = b ? `${Math.round(b.x)}x${Math.round(b.y)}x${Math.round(b.z)} mm` : "no-bounds";
+  const okStr = meta.ok === true ? "OK" : meta.ok === false ? "FAIL" : "";
   ctx.fillText(
-    `Score: ${meta.score ?? "-"}/100  |  Parts: ${parts.length}  |  Bounds: ${bStr}`,
-    16,
-    height - 8,
+    `Score: ${meta.score ?? "-"}/100 ${okStr} | Parts: ${parts.length} | Bounds: ${bStr}`,
+    x0 + 16,
+    y0 + height - 8,
   );
+}
 
+/** Render an isometric PNG thumbnail directly from a resolved model without a browser. */
+export function renderPreviewPng(outFile, analysis, meta = {}) {
+  const width = 640;
+  const height = 400;
+  const canvas = createCanvas(width, height);
+  const ctx = canvas.getContext("2d");
+  drawPanel(ctx, 0, 0, width, height, analysis, meta);
+  fs.mkdirSync(path.dirname(outFile), { recursive: true });
+  fs.writeFileSync(outFile, canvas.toBuffer("image/png"));
+}
+
+/** Render before vs after side-by-side isometric comparison PNG. */
+export function renderSideBySidePng(
+  outFile,
+  beforeAnalysis,
+  afterAnalysis,
+  beforeMeta = {},
+  afterMeta = {},
+) {
+  const panelW = 640;
+  const panelH = 420;
+  const canvas = createCanvas(panelW * 2, panelH);
+  const ctx = canvas.getContext("2d");
+  drawPanel(ctx, 0, 0, panelW, panelH, beforeAnalysis, beforeMeta);
+  drawPanel(ctx, panelW, 0, panelW, panelH, afterAnalysis, afterMeta);
+  ctx.fillStyle = "#334155";
+  ctx.fillRect(panelW - 1, 0, 2, panelH);
   fs.mkdirSync(path.dirname(outFile), { recursive: true });
   fs.writeFileSync(outFile, canvas.toBuffer("image/png"));
 }

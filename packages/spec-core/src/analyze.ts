@@ -4,7 +4,7 @@ import { checkModelLogic } from "./logic.js";
 import { analyzeParity, type ParityRisk, type PartParity } from "./parity.js";
 import { resolveParameters, type ParameterResolution } from "./parameters.js";
 import { checkTopology } from "./topology.js";
-import { validateSpec } from "./validate.js";
+import { validateSpec, type ValidateOptions } from "./validate.js";
 import type { FamilySpec, Issue } from "./types.js";
 
 export interface Analysis {
@@ -35,8 +35,9 @@ function dedupe(issues: Issue[]): Issue[] {
 export function analyzeSpec(
   raw: unknown,
   overrides: Record<string, number | string> = {},
+  validateOptions: ValidateOptions = {},
 ): Analysis {
-  const { spec, issues } = validateSpec(raw);
+  const { spec, issues } = validateSpec(raw, validateOptions);
   const parameters = resolveParameters(spec.parameters, overrides);
   const model = resolveModel(spec, parameters);
   const all = dedupe([

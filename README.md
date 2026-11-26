@@ -274,7 +274,8 @@ và bounds từng part, tolerance 0.01 mm).
 ```bash
 npm test          # spec-core + server + web + self-test C# + parity TS↔C#
 npm run parity    # chỉ chạy so khớp resolver TS và C#
-npm run bench:ci  # chạy bộ 24 đề benchmark (chế độ stub CI) -> bench/results/latest/
+npm run bench:ci  # kiểm tra script & scorer benchmark với --stub (không phải số đo model thật)
+npm run bench     # chạy benchmark qua LLM thật (--mode both --runs 1 --limit N)
 npm run test:e2e  # Playwright: studio shell + API validation
 npm run lint      # ESLint
 npm run addin:test

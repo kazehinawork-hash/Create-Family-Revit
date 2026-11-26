@@ -1,4 +1,4 @@
-import { crossSpec, elbowSpec, teeSpec } from "../server/src/templates/cable-ladder.js";
+import { elbowSpec } from "../server/src/templates/cable-ladder.js";
 
 const GALV = { name: "Galvanized", color: "#b8c0c8", metalness: 0.7, roughness: 0.35 };
 const BODY = { name: "Casing Steel", color: "#b9bec2", metalness: 0.4, roughness: 0.5 };
@@ -431,27 +431,269 @@ function afterMacroTray(testCase) {
   };
 }
 
+function miteredJunctionCorner(sx, sy, halfW1Expr, halfW2Expr, halfXExpr, halfYExpr, miterExpr, labelPrefix) {
+  const hw1 = `(${halfW1Expr})`;
+  const hw2 = `(${halfW2Expr})`;
+  const hx = `(${halfXExpr})`;
+  const hy = `(${halfYExpr})`;
+  const t = "[Sheet Thickness]";
+  const fl = "[Flange Width]";
+  const s = (v, sign) => (sign < 0 ? `-(${v})` : `${v}`);
+
+  // Outer perimeter along quadrant (sx, sy) with 45-deg chamfer corner
+  const o1 = [s(hx, sx), s(hw1, sy)];
+  const o2 = [s(`${hw2} + ${miterExpr}`, sx), s(hw1, sy)];
+  const o3 = [s(hw2, sx), s(`${hw1} + ${miterExpr}`, sy)];
+  const o4 = [s(hw2, sx), s(hy, sy)];
+
+  // Inner wall boundary offset inward by sheet thickness
+  const w1 = [s(hx, sx), s(`${hw1} - ${t}`, sy)];
+  const w2 = [s(`${hw2} + ${miterExpr} - ${t} * 0.414`, sx), s(`${hw1} - ${t}`, sy)];
+  const w3 = [s(`${hw2} - ${t}`, sx), s(`${hw1} + ${miterExpr} - ${t} * 0.414`, sy)];
+  const w4 = [s(`${hw2} - ${t}`, sx), s(hy, sy)];
+
+  // Top inward flange inner edge offset inward by flange width
+  const f1 = [s(hx, sx), s(`${hw1} - ${fl}`, sy)];
+  const f2 = [s(`${hw2} + ${miterExpr} - ${fl} * 0.414`, sx), s(`${hw1} - ${fl}`, sy)];
+  const f3 = [s(`${hw2} - ${fl}`, sx), s(`${hw1} + ${miterExpr} - ${fl} * 0.414`, sy)];
+  const f4 = [s(`${hw2} - ${fl}`, sx), s(hy, sy)];
+
+  const slug = `${sx > 0 ? "e" : "w"}${sy > 0 ? "n" : "s"}`;
+  const wallPts = sx * sy > 0 ? [o1, o2, o3, o4, w4, w3, w2, w1] : [w1, w2, w3, w4, o4, o3, o2, o1];
+  const flangePts = sx * sy > 0 ? [w1, w2, w3, w4, f4, f3, f2, f1] : [f1, f2, f3, f4, w4, w3, w2, w1];
+
+  return [
+    {
+      id: `corner-${slug}-wall`,
+      name: `${labelPrefix} ${slug.toUpperCase()} Wall`,
+      material: GALV.name,
+      solid: { kind: "prism", plane: "xy", from: 0, to: "[Height]", points: wallPts },
+    },
+    {
+      id: `corner-${slug}-flange`,
+      name: `${labelPrefix} ${slug.toUpperCase()} Top Flange`,
+      material: GALV.name,
+      solid: { kind: "prism", plane: "xy", from: "[Height] - [Sheet Thickness]", to: "[Height]", points: flangePts },
+    },
+  ];
+}
+
+function buildMiteredTeeOrCrossStub(testCase, { isCross, isLadder, w1, w2, withHoles }) {
+  const miter = isCross ? 150 : 100;
+  const tan = isCross ? 120 : 170;
+  const hw1 = "[Width Main] / 2";
+  const hw2 = "[Width Branch] / 2";
+  const hx = "[Total X] / 2";
+  const hyTop = isCross ? "[Total Y] / 2" : "[Width Main] / 2 + [Miter] + 40";
+
+  const parts = [
+    ...miteredJunctionCorner(1, 1, hw1, hw2, hx, hyTop, "[Miter]", "Corner"),
+    ...miteredJunctionCorner(-1, 1, hw1, hw2, hx, hyTop, "[Miter]", "Corner"),
+  ];
+  if (isCross) {
+    parts.push(
+      ...miteredJunctionCorner(1, -1, hw1, hw2, hx, hyTop, "[Miter]", "Corner"),
+      ...miteredJunctionCorner(-1, -1, hw1, hw2, hx, hyTop, "[Miter]", "Corner"),
+    );
+  } else {
+    // Continuous straight back wall & top flange on -Y side
+    parts.push(
+      {
+        id: "back-wall",
+        name: "Back Straight Wall",
+        material: GALV.name,
+        solid: {
+          kind: "box",
+          origin: { x: 0, y: `-(${hw1}) + [Sheet Thickness] / 2`, z: 0 },
+          size: { x: "[Total X]", y: "[Sheet Thickness]", z: "[Height]" },
+        },
+      },
+      {
+        id: "back-flange",
+        name: "Back Top Flange",
+        material: GALV.name,
+        solid: {
+          kind: "box",
+          origin: { x: 0, y: `-(${hw1}) + [Sheet Thickness] + ([Flange Width] - [Sheet Thickness]) / 2`, z: "[Height] - [Sheet Thickness]" },
+          size: { x: "[Total X]", y: "[Flange Width] - [Sheet Thickness]", z: "[Sheet Thickness]" },
+        },
+      },
+    );
+  }
+
+  if (isLadder) {
+    if (!isCross) {
+      for (let i = 0; i < 6; i += 1) {
+        const ratio = (i + 0.5) / 6;
+        const xPos = `(${ratio.toFixed(4)} - 0.5) * ([Total X] - 120)`;
+        parts.push({
+          id: `rung-${i + 1}`,
+          name: `Rung ${i + 1}`,
+          material: GALV.name,
+          solid: {
+            kind: "box",
+            origin: { x: xPos, y: 0, z: "[Sheet Thickness]" },
+            size: { x: 35, y: "[Width Main] - 2 * [Sheet Thickness]", z: 15 },
+          },
+          ...(i === 0 ? { cuts: [{ kind: "cylinder", axis: "z", base: { x: xPos, y: 0, z: 0 }, radius: 5, height: 25 }] } : {}),
+        });
+      }
+      parts.push({
+        id: "rung-branch-1",
+        name: "Branch Rung 1",
+        material: GALV.name,
+        solid: {
+          kind: "box",
+          origin: { x: 0, y: `${hyTop} - 20`, z: "[Sheet Thickness]" },
+          size: { x: "[Width Branch] - 2 * [Sheet Thickness]", y: 35, z: 15 },
+        },
+      });
+    } else {
+      const armOffsets = [
+        { id: "rung-west-1", x: `-(${hx}) + 40`, y: 0, alongX: false, hasCut: true },
+        { id: "rung-west-2", x: `-(${hx}) + 100`, y: 0, alongX: false },
+        { id: "rung-east-1", x: `${hx} - 100`, y: 0, alongX: false },
+        { id: "rung-east-2", x: `${hx} - 40`, y: 0, alongX: false },
+        { id: "rung-north-1", x: 0, y: `${hyTop} - 40`, alongX: true },
+        { id: "rung-north-2", x: 0, y: `${hyTop} - 100`, alongX: true },
+        { id: "rung-south-1", x: 0, y: `-(${hyTop}) + 40`, alongX: true },
+        { id: "rung-south-2", x: 0, y: `-(${hyTop}) + 100`, alongX: true },
+      ];
+      for (const r of armOffsets) {
+        parts.push({
+          id: r.id,
+          name: `Rung ${r.id}`,
+          material: GALV.name,
+          solid: {
+            kind: "box",
+            origin: { x: r.x, y: r.y, z: "[Sheet Thickness]" },
+            size: r.alongX
+              ? { x: "[Width Branch] - 2 * [Sheet Thickness]", y: 35, z: 15 }
+              : { x: 35, y: "[Width Main] - 2 * [Sheet Thickness]", z: 15 },
+          },
+          ...(r.hasCut ? { cuts: [{ kind: "cylinder", axis: "z", base: { x: r.x, y: 0, z: 0 }, radius: 5, height: 25 }] } : {}),
+        });
+      }
+    }
+  } else {
+    // Solid tray bottom plate spanning main & branch corridors (clipped inside walls)
+    parts.push({
+      id: "bottom-main",
+      name: "Bottom Plate Main",
+      material: GALV.name,
+      solid: {
+        kind: "box",
+        origin: { x: 0, y: 0, z: 0 },
+        size: { x: "[Total X]", y: "[Width Main] - 2 * [Sheet Thickness]", z: "[Sheet Thickness]" },
+      },
+      ...(withHoles ? { cuts: [{ kind: "cylinder", axis: "z", base: { x: 320, y: 0, z: -1 }, radius: 4.5, height: 10 }] } : {}),
+    });
+    parts.push({
+      id: "bottom-branch-n",
+      name: "Bottom Plate Branch North",
+      material: GALV.name,
+      solid: {
+        kind: "prism",
+        plane: "xy",
+        from: 0,
+        to: "[Sheet Thickness]",
+        points: [
+          [`-(${hw2}) + [Sheet Thickness]`, `${hw1} - [Sheet Thickness]`],
+          [`${hw2} - [Sheet Thickness]`, `${hw1} - [Sheet Thickness]`],
+          [`${hw2} - [Sheet Thickness]`, hyTop],
+          [`-(${hw2}) + [Sheet Thickness]`, hyTop],
+        ],
+      },
+    });
+    if (isCross) {
+      parts.push({
+        id: "bottom-branch-s",
+        name: "Bottom Plate Branch South",
+        material: GALV.name,
+        solid: {
+          kind: "prism",
+          plane: "xy",
+          from: 0,
+          to: "[Sheet Thickness]",
+          points: [
+            [`-(${hw2}) + [Sheet Thickness]`, `-(${hyTop})`],
+            [`${hw2} - [Sheet Thickness]`, `-(${hyTop})`],
+            [`${hw2} - [Sheet Thickness]`, `-(${hw1}) + [Sheet Thickness]`],
+            [`-(${hw2}) + [Sheet Thickness]`, `-(${hw1}) + [Sheet Thickness]`],
+          ],
+        },
+      });
+    }
+  }
+
+  const connectors = [
+    rectConn("main-in", "Main In", { x: `-(${hx})`, y: 0, z: "[Height] / 2" }, { x: -1, y: 0, z: 0 }, "[Width Main]", "[Height]"),
+    rectConn("main-out", "Main Out", { x: hx, y: 0, z: "[Height] / 2" }, { x: 1, y: 0, z: 0 }, "[Width Main]", "[Height]"),
+    rectConn("branch-n", "Branch North", { x: 0, y: hyTop, z: "[Height] / 2" }, { x: 0, y: 1, z: 0 }, "[Width Branch]", "[Height]"),
+  ];
+  if (isCross) {
+    connectors.push(
+      rectConn("branch-s", "Branch South", { x: 0, y: `-(${hyTop})`, z: "[Height] / 2" }, { x: 0, y: -1, z: 0 }, "[Width Branch]", "[Height]"),
+    );
+  }
+
+  return {
+    schemaVersion: "1.0",
+    name: testCase.id,
+    category: "Cable Tray Fitting",
+    partType: isCross ? "Cross" : "Tee",
+    units: "mm",
+    lod: testCase.lod,
+    parameters: [
+      p("Width Main", w1),
+      p("Width Branch", w2),
+      p("Height", 100),
+      p("Sheet Thickness", 1.8),
+      p("Flange Width", 15),
+      p("Tangent", tan),
+      p("Miter", miter),
+      f("Total X", `${w1} + 2 * [Tangent] + 2 * [Miter]`),
+      f("Total Y", isCross ? `${w2} + 2 * [Tangent] + 2 * [Miter]` : `${w1} + [Miter] + 40`),
+    ],
+    materials: [GALV],
+    parts,
+    connectors,
+  };
+}
+
 function nonMacroSpec(testCase) {
   const id = testCase.id;
-  if (id === "ladder-mitered-tee-400x300") return teeSpec();
-  if (id === "ladder-mitered-cross-400x400") return crossSpec();
-
+  if (id === "ladder-mitered-tee-400x300") {
+    return buildMiteredTeeOrCrossStub(testCase, { isCross: false, isLadder: true, w1: 400, w2: 300, withHoles: true });
+  }
+  if (id === "ladder-mitered-cross-400x400") {
+    return buildMiteredTeeOrCrossStub(testCase, { isCross: true, isLadder: true, w1: 400, w2: 400, withHoles: true });
+  }
   if (id === "tray-tee-equal-400x100") {
-    const s = teeSpec({ ladderWidth2: 400 });
-    s.parts[0].cuts = [{ kind: "cylinder", axis: "z", base: { x: 320, y: 0, z: 0 }, radius: 4.5, height: 120 }];
-    return s;
+    return buildMiteredTeeOrCrossStub(testCase, { isCross: false, isLadder: false, w1: 400, w2: 400, withHoles: true });
   }
   if (id === "tray-cross-unequal-400x200") {
-    return crossSpec({ ladderWidth1: 400, ladderWidth2: 200 });
+    return buildMiteredTeeOrCrossStub(testCase, { isCross: true, isLadder: false, w1: 400, w2: 200, withHoles: false });
   }
   if (id === "tray-reducer-concentric-400x200" || id === "tray-reducer-eccentric-500x300") {
-    const w1 = id.includes("500") ? 500 : 400;
-    const w2 = id.includes("500") ? 300 : 200;
+    const isEcc = id.includes("eccentric");
+    const w1 = isEcc ? 500 : 400;
+    const w2 = isEcc ? 300 : 200;
     const hw1 = "[Width In] / 2";
     const hw2 = "[Width Out] / 2";
-    const pts = id.includes("eccentric")
-      ? [["-[Length] / 2", `-${hw1}`], ["[Length] / 2", `-${hw1}`], ["[Length] / 2", `-${hw1} + [Width Out]`], ["-[Length] / 2", hw1]]
-      : [["-[Length] / 2", `-${hw1}`], ["[Length] / 2", `-${hw2}`], ["[Length] / 2", hw2], ["-[Length] / 2", hw1]];
+    const yLeftIn = `-${hw1}`;
+    const yLeftOut = isEcc ? `-${hw1}` : `-${hw2}`;
+    const yRightIn = hw1;
+    const yRightOut = isEcc ? `-${hw1} + [Width Out]` : hw2;
+    const hx = "[Length] / 2";
+    const t = "[Sheet Thickness]";
+    const fl = "[Flange Width]";
+    const pts = [
+      [`-${hx}`, yLeftIn],
+      [hx, yLeftOut],
+      [hx, yRightOut],
+      [`-${hx}`, yRightIn],
+    ];
     return {
       schemaVersion: "1.0",
       name: id,
@@ -459,17 +701,62 @@ function nonMacroSpec(testCase) {
       partType: "Transition",
       units: "mm",
       lod: testCase.lod,
-      parameters: [p("Width In", w1), p("Width Out", w2), p("Tray Height", 100), p("Sheet Thickness", 1.8), p("Flange Width", 15), p("Length", 350)],
+      parameters: [p("Width In", w1), p("Width Out", w2), p("Tray Height", 100), p("Sheet Thickness", isEcc ? 2 : 1.8), p("Flange Width", 15), p("Length", 350)],
       materials: [GALV],
       parts: [
-        { id: "bottom-plate", name: "Bottom Plate", material: GALV.name, solid: { kind: "prism", plane: "xy", points: pts, from: 0, to: "[Sheet Thickness]" } },
-        { id: "side-wall-1", name: "Side Wall Left", material: GALV.name, solid: { kind: "box", origin: { x: 0, y: `-${hw1}`, z: 0 }, size: { x: "[Length]", y: "[Sheet Thickness]", z: "[Tray Height]" } } },
-        { id: "side-wall-2", name: "Side Wall Right", material: GALV.name, solid: { kind: "box", origin: { x: 0, y: hw1, z: 0 }, size: { x: "[Length]", y: "[Sheet Thickness]", z: "[Tray Height]" } } },
-        { id: "flange-1", name: "Top Flange", material: GALV.name, solid: { kind: "box", origin: { x: 0, y: 0, z: "[Tray Height] - [Sheet Thickness]" }, size: { x: "[Length]", y: "[Flange Width]", z: "[Sheet Thickness]" } } },
+        { id: "bottom-plate", name: "Bottom Plate", material: GALV.name, solid: { kind: "prism", plane: "xy", points: pts, from: 0, to: t } },
+        {
+          id: "side-wall-left",
+          name: "Side Wall Left",
+          material: GALV.name,
+          solid: {
+            kind: "prism",
+            plane: "xy",
+            from: t,
+            to: "[Tray Height]",
+            points: [[`-${hx}`, yLeftIn], [hx, yLeftOut], [hx, `${yLeftOut} + ${t}`], [`-${hx}`, `${yLeftIn} + ${t}`]],
+          },
+        },
+        {
+          id: "side-wall-right",
+          name: "Side Wall Right",
+          material: GALV.name,
+          solid: {
+            kind: "prism",
+            plane: "xy",
+            from: t,
+            to: "[Tray Height]",
+            points: [[`-${hx}`, `${yRightIn} - ${t}`], [hx, `${yRightOut} - ${t}`], [hx, yRightOut], [`-${hx}`, yRightIn]],
+          },
+        },
+        {
+          id: "flange-left",
+          name: "Top Flange Left",
+          material: GALV.name,
+          solid: {
+            kind: "prism",
+            plane: "xy",
+            from: `[Tray Height] - ${t}`,
+            to: "[Tray Height]",
+            points: [[`-${hx}`, `${yLeftIn} + ${t}`], [hx, `${yLeftOut} + ${t}`], [hx, `${yLeftOut} + ${fl}`], [`-${hx}`, `${yLeftIn} + ${fl}`]],
+          },
+        },
+        {
+          id: "flange-right",
+          name: "Top Flange Right",
+          material: GALV.name,
+          solid: {
+            kind: "prism",
+            plane: "xy",
+            from: `[Tray Height] - ${t}`,
+            to: "[Tray Height]",
+            points: [[`-${hx}`, `${yRightIn} - ${fl}`], [hx, `${yRightOut} - ${fl}`], [hx, `${yRightOut} - ${t}`], [`-${hx}`, `${yRightIn} - ${t}`]],
+          },
+        },
       ],
       connectors: [
-        rectConn("in", "In", { x: "-[Length] / 2", y: 0, z: "[Tray Height] / 2" }, { x: -1, y: 0, z: 0 }, "[Width In]", "[Tray Height]"),
-        rectConn("out", "Out", { x: "[Length] / 2", y: 0, z: "[Tray Height] / 2" }, { x: 1, y: 0, z: 0 }, "[Width Out]", "[Tray Height]"),
+        rectConn("in", "In", { x: `-${hx}`, y: 0, z: "[Tray Height] / 2" }, { x: -1, y: 0, z: 0 }, "[Width In]", "[Tray Height]"),
+        rectConn("out", "Out", { x: hx, y: isEcc ? `-${hw1} + [Width Out] / 2` : 0, z: "[Tray Height] / 2" }, { x: 1, y: 0, z: 0 }, "[Width Out]", "[Tray Height]"),
       ],
     };
   }

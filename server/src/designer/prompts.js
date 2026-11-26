@@ -116,7 +116,7 @@ const DEFAULT_SYSTEM_BUDGET = 10000;
 export function systemPrompt(
   lod,
   family = null,
-  { text = "", patch = false, edit = false, datasheet = false } = {},
+  { text = "", patch = false, edit = false, datasheet = false, macros = config.agent.useMacros } = {},
 ) {
   const standard = lodStandard(lod);
   const { prompt, blocks, dropped } = buildSystemPrompt(designerPrompt, {
@@ -125,6 +125,7 @@ export function systemPrompt(
       patch,
       edit,
       datasheet,
+      macros,
       budget: Math.max(6000, DEFAULT_SYSTEM_BUDGET - standard.length),
     },
   });

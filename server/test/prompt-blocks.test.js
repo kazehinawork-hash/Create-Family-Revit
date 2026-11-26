@@ -28,3 +28,18 @@ test("buildSystemPrompt injects trayRun block cleanly within default budget", ()
   assert.ok(built.blocks.includes("Sheet-metal macros (trayRun)"));
   assert.ok(built.prompt.includes("trayRun"));
 });
+
+test("buildSystemPrompt and selectBlocks exclude trayRun/slotPattern when macros=false (AGENT_MACROS=0)", () => {
+  const selected = selectBlocks({
+    text: "Tạo cút máng cáp 400x100 thép tấm",
+    options: { macros: false },
+  });
+  assert.equal(selected.has("Sheet-metal macros (trayRun)"), false);
+
+  const built = buildSystemPrompt(designerPrompt, {
+    text: "Tạo cút máng cáp 400x100 thép tấm",
+    options: { budget: 15000, macros: false },
+  });
+  assert.equal(built.blocks.includes("Sheet-metal macros (trayRun)"), false);
+  assert.equal(/\b(trayRun|slotPattern)\b/i.test(built.prompt), false);
+});

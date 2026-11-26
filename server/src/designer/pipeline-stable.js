@@ -87,7 +87,7 @@ export async function designStable(options) {
     const nextSpec = edit ? applyFastParameterEdit(currentSpec, edit) : null;
     if (nextSpec) {
       send({ type: "stage", stage: "checking", message: "Applying parameter change" });
-      const analysis = analyzeSpec(nextSpec);
+      const analysis = analyzeSpec(nextSpec, {}, { allowMacros: config.agent.useMacros });
       if (analysis.ok) {
         analysis.spec.lod = level;
         const graph = buildParameterGraph(nextSpec.parameters);
@@ -418,7 +418,7 @@ export async function designStable(options) {
         }
         result.json = autoHealSpec(result.json);
       }
-      analysis = analyzeSpec(result.json);
+      analysis = analyzeSpec(result.json, {}, { allowMacros: config.agent.useMacros });
 
       const drifted =
         editBefore && analysis.ok && bestAnalysis?.ok
@@ -582,7 +582,11 @@ export async function designStable(options) {
     }
 
     if (stepsDone === 0) return null;
-    return { analysis: analyzeSpec(spec), attempts: totalAttempts, gaps: finalGaps };
+    return {
+      analysis: analyzeSpec(spec, {}, { allowMacros: config.agent.useMacros }),
+      attempts: totalAttempts,
+      gaps: finalGaps,
+    };
   };
 
   const plannedSections =
@@ -620,7 +624,7 @@ export async function designStable(options) {
         }
         outcome = built;
       } else if (currentSpec) {
-        const kept = analyzeSpec(currentSpec);
+        const kept = analyzeSpec(currentSpec, {}, { allowMacros: config.agent.useMacros });
         if (!kept.ok) throw error;
 
         kept.spec.lod = level;

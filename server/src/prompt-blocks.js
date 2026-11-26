@@ -90,10 +90,19 @@ export function selectBlocks({ text = "", options = {} } = {}) {
   wanted.add("Build parity (studio ↔ .rfa)");
 
   for (const rule of FAMILY_RULES) {
+    if (rule.block === "Sheet-metal macros (trayRun)" && options.macros === false) continue;
     if (rule.pattern.test(brief)) wanted.add(rule.block);
   }
 
   return wanted;
+}
+
+/** Remove macro mentions when AGENT_MACROS=0 so the baseline prompt is clean. */
+function stripMacroMentions(text) {
+  return String(text ?? "")
+    .split(/\r?\n/)
+    .filter((line) => !/\b(trayRun|slotPattern)\b/i.test(line))
+    .join("\n");
 }
 
 /**
@@ -104,11 +113,17 @@ export function selectBlocks({ text = "", options = {} } = {}) {
 export function buildSystemPrompt(markdown, { text = "", options = {} } = {}) {
   const { intro, blocks } = splitPromptBlocks(markdown);
   const wanted = selectBlocks({ text, options });
-  let kept = blocks.filter((block) => !(block.title in CONDITIONAL) || wanted.has(block.title));
+  let kept = blocks.filter(
+    (block) =>
+      (!(block.title in CONDITIONAL) || wanted.has(block.title)) &&
+      (options.macros !== false || block.title !== "Sheet-metal macros (trayRun)"),
+  );
   const dropped = [];
 
-  const render = (list) =>
-    compactMarkdown([intro, ...list.map((block) => block.body)].filter(Boolean).join("\n\n"));
+  const render = (list) => {
+    const raw = compactMarkdown([intro, ...list.map((block) => block.body)].filter(Boolean).join("\n\n"));
+    return options.macros === false ? stripMacroMentions(raw) : raw;
+  };
 
   // Stay inside the per-call prompt budget. Blocks are dropped lowest-value first so
   // a short brief is cheap and a complex one still keeps its geometry rules.

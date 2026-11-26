@@ -1,4 +1,5 @@
 import { analyzeSpec, expandMacros } from "@family/spec-core";
+import { config } from "../config.js";
 import { normalizeText as normalizeRequest } from "../router.js";
 
 /** Default materials used to auto-heal missing material references */
@@ -302,7 +303,7 @@ function fixConnectorAxes(spec) {
  * Deterministic Auto-Healer / Sanitizer.
  * Corrects trivial or deterministic spec errors before running analyzeSpec or calling LLM retry.
  */
-export function autoHealSpec(spec) {
+export function autoHealSpec(spec, { allowMacros = config.agent.useMacros } = {}) {
   if (!spec || typeof spec !== "object") return spec;
 
   if (!spec.schemaVersion) spec.schemaVersion = "1.0";
@@ -356,7 +357,7 @@ export function autoHealSpec(spec) {
     spec.category = catMap[catLower];
   }
 
-  if (Array.isArray(spec.macros) && spec.macros.length > 0) {
+  if (allowMacros && Array.isArray(spec.macros) && spec.macros.length > 0) {
     const expanded = expandMacros(spec);
     if (Array.isArray(expanded.spec?.parts)) spec.parts = expanded.spec.parts;
     if (Array.isArray(expanded.spec?.connectors)) spec.connectors = expanded.spec.connectors;

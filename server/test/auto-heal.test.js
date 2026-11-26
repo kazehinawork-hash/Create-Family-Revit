@@ -149,3 +149,39 @@ test("auto-heal adds mm to bare offset without corrupting multi-digit mm literal
   assert.equal(healed.parameters.find((p) => p.name === "KeepUnit").formula, "[Width] - 10mm");
   assert.equal(healed.parameters.find((p) => p.name === "AddUnit").formula, "[Width] - 25mm");
 });
+
+test("autoHealSpec leaves macros unexpanded when allowMacros is false (AGENT_MACROS=0)", () => {
+  const healed = autoHealSpec(
+    {
+      schemaVersion: "1.0",
+      name: "No Macro Mode",
+      category: "Cable Tray Fitting",
+      units: "mm",
+      parameters: [
+        { name: "Tray Width", type: "Length", value: 400 },
+        { name: "Tray Height", type: "Length", value: 100 },
+        { name: "Sheet Thickness", type: "Length", value: 1.5 },
+        { name: "Flange Width", type: "Length", value: 15 },
+      ],
+      parts: [],
+      macros: [
+        {
+          kind: "trayRun",
+          id: "tray-main",
+          material: "Galvanized",
+          width: "[Tray Width]",
+          height: "[Tray Height]",
+          thickness: "[Sheet Thickness]",
+          flange: "[Flange Width]",
+          segments: [{ kind: "straight", length: 800 }],
+        },
+      ],
+    },
+    { allowMacros: false },
+  );
+
+  assert.equal(healed.parts.length, 0);
+  const analysis = analyzeSpec(healed, {}, { allowMacros: false });
+  assert.equal(analysis.ok, false);
+  assert.ok(analysis.errors.some((e) => e.path === "macros"));
+});
