@@ -155,7 +155,7 @@ function afterMacroTray(testCase) {
           kind: "box",
           origin: { x: 200, y: 0, z: 0 },
           size: { x: "[Slot Length]", y: "[Slot Width]", z: "[Sheet Thickness]" },
-        },
+          },
         cuts: [
           {
             kind: "box",
@@ -479,12 +479,12 @@ function miteredJunctionCorner(sx, sy, halfW1Expr, halfW2Expr, halfXExpr, halfYE
 }
 
 function buildMiteredTeeOrCrossStub(testCase, { isCross, isLadder, w1, w2, withHoles }) {
-  const miter = 150;
-  const tan = 120;
+  const miter = isCross ? 150 : 100;
+  const tan = isCross ? 120 : 170;
   const hw1 = "[Width Main] / 2";
   const hw2 = "[Width Branch] / 2";
   const hx = "[Total X] / 2";
-  const hyTop = isCross ? "[Total Y] / 2" : "[Width Main] / 2 + [Tangent] + [Miter]";
+  const hyTop = isCross ? "[Total Y] / 2" : "[Width Main] / 2 + [Miter] + 40";
 
   const parts = [
     ...miteredJunctionCorner(1, 1, hw1, hw2, hx, hyTop, "[Miter]", "Corner"),
@@ -522,47 +522,58 @@ function buildMiteredTeeOrCrossStub(testCase, { isCross, isLadder, w1, w2, withH
   }
 
   if (isLadder) {
-    for (let i = 0; i < 6; i += 1) {
-      const ratio = (i + 0.5) / 6;
-      const xPos = `(${ratio.toFixed(4)} - 0.5) * ([Total X] - 120)`;
-      parts.push({
-        id: `rung-${i + 1}`,
-        name: `Rung ${i + 1}`,
-        material: GALV.name,
-        solid: {
-          kind: "box",
-          origin: { x: xPos, y: 0, z: "[Sheet Thickness]" },
-          size: { x: 35, y: "[Width Main] - 2 * [Sheet Thickness]", z: 15 },
-        },
-        ...(i === 0 ? { cuts: [{ kind: "cylinder", axis: "z", base: { x: xPos, y: 0, z: 0 }, radius: 5, height: 25 }] } : {}),
-      });
-    }
     if (!isCross) {
+      for (let i = 0; i < 6; i += 1) {
+        const ratio = (i + 0.5) / 6;
+        const xPos = `(${ratio.toFixed(4)} - 0.5) * ([Total X] - 120)`;
+        parts.push({
+          id: `rung-${i + 1}`,
+          name: `Rung ${i + 1}`,
+          material: GALV.name,
+          solid: {
+            kind: "box",
+            origin: { x: xPos, y: 0, z: "[Sheet Thickness]" },
+            size: { x: 35, y: "[Width Main] - 2 * [Sheet Thickness]", z: 15 },
+          },
+          ...(i === 0 ? { cuts: [{ kind: "cylinder", axis: "z", base: { x: xPos, y: 0, z: 0 }, radius: 5, height: 25 }] } : {}),
+        });
+      }
       parts.push({
         id: "rung-branch-1",
         name: "Branch Rung 1",
         material: GALV.name,
         solid: {
           kind: "box",
-          origin: { x: 0, y: `${hw1} + 80`, z: "[Sheet Thickness]" },
+          origin: { x: 0, y: `${hyTop} - 20`, z: "[Sheet Thickness]" },
           size: { x: "[Width Branch] - 2 * [Sheet Thickness]", y: 35, z: 15 },
         },
       });
     } else {
-      parts.push(
-        {
-          id: "rung-branch-n",
-          name: "Branch Rung North",
+      const armOffsets = [
+        { id: "rung-west-1", x: `-(${hx}) + 40`, y: 0, alongX: false, hasCut: true },
+        { id: "rung-west-2", x: `-(${hx}) + 100`, y: 0, alongX: false },
+        { id: "rung-east-1", x: `${hx} - 100`, y: 0, alongX: false },
+        { id: "rung-east-2", x: `${hx} - 40`, y: 0, alongX: false },
+        { id: "rung-north-1", x: 0, y: `${hyTop} - 40`, alongX: true },
+        { id: "rung-north-2", x: 0, y: `${hyTop} - 100`, alongX: true },
+        { id: "rung-south-1", x: 0, y: `-(${hyTop}) + 40`, alongX: true },
+        { id: "rung-south-2", x: 0, y: `-(${hyTop}) + 100`, alongX: true },
+      ];
+      for (const r of armOffsets) {
+        parts.push({
+          id: r.id,
+          name: `Rung ${r.id}`,
           material: GALV.name,
-          solid: { kind: "box", origin: { x: 0, y: `${hw1} + 80`, z: "[Sheet Thickness]" }, size: { x: "[Width Branch] - 2 * [Sheet Thickness]", y: 35, z: 15 } },
-        },
-        {
-          id: "rung-branch-s",
-          name: "Branch Rung South",
-          material: GALV.name,
-          solid: { kind: "box", origin: { x: 0, y: `-(${hw1}) - 80`, z: "[Sheet Thickness]" }, size: { x: "[Width Branch] - 2 * [Sheet Thickness]", y: 35, z: 15 } },
-        },
-      );
+          solid: {
+            kind: "box",
+            origin: { x: r.x, y: r.y, z: "[Sheet Thickness]" },
+            size: r.alongX
+              ? { x: "[Width Branch] - 2 * [Sheet Thickness]", y: 35, z: 15 }
+              : { x: 35, y: "[Width Main] - 2 * [Sheet Thickness]", z: 15 },
+          },
+          ...(r.hasCut ? { cuts: [{ kind: "cylinder", axis: "z", base: { x: r.x, y: 0, z: 0 }, radius: 5, height: 25 }] } : {}),
+        });
+      }
     }
   } else {
     // Solid tray bottom plate spanning main & branch corridors (clipped inside walls)
@@ -641,8 +652,8 @@ function buildMiteredTeeOrCrossStub(testCase, { isCross, isLadder, w1, w2, withH
       p("Flange Width", 15),
       p("Tangent", tan),
       p("Miter", miter),
-      f("Total X", `${w2} + 2 * [Tangent] + 2 * [Miter]`),
-      f("Total Y", isCross ? `${w1} + 2 * [Tangent] + 2 * [Miter]` : `${w1} / 2 + [Tangent] + [Miter]`),
+      f("Total X", `${w1} + 2 * [Tangent] + 2 * [Miter]`),
+      f("Total Y", isCross ? `${w2} + 2 * [Tangent] + 2 * [Miter]` : `${w1} + [Miter] + 40`),
     ],
     materials: [GALV],
     parts,
