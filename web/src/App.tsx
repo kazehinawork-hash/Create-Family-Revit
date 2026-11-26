@@ -1,6 +1,15 @@
-import { lazy, Suspense, useRef, useState, type CSSProperties } from "react";
+import { useRef, useState, type CSSProperties } from "react";
 import { ChatPanel } from "./components/ChatPanel";
 import { ParameterPanel } from "./components/ParameterPanel";
+import {
+  EmptyParametersPane,
+  LibraryModal,
+  MobileTabs,
+  PanelResizer,
+  ParamsFab,
+  ThumbnailRenderHost,
+  ToastBanner,
+} from "./components/StudioChrome";
 import { TopBar } from "./components/TopBar";
 import { Viewer } from "./components/Viewer";
 import { StudioProvider, useStudio } from "./hooks/StudioContext";
@@ -12,10 +21,6 @@ import { useServerConnection } from "./hooks/useServerConnection";
 import { useTheme } from "./hooks/useTheme";
 import { useToast } from "./hooks/useToast";
 import { useI18n } from "./lib/i18n";
-
-const LibraryPanel = lazy(() =>
-  import("./components/LibraryPanel").then((m) => ({ default: m.LibraryPanel })),
-);
 
 export function App() {
   return (
@@ -36,17 +41,7 @@ function StudioWorkspace() {
 
   const { toast, setToast } = useToast();
   const { themeMode, setThemeMode, resolvedTheme } = useTheme();
-  const {
-    mobileTab,
-    setMobileTab,
-    paramsOpen,
-    setParamsOpen,
-    leftWidth,
-    rightWidth,
-    beginResize,
-    nudgeWidth,
-    resetWidth,
-  } = usePanelLayout();
+  const layout = usePanelLayout();
 
   const syncDefaultModelRef = useRef<
     (availableIds: string[], serverDefaultModel?: string | null) => void
@@ -56,11 +51,19 @@ function StudioWorkspace() {
     syncDefaultModelRef.current(available, result.agent?.model);
   });
 
-  const modelState = useModelState({ setToast, setMobileTab });
-  const chat = useDesignChat({ setServerOnline, setToast, setMobileTab });
+  const modelState = useModelState({ setToast, setMobileTab: layout.setMobileTab });
+  const chat = useDesignChat({ setServerOnline, setToast, setMobileTab: layout.setMobileTab });
   syncDefaultModelRef.current = chat.syncDefaultModel;
-
   const library = useLibrary({ viewerCaptureRef, setToast });
+
+  const stageMessage = chat.stage
+    ? `${chat.stage.message}${chat.elapsedLabel ? ` · ${chat.elapsedLabel}` : ""}`
+    : null;
+  const agentLabel = health
+    ? health.agent.provider === "commandcode"
+      ? "cmdc"
+      : health.agent.model
+    : null;
 
   return (
     <div className="app" lang={language}>
@@ -97,45 +100,22 @@ function StudioWorkspace() {
         onTheme={setThemeMode}
       />
 
-      <nav className="mobile-tabs" role="tablist" aria-label={t.appWorkspaceTabs}>
-        {(
-          [
-            ["chat", t.chatTab],
-            ["viewer", t.viewerTab],
-            ["params", t.paramsTab],
-          ] as const
-        ).map(([key, label]) => (
-          <button
-            key={key}
-            type="button"
-            role="tab"
-            aria-selected={mobileTab === key}
-            className={mobileTab === key ? "active" : ""}
-            onClick={() => setMobileTab(key)}
-          >
-            {label}
-          </button>
-        ))}
-      </nav>
+      <MobileTabs mobileTab={layout.mobileTab} onSelect={layout.setMobileTab} t={t} />
 
       <div
-        className={`workspace ${paramsOpen ? "params-open" : ""}`}
-        data-tab={mobileTab}
+        className={`workspace ${layout.paramsOpen ? "params-open" : ""}`}
+        data-tab={layout.mobileTab}
         style={
           {
-            "--left-width": `${leftWidth}px`,
-            "--right-width": `${rightWidth}px`,
+            "--left-width": `${layout.leftWidth}px`,
+            "--right-width": `${layout.rightWidth}px`,
           } as CSSProperties
         }
       >
         <ChatPanel
           entries={state.entries}
           running={chat.running}
-          stageMessage={
-            chat.stage
-              ? `${chat.stage.message}${chat.elapsedLabel ? ` · ${chat.elapsedLabel}` : ""}`
-              : null
-          }
+          stageMessage={stageMessage}
           stageIssues={chat.stage?.issues}
           onSend={(text, targets) =>
             void chat.handleSend(text, undefined, targets?.length ? { targets } : undefined)
@@ -143,9 +123,7 @@ function StudioWorkspace() {
           onStop={chat.handleStop}
           disabled={chat.running || chat.uploading}
           agentReady={health ? health.agent.ready : null}
-          agentLabel={
-            health ? (health.agent.provider === "commandcode" ? "cmdc" : health.agent.model) : null
-          }
+          agentLabel={agentLabel}
           agentDetail={health?.agent.detail ?? null}
           provider={health?.agent.provider ?? null}
           model={chat.model}
@@ -159,7 +137,7 @@ function StudioWorkspace() {
           focusSignal={chat.chatFocusSignal}
           onHighlightParts={(partIds) => {
             modelState.setHighlightPartIds(partIds);
-            setMobileTab("viewer");
+            layout.setMobileTab("viewer");
           }}
           onUndoSpec={chat.handleUndoSpecEntry}
           attachments={chat.attachments}
@@ -173,20 +151,13 @@ function StudioWorkspace() {
           serverOnline={serverOnline}
         />
 
-        <div
-          className="resizer"
-          role="separator"
-          aria-orientation="vertical"
-          aria-label={t.appResizeAgentPanel}
-          tabIndex={0}
+        <PanelResizer
+          side="left"
+          ariaLabel={t.appResizeAgentPanel}
           title={t.resizePanel}
-          onPointerDown={(event) => beginResize("left", event)}
-          onDoubleClick={() => resetWidth("left")}
-          onKeyDown={(event) => {
-            if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-            event.preventDefault();
-            nudgeWidth("left", event.key);
-          }}
+          onPointerDown={layout.beginResize}
+          onDoubleClick={layout.resetWidth}
+          onNudge={layout.nudgeWidth}
         />
 
         <Viewer
@@ -228,20 +199,13 @@ function StudioWorkspace() {
           onUpdateParameter={modelState.handleUpdateParameter}
         />
 
-        <div
-          className="resizer"
-          role="separator"
-          aria-orientation="vertical"
-          aria-label={t.appResizeParamPanel}
-          tabIndex={0}
+        <PanelResizer
+          side="right"
+          ariaLabel={t.appResizeParamPanel}
           title={t.resizePanel}
-          onPointerDown={(event) => beginResize("right", event)}
-          onDoubleClick={() => resetWidth("right")}
-          onKeyDown={(event) => {
-            if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-            event.preventDefault();
-            nudgeWidth("right", event.key);
-          }}
+          onPointerDown={layout.beginResize}
+          onDoubleClick={layout.resetWidth}
+          onNudge={layout.nudgeWidth}
         />
 
         {modelState.spec && modelState.analysis ? (
@@ -277,121 +241,20 @@ function StudioWorkspace() {
             previewTypeActive={Boolean(modelState.previewTypeValues)}
           />
         ) : (
-          <section className="pane right">
-            <div className="pane-header">{t.paramsTab}</div>
-            <div className="pane-empty">
-              <svg
-                width="34"
-                height="34"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.4"
-              >
-                <path d="M4 7h16M4 12h10M4 17h6" />
-              </svg>
-              <p>{t.parametersEmpty}</p>
-            </div>
-          </section>
+          <EmptyParametersPane title={t.paramsTab} hint={t.parametersEmpty} />
         )}
 
-        <button
-          type="button"
-          className="params-fab"
-          onClick={() => setParamsOpen((current) => !current)}
-          aria-expanded={paramsOpen}
-          aria-label={paramsOpen ? t.closeParams : t.openParams}
-          title={paramsOpen ? t.closeParams : t.openParams}
-        >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-          >
-            <path d="M4 7h16M4 12h10M4 17h6" />
-          </svg>
-          <span>{t.paramsTab}</span>
-        </button>
+        <ParamsFab
+          open={layout.paramsOpen}
+          onToggle={() => layout.setParamsOpen((current) => !current)}
+          label={layout.paramsOpen ? t.closeParams : t.openParams}
+          tabLabel={t.paramsTab}
+        />
       </div>
 
-      {toast && (
-        <div className={`toast ${toast.tone === "error" ? "error" : ""}`} role="status">
-          {toast.text}
-          {toast.sub && <span className="sub">{toast.sub}</span>}
-          {toast.action && (
-            <button
-              type="button"
-              className="toast-action"
-              onClick={() => {
-                toast.action?.onClick();
-                setToast(null);
-              }}
-            >
-              {toast.action.label}
-            </button>
-          )}
-        </div>
-      )}
-
-      {library.libraryOpen && (
-        <Suspense fallback={null}>
-          <LibraryPanel
-            models={library.savedList}
-            groups={library.libraryGroups}
-            loading={library.libraryLoading}
-            currentModelId={state.currentModelId}
-            activeGroup={library.libraryGroup}
-            historyModelId={library.historyModelId}
-            revisions={library.revisions}
-            revisionsLoading={library.revisionsLoading}
-            historyKeep={library.historyKeep}
-            onClose={() => {
-              library.setLibraryOpen(false);
-              library.setHistoryModelId(null);
-            }}
-            onActiveGroup={library.setLibraryGroup}
-            onLoadModel={(id) => void library.handleLoadModel(id)}
-            onNewModel={library.handleNewModel}
-            onOpenHistory={(id) => void library.handleOpenHistory(id)}
-            onCloseHistory={() => library.setHistoryModelId(null)}
-            onRestoreRevision={(stamp) => void library.handleRestoreRevision(stamp)}
-            onRenameModel={(id, name) => void library.handleRenameModel(id, name)}
-            onDeleteModel={(id) => void library.handleDeleteModel(id)}
-            onCreateGroup={(name) => void library.handleCreateGroup(name)}
-            onRenameGroup={(from, to) => void library.handleRenameGroup(from, to)}
-            onDeleteGroup={(name) => void library.handleDeleteGroup(name)}
-            onMoveModel={(id, group) => void library.handleMoveModel(id, group)}
-            trashItems={library.trashItems}
-            onRestoreTrash={(id) => void library.handleRestoreTrash(id)}
-            onPurgeTrash={(id) => void library.handlePurgeTrash(id)}
-            onEmptyTrash={() => void library.handleEmptyTrash()}
-          />
-        </Suspense>
-      )}
-
-      {library.thumbJob && (
-        <div className="thumb-render-host" aria-hidden="true">
-          <Viewer
-            model={library.thumbJob.model}
-            parameters={library.thumbJob.parameters}
-            materials={library.thumbJob.materials}
-            units="mm"
-            theme="light"
-            showGrid={false}
-            onToggleGrid={() => {}}
-            showPlanes={false}
-            showConnectors={false}
-            showHandles={false}
-            fileName={`${library.thumbJob.id}.jpg`}
-            onCaptureReady={(capture) => {
-              library.thumbCaptureRef.current = capture;
-            }}
-          />
-        </div>
-      )}
+      <ToastBanner toast={toast} onDismiss={() => setToast(null)} />
+      <LibraryModal library={library} currentModelId={state.currentModelId} />
+      <ThumbnailRenderHost thumbJob={library.thumbJob} thumbCaptureRef={library.thumbCaptureRef} />
     </div>
   );
 }
