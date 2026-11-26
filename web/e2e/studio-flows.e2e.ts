@@ -245,16 +245,29 @@ test("save, load, and delete family from library UI", async ({ page, request }) 
     createdId = savedJson.id ?? null;
     expect(createdId).toBeTruthy();
 
-    // 2. Start a blank family, then Load back from Library.
-    await page.getByRole("button", { name: "Thao tác khác" }).click();
-    await page.locator(".more-menu button", { hasText: "Family mới" }).click();
-    await expect(page.locator(".project-name")).not.toHaveText(uniqueName);
+    // 2. Pan the camera sideways so the center pixel misses the plate, reload from Library,
+    //    then confirm the camera automatically framed ("Vừa khung") back onto the loaded family.
+    const canvas = page.locator(".viewer canvas").first();
+    const box = (await canvas.boundingBox())!;
+    const cx = box.x + box.width * 0.5;
+    const cy = box.y + box.height * 0.5;
+    await page.mouse.move(cx, cy);
+    await page.mouse.down({ button: "right" });
+    await page.mouse.move(cx + 320, cy, { steps: 10 });
+    await page.mouse.up({ button: "right" });
+    await page.waitForTimeout(200);
+    await page.mouse.click(cx, cy);
+    await expect(page.locator(".viewer-selected-chip")).toHaveCount(0);
 
     await page.locator("header.topbar button", { hasText: "Thư viện" }).first().click();
     const card = page.locator(".saved-model-card", { hasText: uniqueName }).first();
     await expect(card).toBeVisible();
     await card.click();
     await expect(page.locator(".project-name")).toHaveText(uniqueName);
+    await page.waitForTimeout(300);
+
+    await page.mouse.click(cx, cy);
+    await expect(page.locator(".viewer-selected-chip")).toContainText("Bottom Plate");
 
     // 3. Re-open Library and move the model to Trash.
     await page.locator("header.topbar button", { hasText: "Thư viện" }).first().click();

@@ -60,6 +60,7 @@ export function Viewer({
   issuePartIds = [],
   highlightPartIds = [],
   focusPartId = null,
+  fitSignal = 0,
   onUpdateParameter,
   onLoadSample,
   onCaptureReady,
@@ -77,7 +78,7 @@ export function Viewer({
   const onCaptureReadyRef = useRef<ViewerProps["onCaptureReady"]>(onCaptureReady);
   onCaptureReadyRef.current = onCaptureReady;
   const stateRef = useRef<SceneState | null>(null);
-  const setViewRef = useRef<(direction: ViewDirection) => void>(() => {});
+  const setViewRef = useRef<(direction: ViewDirection) => void>(() => { });
   const renderDirtyRef = useRef(true);
   const modelRef = useRef<ResolvedModel | null>(model);
   const onSelectPartRef = useRef(onSelectPart);
@@ -89,6 +90,7 @@ export function Viewer({
   const onUpdateParameterRef = useRef(onUpdateParameter);
   onUpdateParameterRef.current = onUpdateParameter;
   const hasFittedRef = useRef(false);
+  const lastFitSignalRef = useRef(0);
   modelRef.current = model;
 
   const [activeHandle, setActiveHandle] = useState<ActiveHandleState | null>(null);
@@ -599,19 +601,7 @@ export function Viewer({
       if (statsEl && statsEl.parentElement === host) host.removeChild(statsEl);
       stateRef.current = null;
     };
-  }, [
-    positionNotePins,
-    section.pickingSectionRef,
-    section.sectionArrowRef,
-    section.sectionCapRef,
-    section.sectionDragDataRef,
-    section.sectionDragMovedRef,
-    section.sectionDragRef,
-    section.setPickingSection,
-    section.setSectionAxis,
-    section.setSectionCustom,
-    section.setSectionT,
-  ]);
+  }, [positionNotePins]);
 
   useEffect(() => {
     const state = stateRef.current;
@@ -699,10 +689,10 @@ export function Viewer({
     const amount = explode / 100;
     const center = bounds
       ? new THREE.Vector3(
-          (bounds.min.x + bounds.max.x) / 2,
-          (bounds.min.y + bounds.max.y) / 2,
-          (bounds.min.z + bounds.max.z) / 2,
-        )
+        (bounds.min.x + bounds.max.x) / 2,
+        (bounds.min.y + bounds.max.y) / 2,
+        (bounds.min.z + bounds.max.z) / 2,
+      )
       : new THREE.Vector3();
     const extent = bounds ? Math.max(bounds.size.x, bounds.size.y, bounds.size.z, 1) : 1;
 
@@ -897,6 +887,7 @@ export function Viewer({
     renderDirtyRef.current = true;
 
     if (!model) {
+      hasFittedRef.current = false;
       state.refPlanesGroup.clear();
       state.handlesGroup.clear();
       state.connectorsGroup.clear();
@@ -963,11 +954,12 @@ export function Viewer({
       populateConnectors(state, model);
     }
 
-    if (!hasFittedRef.current) {
+    if (!hasFittedRef.current || (fitSignal > 0 && fitSignal !== lastFitSignalRef.current)) {
       fit();
       hasFittedRef.current = true;
+      lastFitSignalRef.current = fitSignal;
     }
-  }, [model, parameters, showGrid, showPlanes, showConnectors, selectedPartId, fit]);
+  }, [model, parameters, showGrid, showPlanes, showConnectors, selectedPartId, fit, fitSignal]);
 
   const dims = formatDimensions(model?.bounds ?? null, units);
 

@@ -54,6 +54,7 @@ export interface StudioState {
   transparentPartIds: string[];
   chatTargets: ChatTarget[];
   chatFocusSignal: number;
+  fitSignal: number;
   model: string;
   lod: Lod;
 }
@@ -146,6 +147,7 @@ export function createInitialStudioState(
     transparentPartIds: [],
     chatTargets: [],
     chatFocusSignal: 0,
+    fitSignal: 0,
     model: "",
     lod: 300,
     ...overrides,
@@ -243,6 +245,7 @@ export function studioReducer(state: StudioState, action: StudioAction): StudioS
         hiddenPartIds: [],
         transparentPartIds: [],
         chatTargets: [],
+        fitSignal: state.fitSignal + 1,
         lod: nextLod,
         ...(action.entries ? { entries: action.entries } : {}),
       };

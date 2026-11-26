@@ -90,6 +90,7 @@ describe("studioReducer", () => {
     expect(loaded.chatTargets).toEqual([]);
     expect(loaded.modelNotes).toHaveLength(1);
     expect(loaded.entries).toEqual([{ id: "e1", role: "agent", text: "Opened" }]);
+    expect(loaded.fitSignal).toBe(dirty.fitSignal + 1);
   });
 
   it("applies design result, appends entry, and resolves targeted notes via APPLY_DESIGN_RESULT", () => {

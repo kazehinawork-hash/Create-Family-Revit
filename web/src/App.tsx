@@ -198,6 +198,7 @@ function StudioWorkspace() {
           issuePartIds={modelState.issuePartIds}
           highlightPartIds={modelState.highlightPartIds}
           focusPartId={modelState.focusPartId}
+          fitSignal={modelState.viewerFitSignal}
           onUpdateParameter={modelState.handleUpdateParameter}
         />
 

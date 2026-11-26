@@ -83,6 +83,14 @@ export function useModelState({ setToast, setMobileTab }: UseModelStateOptions) 
 
   const deferredModel = useDeferredValue(analysis?.model ?? null);
   const deferredParameters = useDeferredValue(spec?.parameters);
+  const [viewerFitSignal, setViewerFitSignal] = useState(0);
+
+  useEffect(() => {
+    if (!deferredModel || deferredModel !== analysis?.model) return;
+    if (state.fitSignal > viewerFitSignal) {
+      setViewerFitSignal(state.fitSignal);
+    }
+  }, [state.fitSignal, deferredModel, analysis, viewerFitSignal]);
 
   const applySpec = (
     next: FamilySpec | null,
@@ -427,6 +435,7 @@ export function useModelState({ setToast, setMobileTab }: UseModelStateOptions) 
     highlightPartIds,
     setHighlightPartIds,
     focusPartId,
+    viewerFitSignal,
     hiddenPartIds,
     transparentPartIds,
     canUndo,

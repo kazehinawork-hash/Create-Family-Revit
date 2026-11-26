@@ -66,6 +66,7 @@ export interface ViewerProps {
   issuePartIds?: string[];
   highlightPartIds?: string[];
   focusPartId?: string | null;
+  fitSignal?: number;
   onUpdateParameter?: (name: string, value: number) => void;
   /** Empty-state suggestion: start a sample family. */
   onLoadSample?: () => void;
