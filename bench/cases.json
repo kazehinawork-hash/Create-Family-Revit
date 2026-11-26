@@ -35,13 +35,13 @@
     "id": "ladder-elbow-90-500x100",
     "group": "tray-macro",
     "supportsMacro": true,
-    "prompt": "Tạo khuỷu thang cáp 90° vát góc (Cable Ladder Mitered Elbow) rộng 500 mm, cao 100 mm, dày 1.8 mm, mép gập 15 mm, hai nhánh dài 600 mm, 2 connector.",
+    "prompt": "Tạo khuỷu thang cáp 90° vát góc (Cable Ladder Mitered Elbow) rộng 500 mm, cao 100 mm, dày 1.8 mm, mép gập 15 mm, hai nhánh dài 600 mm (từ tâm góc theo đường tim), 2 connector.",
     "lod": 350,
     "criteria": {
       "category": "Cable Tray Fitting",
       "minParts": 8,
       "minConnectors": 2,
-      "bounds": { "x": [1040, 1160], "y": [1040, 1160], "z": [95, 110], "toleranceMm": 30 },
+      "bounds": { "x": [810, 895], "y": [810, 895], "z": [95, 110], "toleranceMm": 20 },
       "requiredParams": ["width|rộng", "height|cao", "thickness|dày", "flange|mép"],
       "requiredParts": ["bottom|đáy", "wall|thành"],
       "features": { "foldedFlange": true, "miteredOrChamfer": true, "holesOrSlots": false }
@@ -57,7 +57,7 @@
       "category": "Cable Tray Fitting",
       "minParts": 8,
       "minConnectors": 2,
-      "bounds": { "x": [750, 920], "y": [400, 560], "z": [95, 110], "toleranceMm": 25 },
+      "bounds": { "x": [835, 920], "y": [535, 620], "z": [95, 110], "toleranceMm": 25 },
       "requiredParams": ["width|rộng", "height|cao", "thickness|dày", "flange|mép"],
       "requiredParts": ["bottom|đáy", "wall|thành", "flange|mép"],
       "features": { "foldedFlange": true, "miteredOrChamfer": true, "holesOrSlots": false }
@@ -121,7 +121,7 @@
       "category": "Cable Tray Fitting",
       "minParts": 12,
       "minConnectors": 2,
-      "bounds": { "x": [1050, 1250], "y": [500, 650], "z": [72, 82], "toleranceMm": 30 },
+      "bounds": { "x": [1005, 1095], "y": [510, 595], "z": [72, 82], "toleranceMm": 25 },
       "requiredParams": ["width|rộng", "height|cao", "thickness|dày", "flange|mép"],
       "requiredParts": ["bottom|đáy", "wall|thành", "flange|mép"],
       "features": { "foldedFlange": true, "miteredOrChamfer": true, "holesOrSlots": false }
@@ -137,7 +137,7 @@
       "category": "Cable Tray Fitting",
       "minParts": 12,
       "minConnectors": 2,
-      "bounds": { "x": [550, 720], "y": [850, 960], "z": [95, 110], "toleranceMm": 30 },
+      "bounds": { "x": [560, 650], "y": [860, 950], "z": [95, 110], "toleranceMm": 25 },
       "requiredParams": ["width|rộng", "height|cao", "thickness|dày", "flange|mép"],
       "requiredParts": ["bottom|đáy", "wall|thành", "flange|mép"],
       "features": { "foldedFlange": true, "miteredOrChamfer": true, "holesOrSlots": false }
@@ -153,7 +153,7 @@
       "category": "Cable Tray Fitting",
       "minParts": 8,
       "minConnectors": 2,
-      "bounds": { "x": [950, 1200], "y": [750, 960], "z": [95, 110], "toleranceMm": 35 },
+      "bounds": { "x": [1075, 1190], "y": [735, 835], "z": [95, 110], "toleranceMm": 30 },
       "requiredParams": ["width|rộng", "height|cao", "thickness|dày", "flange|mép"],
       "requiredParts": ["bottom|đáy", "wall|thành", "flange|mép"],
       "features": { "foldedFlange": true, "miteredOrChamfer": true, "holesOrSlots": false }
@@ -169,7 +169,7 @@
       "category": "Cable Tray Fitting",
       "minParts": 10,
       "minConnectors": 3,
-      "bounds": { "x": [880, 1020], "y": [460, 560], "z": [95, 110], "toleranceMm": 30 },
+      "bounds": { "x": [850, 1040], "y": [460, 680], "z": [95, 110], "toleranceMm": 30 },
       "requiredParams": ["width|rộng", "height|cao", "thickness|dày"],
       "requiredParts": ["corner|rail|thành", "rung|bậc"],
       "features": { "foldedFlange": true, "miteredOrChamfer": true, "holesOrSlots": true }
@@ -185,7 +185,7 @@
       "category": "Cable Tray Fitting",
       "minParts": 14,
       "minConnectors": 4,
-      "bounds": { "x": [900, 1000], "y": [900, 1000], "z": [95, 110], "toleranceMm": 30 },
+      "bounds": { "x": [860, 1040], "y": [860, 1040], "z": [95, 110], "toleranceMm": 30 },
       "requiredParams": ["width|rộng", "height|cao", "thickness|dày"],
       "requiredParts": ["corner|rail|thành", "rung|bậc"],
       "features": { "foldedFlange": true, "miteredOrChamfer": true, "holesOrSlots": true }
@@ -201,7 +201,7 @@
       "category": "Cable Tray Fitting",
       "minParts": 6,
       "minConnectors": 3,
-      "bounds": { "x": [850, 1020], "y": [510, 620], "z": [95, 110], "toleranceMm": 30 },
+      "bounds": { "x": [850, 1040], "y": [500, 680], "z": [95, 110], "toleranceMm": 30 },
       "requiredParams": ["width|rộng", "height|cao", "thickness|dày", "flange|mép"],
       "requiredParts": ["bottom|đáy|base", "wall|thành|flange"],
       "features": { "foldedFlange": true, "miteredOrChamfer": true, "holesOrSlots": true }
@@ -217,7 +217,7 @@
       "category": "Cable Tray Fitting",
       "minParts": 8,
       "minConnectors": 4,
-      "bounds": { "x": [850, 1000], "y": [680, 820], "z": [95, 110], "toleranceMm": 35 },
+      "bounds": { "x": [850, 1040], "y": [680, 860], "z": [95, 110], "toleranceMm": 35 },
       "requiredParams": ["width|rộng", "height|cao", "thickness|dày"],
       "requiredParts": ["corner|wall|thành", "bottom|đáy"],
       "features": { "foldedFlange": true, "miteredOrChamfer": true, "holesOrSlots": false }

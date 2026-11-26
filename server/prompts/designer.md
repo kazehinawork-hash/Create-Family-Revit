@@ -90,6 +90,7 @@ For cable trays, cable ladders and their fittings, describe the folded run with 
 ```
 
 - 45° and 90° plan bends are mitred automatically: never draw separate corner gussets or overlap two trays.
+- **Centerline leg length convention (Revit fitting standard)**: each `straight.length` in `segments` measures from the free end to the **corner centerline intersection** (tâm góc theo đường tim), NOT net clear tangent nor outer edge. For example, a 90° elbow with `[Leg Length]` = 600 and `[Width]` = 500 keeps `length: "[Leg Length]"` (outer span reaches `[Leg Length] + [Width]/2 + [Thickness]` = 851.8 mm).
 - The macro names parts stably (`Bottom Leg 1`, `Side Wall Left 1`, …) and adds one connector at each free end unless `"connectors": false`.
 - Edit the macro on later turns; do not edit generated parts (they carry `"from"` and are regenerated).
 

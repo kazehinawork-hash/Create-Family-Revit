@@ -207,7 +207,7 @@ function afterMacroTray(testCase) {
   }
 
   if (id === "ladder-elbow-90-500x100") {
-    return elbowSpec({ ladderWidth1: 500, ladderWidth2: 500, ladderHeight: 100, tangentLength: 200, miterOffset: 150 });
+    return elbowSpec({ ladderWidth1: 500, ladderWidth2: 500, ladderHeight: 100, tangentLength: 50, miterOffset: 50 });
   }
 
   if (id === "tray-elbow-45-300x100") {
