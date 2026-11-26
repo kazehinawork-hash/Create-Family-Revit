@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useCallback,
   useDeferredValue,
   useEffect,
@@ -20,10 +22,6 @@ import {
   type ParameterType,
   type ResolvedModel,
 } from "@family/spec-core";
-import fcuExampleRaw from "../../spec/examples/fcu-080.json";
-import pumpExampleRaw from "../../spec/examples/pump-dn80.json";
-import ystrainerExampleRaw from "../../spec/examples/ystrainer-dn80.json";
-import ystrainerTubeExampleRaw from "../../spec/examples/ystrainer-tube.json";
 import { ChatPanel, type ChatEntry } from "./components/ChatPanel";
 import { diffNotes, diffSpecs } from "./lib/spec-diff";
 import {
@@ -33,8 +31,11 @@ import {
   type ModelNote,
   type NoteDraft,
 } from "./lib/annotations";
-import { LibraryPanel } from "./components/LibraryPanel";
 import { ParameterPanel } from "./components/ParameterPanel";
+
+const LibraryPanel = lazy(() =>
+  import("./components/LibraryPanel").then((m) => ({ default: m.LibraryPanel })),
+);
 import { TopBar } from "./components/TopBar";
 import { Viewer } from "./components/Viewer";
 import {
@@ -1938,20 +1939,20 @@ export function App() {
     ]);
   };
 
-  const handleLoadDemo = (key: "fcu" | "pump" | "elbow" | "ystrainer" | "ystrainer-tube") => {
+  const handleLoadDemo = async (key: "fcu" | "pump" | "elbow" | "ystrainer" | "ystrainer-tube") => {
     let demoRaw: any = null;
     let userPromptText = "";
     if (key === "fcu") {
-      demoRaw = fcuExampleRaw;
+      demoRaw = (await import("../../spec/examples/fcu-080.json")).default;
       userPromptText = t.appDemoPromptFcu;
     } else if (key === "pump") {
-      demoRaw = pumpExampleRaw;
+      demoRaw = (await import("../../spec/examples/pump-dn80.json")).default;
       userPromptText = t.appDemoPromptPump;
     } else if (key === "ystrainer") {
-      demoRaw = ystrainerExampleRaw;
+      demoRaw = (await import("../../spec/examples/ystrainer-dn80.json")).default;
       userPromptText = t.appDemoPromptYStrainer;
     } else if (key === "ystrainer-tube") {
-      demoRaw = ystrainerTubeExampleRaw;
+      demoRaw = (await import("../../spec/examples/ystrainer-tube.json")).default;
       userPromptText = t.appDemoPromptYStrainerTube;
     } else if (key === "elbow") {
       userPromptText = t.appDemoPromptElbow;
@@ -2461,37 +2462,39 @@ export function App() {
       )}
 
       {libraryOpen && (
-        <LibraryPanel
-          models={savedList}
-          groups={libraryGroups}
-          loading={libraryLoading}
-          currentModelId={currentModelId}
-          activeGroup={libraryGroup}
-          historyModelId={historyModelId}
-          revisions={revisions}
-          revisionsLoading={revisionsLoading}
-          historyKeep={historyKeep}
-          onClose={() => {
-            setLibraryOpen(false);
-            setHistoryModelId(null);
-          }}
-          onActiveGroup={setLibraryGroup}
-          onLoadModel={(id) => void handleLoadModel(id)}
-          onNewModel={handleNewModel}
-          onOpenHistory={(id) => void handleOpenHistory(id)}
-          onCloseHistory={() => setHistoryModelId(null)}
-          onRestoreRevision={(stamp) => void handleRestoreRevision(stamp)}
-          onRenameModel={(id, name) => void handleRenameModel(id, name)}
-          onDeleteModel={(id) => void handleDeleteModel(id)}
-          onCreateGroup={(name) => void handleCreateGroup(name)}
-          onRenameGroup={(from, to) => void handleRenameGroup(from, to)}
-          onDeleteGroup={(name) => void handleDeleteGroup(name)}
-          onMoveModel={(id, group) => void handleMoveModel(id, group)}
-          trashItems={trashItems}
-          onRestoreTrash={(id) => void handleRestoreTrash(id)}
-          onPurgeTrash={(id) => void handlePurgeTrash(id)}
-          onEmptyTrash={() => void handleEmptyTrash()}
-        />
+        <Suspense fallback={null}>
+          <LibraryPanel
+            models={savedList}
+            groups={libraryGroups}
+            loading={libraryLoading}
+            currentModelId={currentModelId}
+            activeGroup={libraryGroup}
+            historyModelId={historyModelId}
+            revisions={revisions}
+            revisionsLoading={revisionsLoading}
+            historyKeep={historyKeep}
+            onClose={() => {
+              setLibraryOpen(false);
+              setHistoryModelId(null);
+            }}
+            onActiveGroup={setLibraryGroup}
+            onLoadModel={(id) => void handleLoadModel(id)}
+            onNewModel={handleNewModel}
+            onOpenHistory={(id) => void handleOpenHistory(id)}
+            onCloseHistory={() => setHistoryModelId(null)}
+            onRestoreRevision={(stamp) => void handleRestoreRevision(stamp)}
+            onRenameModel={(id, name) => void handleRenameModel(id, name)}
+            onDeleteModel={(id) => void handleDeleteModel(id)}
+            onCreateGroup={(name) => void handleCreateGroup(name)}
+            onRenameGroup={(from, to) => void handleRenameGroup(from, to)}
+            onDeleteGroup={(name) => void handleDeleteGroup(name)}
+            onMoveModel={(id, group) => void handleMoveModel(id, group)}
+            trashItems={trashItems}
+            onRestoreTrash={(id) => void handleRestoreTrash(id)}
+            onPurgeTrash={(id) => void handlePurgeTrash(id)}
+            onEmptyTrash={() => void handleEmptyTrash()}
+          />
+        </Suspense>
       )}
 
       {thumbJob && (

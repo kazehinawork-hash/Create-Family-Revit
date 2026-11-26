@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import type { FamilySpec, Issue } from "@family/spec-core";
 import {
   isImageDocument,
@@ -6,7 +6,22 @@ import {
   type CmdcModel,
   type UploadedDocument,
 } from "../lib/api";
-import { ApiKeyPanel, type ApiKeyStatus } from "./ApiKeyPanel";
+import type { ApiKeyStatus } from "./ApiKeyPanel";
+
+const ApiKeyPanel = lazy(() =>
+  import("./ApiKeyPanel").then((m) => ({ default: m.ApiKeyPanel })),
+);
+
+function hasSavedApiKey(): boolean {
+  try {
+    const raw = localStorage.getItem("custom_api_config");
+    if (!raw) return false;
+    const parsed = JSON.parse(raw) as { apiKey?: unknown; baseUrl?: unknown };
+    return Boolean(parsed?.apiKey || parsed?.baseUrl);
+  } catch {
+    return false;
+  }
+}
 import { isApiReady } from "../lib/api-key";
 import { useI18n } from "../lib/i18n";
 import type { SpecDiff } from "../lib/spec-diff";
@@ -432,13 +447,17 @@ export function ChatPanel({
         </div>
       )}
 
-      <ApiKeyPanel
-        model={modelValue}
-        onModel={onModel}
-        open={apiPanelOpen}
-        onClose={() => setApiPanelOpen(false)}
-        onStatus={setApiStatus}
-      />
+      {(apiPanelOpen || modelValue === "custom:api" || hasSavedApiKey()) && (
+        <Suspense fallback={null}>
+          <ApiKeyPanel
+            model={modelValue}
+            onModel={onModel}
+            open={apiPanelOpen}
+            onClose={() => setApiPanelOpen(false)}
+            onStatus={setApiStatus}
+          />
+        </Suspense>
+      )}
 
       <div className="chat-scroll" ref={scrollRef} onScroll={handleScroll}>
         {entries.length === 0 && (

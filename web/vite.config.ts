@@ -29,8 +29,18 @@ export default defineConfig({
         // three.js is the bulk of the bundle and changes rarely: keep it in its own chunk
         // so app edits do not invalidate the whole download.
         manualChunks(id) {
-          if (id.includes("node_modules/three")) return "three";
-          if (id.includes("node_modules/react")) return "react";
+          if (id.includes("node_modules/three-bvh-csg") || id.includes("node_modules/three")) {
+            return "three";
+          }
+          if (
+            id.includes("node_modules/react") ||
+            id.includes("node_modules/react-dom") ||
+            id.includes("node_modules/scheduler")
+          ) {
+            return "react";
+          }
+          if (id.includes("packages/spec-core")) return "spec-core";
+          if (id.includes("node_modules/read-excel-file")) return "xlsx";
           return undefined;
         },
       },
