@@ -683,7 +683,7 @@ function systemPrompt(
 
   console.log(
     `[prompt] system=${result.length} chars blocks=${blocks.length}` +
-      `${dropped.length ? ` dropped=${dropped.length}` : ""} patch=${patch} edit=${edit}`,
+    `${dropped.length ? ` dropped=${dropped.length}` : ""} patch=${patch} edit=${edit}`,
   );
   return result;
 }
@@ -700,10 +700,10 @@ function summarise(spec, model) {
     materials: spec.materials?.length ?? 0,
     bounds: bounds
       ? {
-          x: Math.round(bounds.size.x),
-          y: Math.round(bounds.size.y),
-          z: Math.round(bounds.size.z),
-        }
+        x: Math.round(bounds.size.x),
+        y: Math.round(bounds.size.y),
+        z: Math.round(bounds.size.z),
+      }
       : null,
   };
 }
@@ -819,23 +819,23 @@ function splitBySections(text, threshold) {
   const steps = chunks.map((group, index) =>
     index === 0
       ? {
-          kind: "skeleton",
-          label: "khung hình học",
-          prompt:
-            `${preamble ? `${preamble}\n\n` : ""}${group.join("\n\n")}\n\n` +
-            "Build only the parameters and the geometry described above. Other parts, connectors " +
-            "and material colours are added in later steps — do not invent them now.\n" +
-            REPEAT_RULE,
-        }
+        kind: "skeleton",
+        label: "khung hình học",
+        prompt:
+          `${preamble ? `${preamble}\n\n` : ""}${group.join("\n\n")}\n\n` +
+          "Build only the parameters and the geometry described above. Other parts, connectors " +
+          "and material colours are added in later steps — do not invent them now.\n" +
+          REPEAT_RULE,
+      }
       : {
-          kind: "geometry",
-          label: `chi tiết ${index + 1}`,
-          prompt:
-            "Add the parts described below to the current spec. Keep every existing part, " +
-            "parameter and dimension; reuse existing parameters instead of duplicating them. " +
-            "Do not add connectors yet.\n" +
-            `${REPEAT_RULE}\n\n${group.join("\n\n")}`,
-        },
+        kind: "geometry",
+        label: `chi tiết ${index + 1}`,
+        prompt:
+          "Add the parts described below to the current spec. Keep every existing part, " +
+          "parameter and dimension; reuse existing parameters instead of duplicating them. " +
+          "Do not add connectors yet.\n" +
+          `${REPEAT_RULE}\n\n${group.join("\n\n")}`,
+      },
   );
 
   if (connectors.length > 0) {
@@ -950,7 +950,7 @@ function limitForTier(text, tier) {
 function logStep(label, model, promptChars, elapsedMs, outcome) {
   console.log(
     `[design] step=${label} model=${model || "default"} prompt=${promptChars}B ` +
-      `elapsed=${Math.round(elapsedMs / 1000)}s result=${outcome}`,
+    `elapsed=${Math.round(elapsedMs / 1000)}s result=${outcome}`,
   );
 }
 
@@ -1245,7 +1245,7 @@ async function designStable(options) {
     language,
   } = options;
   const prompt = promptWithDesignTargets(rawPrompt, targets, currentSpec);
-  const send = typeof emit === "function" ? emit : () => {};
+  const send = typeof emit === "function" ? emit : () => { };
   const generate = options.generate ?? generateJson;
   const level = LOD_LEVELS.includes(Number(lod)) ? Number(lod) : DEFAULT_LOD;
   const deadline = startedAt + config.agent.totalTimeoutMs;
@@ -1645,9 +1645,9 @@ async function designStable(options) {
         });
         console.log(
           `[model] ${result.model || model || "default"} in=${promptBytes} ` +
-            `out=${callStats[callStats.length - 1].outChars} ` +
-            `first-token=${firstTokenMs === null ? "-" : Math.round(firstTokenMs / 1000)}s ` +
-            `total=${Math.round(totalMs / 1000)}s effort=${config.agent.buildEffort || "default"} via=${via}`,
+          `out=${callStats[callStats.length - 1].outChars} ` +
+          `first-token=${firstTokenMs === null ? "-" : Math.round(firstTokenMs / 1000)}s ` +
+          `total=${Math.round(totalMs / 1000)}s effort=${config.agent.buildEffort || "default"} via=${via}`,
         );
       } catch (error) {
         // Every call is logged with the model, prompt size, duration and why it ended.
@@ -1742,7 +1742,7 @@ async function designStable(options) {
       usage = result.usage ?? usage;
       console.log(
         `[design] attempt ${attempts} answered in ${Math.round((Date.now() - startedAt) / 1000)}s` +
-          `${result.usage?.total_tokens ? `, ${result.usage.total_tokens} tokens` : ""}`,
+        `${result.usage?.total_tokens ? `, ${result.usage.total_tokens} tokens` : ""}`,
       );
       send({ type: "stage", stage: "checking", message: "Đang tự kiểm tra…" });
 
@@ -1944,8 +1944,8 @@ async function designStable(options) {
   // start: one giant answer makes a slow model time out and burns the whole turn.
   const plannedSections =
     !currentSpec &&
-    process.env.AGENT_SECTION_SPLIT !== "0" &&
-    String(prompt ?? "").length >= config.agent.sectionSplitMinChars
+      process.env.AGENT_SECTION_SPLIT !== "0" &&
+      String(prompt ?? "").length >= config.agent.sectionSplitMinChars
       ? splitNewBrief(prompt, 0)
       : null;
 
@@ -1988,7 +1988,7 @@ async function designStable(options) {
         kept.spec.lod = level;
         warnings.push(
           `Chưa áp dụng được thay đổi: ${error?.message ?? error}. ` +
-            "Giữ nguyên mô hình hiện tại — gửi lại, hoặc chọn model nhanh hơn.",
+          "Giữ nguyên mô hình hiện tại — gửi lại, hoặc chọn model nhanh hơn.",
         );
         console.log(`[design] edit failed, keeping the current spec: ${error?.message ?? error}`);
         outcome = { analysis: kept, attempts: 0, gaps: null, unchanged: true };
@@ -2035,9 +2035,9 @@ async function designStable(options) {
     promptChars,
     ...(completeness
       ? {
-          complete: completeness.ok,
-          missing: completeness.missing.map((item) => item.label ?? item.message),
-        }
+        complete: completeness.ok,
+        missing: completeness.missing.map((item) => item.label ?? item.message),
+      }
       : {}),
     ...(warnings.length > 0 ? { warnings } : {}),
     ...(outcome.unchanged ? { unchanged: true } : {}),
@@ -2170,13 +2170,13 @@ async function designExperimental(options) {
   // ---- cache keyed on the normalised request + trimmed spec + model/tier.
   const resultKey = canCache
     ? cacheKey({
-        ...cacheSignature({
-          normalizedRequest: `${route.normalized}|lod=${level}`,
-          spec: currentSpec,
-          model: runModel,
-          tier: route.tier,
-        }),
-      })
+      ...cacheSignature({
+        normalizedRequest: `${route.normalized}|lod=${level}`,
+        spec: currentSpec,
+        model: runModel,
+        tier: route.tier,
+      }),
+    })
     : null;
 
   if (resultKey && !fresh) {
@@ -2242,25 +2242,25 @@ async function designExperimental(options) {
       (evidencePlan?.checklist?.groups?.length ? evidencePlan.checklist : null) ??
       (attachments?.length
         ? {
-            family: null,
-            groups: [],
-            connectors: 0,
-            parameters: [],
-            requiresMaterials: false,
-            complex: false,
-            source: "evidence",
-          }
+          family: null,
+          groups: [],
+          connectors: 0,
+          parameters: [],
+          requiresMaterials: false,
+          complex: false,
+          source: "evidence",
+        }
         : await extractChecklist(prompt, {
-            // Production refines with one cheap call; an injected test agent must not be used
-            // for it or the call counts of the design turns would shift.
-            generate: options.generate ? undefined : generateJson,
-            model: runModel,
-          }));
+          // Production refines with one cheap call; an injected test agent must not be used
+          // for it or the call counts of the design turns would shift.
+          generate: options.generate ? undefined : generateJson,
+          model: runModel,
+        }));
 
     console.log(
       `[design] checklist source=${checklist.source} family=${checklist.family ?? "-"} ` +
-        `groups=${checklist.groups.map((group) => `${group.role}x${group.expected}`).join(",") || "-"} ` +
-        `connectors=${checklist.connectors} complex=${checklist.complex}`,
+      `groups=${checklist.groups.map((group) => `${group.role}x${group.expected}`).join(",") || "-"} ` +
+      `connectors=${checklist.connectors} complex=${checklist.complex}`,
     );
 
     const family = matchTemplateFamily(prompt);
@@ -2285,7 +2285,7 @@ async function designExperimental(options) {
       if (stronger && stronger !== runModel) {
         console.log(
           `[design] model=${runModel} -> ${stronger} reason=complex geometry/parts ` +
-            `(${checklist.groups.map((group) => `${group.role}x${group.expected}`).join(",") || "long brief"})`,
+          `(${checklist.groups.map((group) => `${group.role}x${group.expected}`).join(",") || "long brief"})`,
         );
         emit({
           type: "stage",
@@ -2354,7 +2354,7 @@ async function designExperimental(options) {
           };
           console.log(
             `[design] tier=2 template family=${family} calls=0 parts=${stats.parts} ` +
-              `connectors=${analysis.spec.connectors?.length ?? 0}`,
+            `connectors=${analysis.spec.connectors?.length ?? 0}`,
           );
           if (resultKey) writeCachedResult(resultKey, { analysis, stats });
           return { analysis, stats };
@@ -2498,10 +2498,10 @@ async function designExperimental(options) {
 
       const plausibility = result.analysis?.spec
         ? checkPlausibility(result.analysis.spec, {
-            evidence: evidencePlan?.evidence ?? null,
-            bounds,
-            analysis: result.analysis,
-          })
+          evidence: evidencePlan?.evidence ?? null,
+          bounds,
+          analysis: result.analysis,
+        })
         : [];
       const blocking = plausibility.filter((issue) => issue.severity === "error");
 
@@ -2631,10 +2631,10 @@ async function designExperimental(options) {
 
   const plausibility = result.analysis?.spec
     ? checkPlausibility(result.analysis.spec, {
-        evidence: evidencePlan?.evidence ?? null,
-        bounds,
-        analysis: result.analysis,
-      })
+      evidence: evidencePlan?.evidence ?? null,
+      bounds,
+      analysis: result.analysis,
+    })
     : [];
   const blocking = plausibility.filter((issue) => issue.severity === "error");
 
@@ -2683,8 +2683,8 @@ async function designExperimental(options) {
 
   console.log(
     `[design] tier=${tier} model=${stats.model} calls=${modelCalls} prompt=${promptChars}B ` +
-      `elapsed=${Math.round(stats.elapsedMs / 1000)}s ok=${result.analysis?.ok} ` +
-      `complete=${stats.complete}${stats.missing.length ? ` missing=${stats.missing.length}` : ""}`,
+    `elapsed=${Math.round(stats.elapsedMs / 1000)}s ok=${result.analysis?.ok} ` +
+    `complete=${stats.complete}${stats.missing.length ? ` missing=${stats.missing.length}` : ""}`,
   );
 
   if (resultKey && result.analysis?.ok && completeness.ok) {
@@ -3173,7 +3173,7 @@ async function designSingle({
 
     console.log(
       `[design] attempt ${attempt} model=${usedModel || "default"} answered in ${Math.round((Date.now() - startedAt) / 1000)}s` +
-        `${result.usage?.total_tokens ? `, ${result.usage.total_tokens} tokens` : ""}`,
+      `${result.usage?.total_tokens ? `, ${result.usage.total_tokens} tokens` : ""}`,
     );
 
     emit({ type: "stage", stage: "checking", message: "Đang tự kiểm tra…" });
