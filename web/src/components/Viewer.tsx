@@ -599,7 +599,19 @@ export function Viewer({
       if (statsEl && statsEl.parentElement === host) host.removeChild(statsEl);
       stateRef.current = null;
     };
-  }, [positionNotePins]);
+  }, [
+    positionNotePins,
+    section.pickingSectionRef,
+    section.sectionArrowRef,
+    section.sectionCapRef,
+    section.sectionDragDataRef,
+    section.sectionDragMovedRef,
+    section.sectionDragRef,
+    section.setPickingSection,
+    section.setSectionAxis,
+    section.setSectionCustom,
+    section.setSectionT,
+  ]);
 
   useEffect(() => {
     const state = stateRef.current;
