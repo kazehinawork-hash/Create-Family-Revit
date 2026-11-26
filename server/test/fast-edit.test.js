@@ -180,3 +180,108 @@ test("extended fast-edit: rename, colour, material assignment", () => {
   assert.equal(assign?.kind, "material-assign");
   assert.equal(assign?.partId, "web-a");
 });
+
+function trayCrossSpec() {
+  return {
+    schemaVersion: "1.0",
+    name: "Ngã 4 Máng Cáp",
+    category: "Cable Tray Fitting",
+    units: "mm",
+    parameters: [
+      { name: "Tray Width", type: "Length", value: 400 },
+      { name: "Tray Height", type: "Length", value: 100 },
+      { name: "Sheet Thickness", type: "Length", value: 1.5 },
+      { name: "Leg Length", type: "Length", value: 300 },
+      { name: "Flange Width", type: "Length", value: 15 },
+      { name: "Bend Angle", type: "Angle", value: 90 },
+      { name: "Half Width", type: "Length", formula: "[Tray Width] / 2" },
+    ],
+    materials: [],
+    parts: [{ id: "body", name: "Body", solid: { kind: "box" } }],
+    connectors: [],
+  };
+}
+
+test("Vietnamese dictionary resolves unique parameters with/without diacritics and units", () => {
+  const cases = [
+    ["Đổi chiều rộng thành 600 mm", "Tray Width", 600],
+    ["doi chieu rong thanh 600", "Tray Width", 600],
+    ["bề rộng = 50 cm", "Tray Width", 500],
+    ["sua rong 450", "Tray Width", 450],
+    ["đổi chiều cao thành 150 mm", "Tray Height", 150],
+    ["tang cao them 25mm", "Tray Height", 125],
+    ["giam chieu cao 20", "Tray Height", 80],
+    ["đổi độ dày thành 2 mm", "Sheet Thickness", 2],
+    ["sua day ve 2.5", "Sheet Thickness", 2.5],
+    ["chỉnh chiều dài nhánh thành 450 mm", "Leg Length", 450],
+    ["doi dai nhanh thanh 0.5 m", "Leg Length", 500],
+    ["dai nhanh = 350", "Leg Length", 350],
+    ["đổi mép gập thành 20 mm", "Flange Width", 20],
+    ["mep gap: 25", "Flange Width", 25],
+    ["giam goc 15", "Bend Angle", 75],
+  ];
+
+  for (const [prompt, expectedName, expectedValue] of cases) {
+    const edit = parseFastParameterEdit(prompt, trayCrossSpec());
+    assert.ok(edit, `expected fast-edit match for: ${prompt}`);
+    assert.equal(edit.name, expectedName, prompt);
+    assert.equal(edit.value, expectedValue, prompt);
+  }
+});
+
+test("Vietnamese dictionary resolves compound multi-edit and numbered suffixes", () => {
+  const multi = parseFastParameterEdit(
+    "doi chieu rong thanh 600 mm va chieu cao thanh 120, day = 2",
+    trayCrossSpec(),
+  );
+  const changes = multi?.changes ?? [];
+  assert.equal(changes.length, 3);
+  assert.deepEqual(
+    changes.map((c) => [c.name, c.value]),
+    [
+      ["Tray Width", 600],
+      ["Tray Height", 120],
+      ["Sheet Thickness", 2],
+    ],
+  );
+
+  // Numbered parameter disambiguation works in Vietnamese
+  const leg1 = parseFastParameterEdit("tăng chiều rộng 1 thêm 50 mm", teeSpec());
+  assert.deepEqual(leg1, { name: "Ladder Width 1", type: "Length", value: 450 });
+});
+
+test("Vietnamese dictionary escalates to model when parameter target is ambiguous", () => {
+  // teeSpec has both "Ladder Width 1" and "Ladder Width 2"
+  assert.equal(parseFastParameterEdit("Đổi chiều rộng thành 600 mm", teeSpec()), null);
+  assert.equal(parseFastParameterEdit("doi chieu rong thanh 600", teeSpec()), null);
+
+  // Spec with two equally primary heights -> ambiguous
+  const twoHeights = {
+    schemaVersion: "1.0",
+    name: "Two Heights",
+    category: "Duct Fitting",
+    units: "mm",
+    parameters: [
+      { name: "Duct Height", type: "Length", value: 300 },
+      { name: "Tray Height", type: "Length", value: 200 },
+    ],
+    materials: [],
+    parts: [{ id: "body", name: "Body", solid: { kind: "box" } }],
+  };
+  assert.equal(parseFastParameterEdit("doi chieu cao thanh 250 mm", twoHeights), null);
+
+  // Spec with only derived/formula width cannot be fast-edited
+  const formulaOnly = {
+    schemaVersion: "1.0",
+    name: "Formula Width",
+    category: "Cable Tray Fitting",
+    units: "mm",
+    parameters: [
+      { name: "Tray Length", type: "Length", value: 1000 },
+      { name: "Tray Width", type: "Length", formula: "[Tray Length] / 2" },
+    ],
+    materials: [],
+    parts: [{ id: "body", name: "Body", solid: { kind: "box" } }],
+  };
+  assert.equal(parseFastParameterEdit("đổi chiều rộng thành 400", formulaOnly), null);
+});
