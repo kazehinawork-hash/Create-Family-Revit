@@ -2,8 +2,13 @@ import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
+const webPort = Number(process.env.VITE_PORT) || 5173;
+const webHost = process.env.VITE_HOST || undefined;
+const apiTarget = process.env.VITE_API_TARGET || "http://127.0.0.1:8787";
+
 export default defineConfig({
   plugins: [react()],
+  ...(process.env.VITE_CACHE_DIR ? { cacheDir: process.env.VITE_CACHE_DIR } : {}),
   resolve: {
     alias: {
       "@family/spec-core": fileURLToPath(
@@ -12,11 +17,13 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5173,
+    host: webHost,
+    port: webPort,
+    strictPort: Boolean(process.env.VITE_PORT),
     fs: { allow: [".."] },
     proxy: {
       "/api": {
-        target: "http://127.0.0.1:8787",
+        target: apiTarget,
         changeOrigin: true,
       },
     },

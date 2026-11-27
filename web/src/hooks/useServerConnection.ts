@@ -21,7 +21,7 @@ export function useServerConnection(onHealth?: (result: Health) => void) {
   useEffect(() => {
     let alive = true;
     let timer: number | null = null;
-    let delay = 2000;
+    let delay = 500;
 
     const attempt = async () => {
       if (!alive) return;
@@ -29,7 +29,7 @@ export function useServerConnection(onHealth?: (result: Health) => void) {
       if (!alive) return;
 
       if (result) {
-        delay = 2000;
+        delay = 500;
         timer = window.setTimeout(attempt, 60000);
         return;
       }

@@ -30,7 +30,7 @@ import {
   type SavedModelRevision,
   type TrashItem,
 } from "../lib/api";
-import { ALL_GROUPS, UNGROUPED, readLibraryState } from "../lib/library";
+import { ALL_GROUPS, UNGROUPED, groupKey, readLibraryState } from "../lib/library";
 import { useI18n } from "../lib/i18n";
 import { useStudio } from "./StudioContext";
 import { newId, type ThumbJob, type ToastState } from "./types";
@@ -54,6 +54,7 @@ export function useLibrary({ viewerCaptureRef, setToast }: UseLibraryOptions) {
   const thumbCaptureRef = useRef<(() => string | null) | null>(null);
   const thumbStartedRef = useRef(false);
   const thumbAbortRef = useRef(false);
+  const refreshSeqRef = useRef(0);
   const [historyModelId, setHistoryModelId] = useState<string | null>(null);
   const [revisions, setRevisions] = useState<SavedModelRevision[]>([]);
   const [historyKeep, setHistoryKeep] = useState(20);
@@ -70,20 +71,25 @@ export function useLibrary({ viewerCaptureRef, setToast }: UseLibraryOptions) {
   const activeSaveGroup = () => (libraryGroup === ALL_GROUPS ? UNGROUPED : libraryGroup);
 
   const refreshLibrary = async () => {
+    const seq = ++refreshSeqRef.current;
     setLibraryLoading(true);
-    const [models, snapshot, trash] = await Promise.all([
-      fetchSavedModels(),
-      fetchLibraryGroups(),
-      fetchTrash(),
-    ]);
-    setSavedList(models);
-    setLibraryGroups(snapshot.groups);
-    setTrashItems(trash.items);
-    setLibraryGroup((current) => {
-      if (current === ALL_GROUPS || current === UNGROUPED) return current;
-      return snapshot.groups.some((group) => group.name === current) ? current : ALL_GROUPS;
-    });
-    setLibraryLoading(false);
+    try {
+      const [models, snapshot, trash] = await Promise.all([
+        fetchSavedModels(),
+        fetchLibraryGroups(),
+        fetchTrash(),
+      ]);
+      if (seq !== refreshSeqRef.current) return;
+      setSavedList(models);
+      setLibraryGroups(snapshot.groups);
+      setTrashItems(trash.items);
+      setLibraryGroup((current) => {
+        if (current === ALL_GROUPS || current === UNGROUPED) return current;
+        return snapshot.groups.some((group) => group.name === current) ? current : ALL_GROUPS;
+      });
+    } finally {
+      if (seq === refreshSeqRef.current) setLibraryLoading(false);
+    }
   };
 
   const handleOpenLibrary = async () => {
@@ -261,10 +267,20 @@ export function useLibrary({ viewerCaptureRef, setToast }: UseLibraryOptions) {
 
   const handleRenameGroup = async (from: string, to: string) => {
     try {
-      await renameLibraryGroup(from, to);
-      if (libraryGroup === from) setLibraryGroup(to);
+      thumbAbortRef.current = true;
+      const result = await renameLibraryGroup(from, to);
+      refreshSeqRef.current += 1;
+      const previousKey = groupKey(result.previous ?? from);
+      const nextName = result.name ?? to;
+      setLibraryGroups(result.groups ?? []);
+      setSavedList((current) =>
+        current.map((item) =>
+          groupKey(item.group ?? "") === previousKey ? { ...item, group: nextName } : item,
+        ),
+      );
+      if (groupKey(libraryGroup) === previousKey) setLibraryGroup(nextName);
+      setToast({ text: t.appGroupRenamed(nextName), tone: "ok" });
       await refreshLibrary();
-      setToast({ text: t.appGroupRenamed(to), tone: "ok" });
     } catch (error) {
       setToast({
         text: t.appGroupRenameFailed(error instanceof Error ? error.message : String(error)),
@@ -275,10 +291,19 @@ export function useLibrary({ viewerCaptureRef, setToast }: UseLibraryOptions) {
 
   const handleDeleteGroup = async (name: string) => {
     try {
-      await deleteLibraryGroup(name);
-      if (libraryGroup === name) setLibraryGroup(ALL_GROUPS);
-      await refreshLibrary();
+      thumbAbortRef.current = true;
+      const result = await deleteLibraryGroup(name);
+      refreshSeqRef.current += 1;
+      const targetKey = groupKey(name);
+      setLibraryGroups(result.groups ?? []);
+      setSavedList((current) =>
+        current.map((item) =>
+          groupKey(item.group ?? "") === targetKey ? { ...item, group: "" } : item,
+        ),
+      );
+      if (groupKey(libraryGroup) === targetKey) setLibraryGroup(ALL_GROUPS);
       setToast({ text: t.appGroupDeleted(name), sub: t.appGroupDeletedSub, tone: "ok" });
+      await refreshLibrary();
     } catch (error) {
       setToast({
         text: t.appGroupDeleteFailed(error instanceof Error ? error.message : String(error)),

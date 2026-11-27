@@ -92,7 +92,6 @@ test("pins a note, sends it to the agent and marks it resolved", async ({ page }
   await page.getByTestId("chat-send").click();
   await expect(page.locator(".viewer canvas").first()).toBeVisible();
   await expect(page.locator('[data-testid="chat-changes"]')).toHaveCount(1);
-  await page.waitForTimeout(900);
 
   const canvas = page.locator(".viewer canvas").first();
   const box = await canvas.boundingBox();
@@ -105,17 +104,20 @@ test("pins a note, sends it to the agent and marks it resolved", async ({ page }
     [box!.width * 0.62, box!.height / 2],
     [box!.width * 0.38, box!.height / 2],
   ];
-  let menuOpen = false;
-  for (const [x, y] of points) {
-    await canvas.click({ button: "right", position: { x, y } });
-    menuOpen = await page
-      .locator(".viewer-context-menu")
-      .isVisible()
-      .catch(() => false);
-    if (menuOpen) break;
-    await page.waitForTimeout(100);
-  }
-  expect(menuOpen).toBeTruthy();
+  await expect(async () => {
+    for (const [x, y] of points) {
+      await canvas.click({ button: "right", position: { x, y } });
+      if (
+        await page
+          .locator(".viewer-context-menu")
+          .isVisible()
+          .catch(() => false)
+      ) {
+        return;
+      }
+    }
+    throw new Error("Context menu did not open on plate");
+  }).toPass({ timeout: 15_000, intervals: [200, 350, 500] });
 
   await page.getByRole("button", { name: "Ghi chú tại đây" }).click();
   const noteInput = page.locator(".viewer-note-composer textarea");

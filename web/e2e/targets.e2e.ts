@@ -86,7 +86,6 @@ test("right-click sends a part target and the agent edits that part", async ({ p
   await page.getByTestId("chat-send").click();
   await expect(page.locator('[data-testid="chat-changes"]')).toHaveCount(1);
   await expect(page.locator(".viewer canvas").first()).toBeVisible();
-  await page.waitForTimeout(900);
 
   const canvas = page.locator(".viewer canvas").first();
   const box = await canvas.boundingBox();
@@ -100,17 +99,20 @@ test("right-click sends a part target and the agent edits that part", async ({ p
     [box!.width * 0.62, box!.height / 2],
     [box!.width * 0.38, box!.height / 2],
   ];
-  for (const [x, y] of points) {
-    await canvas.click({ button: "right", position: { x, y } });
-    if (
-      await page
-        .locator(".viewer-context-menu")
-        .isVisible()
-        .catch(() => false)
-    )
-      break;
-    await page.waitForTimeout(100);
-  }
+  await expect(async () => {
+    for (const [x, y] of points) {
+      await canvas.click({ button: "right", position: { x, y } });
+      if (
+        await page
+          .locator(".viewer-context-menu")
+          .isVisible()
+          .catch(() => false)
+      ) {
+        return;
+      }
+    }
+    throw new Error("Context menu did not open on rail");
+  }).toPass({ timeout: 15_000, intervals: [200, 350, 500] });
 
   await expect(page.getByRole("button", { name: "Gửi vào chat" })).toBeVisible();
   await page.getByRole("button", { name: "Gửi vào chat" }).click();
