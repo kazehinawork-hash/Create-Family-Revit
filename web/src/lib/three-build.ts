@@ -86,6 +86,46 @@ function pushTriangle(indices: number[], handed: number, a: number, b: number, c
 }
 
 /**
+ * Reverses triangle winding in place so a reflection matrix (det < 0, e.g. the
+ * `xz` plane axis swap) keeps outward-facing triangles and positive volume.
+ */
+function flipTriangleWinding(geometry: THREE.BufferGeometry): void {
+  const index = geometry.getIndex();
+  if (index) {
+    for (let i = 0; i + 2 < index.count; i += 3) {
+      const b = index.getX(i + 1);
+      index.setX(i + 1, index.getX(i + 2));
+      index.setX(i + 2, b);
+    }
+    index.needsUpdate = true;
+    return;
+  }
+
+  const position = geometry.getAttribute("position");
+  if (!position) return;
+
+  for (const attr of Object.values(geometry.attributes)) {
+    const size = attr.itemSize;
+    const array = attr.array as Float32Array;
+    for (let i = 0; i + 2 < position.count; i += 3) {
+      const i1 = (i + 1) * size;
+      const i2 = (i + 2) * size;
+      for (let k = 0; k < size; k += 1) {
+        const tmp = array[i1 + k];
+        array[i1 + k] = array[i2 + k];
+        array[i2 + k] = tmp;
+      }
+    }
+    attr.needsUpdate = true;
+  }
+}
+
+function applyBasisMatrix(geometry: THREE.BufferGeometry, basis: THREE.Matrix4): void {
+  geometry.applyMatrix4(basis);
+  if (basis.determinant() < 0) flipTriangleWinding(geometry);
+}
+
+/**
  * Three's TorusGeometry always lies in the XY plane around Z. A bend needs the ring in
  * the plane named by the spec (xy / xz / yz), a start angle, and flat end caps so it
  * matches the solid Revolution built in Revit.
@@ -271,6 +311,121 @@ function loftGeometry(solid: Extract<ResolvedSolid, { kind: "loft" }>): THREE.Bu
   return geometry;
 }
 
+function signedArea2D(points: THREE.Vector2[]): number {
+  let area = 0;
+  for (let i = 0; i < points.length; i += 1) {
+    const a = points[i];
+    const b = points[(i + 1) % points.length];
+    area += a.x * b.y - b.x * a.y;
+  }
+  return area / 2;
+}
+
+/**
+ * Normalizes profile winding in (r, h), builds a LatheGeometry around Y, and
+ * closes partial revolutions (< 360°) with outward-facing flat end caps so every
+ * revolve has positive signed volume and outward normals regardless of point order.
+ */
+function revolveGeometry(solid: Extract<ResolvedSolid, { kind: "revolve" }>): THREE.BufferGeometry {
+  let points = solid.points.map(([r, h]) => new THREE.Vector2(Math.max(0, Math.abs(r)), h));
+  if (points.length >= 3 && signedArea2D(points) < 0) {
+    points = [...points].reverse();
+  }
+
+  const segments = Math.min(96, Math.max(12, solid.segments || 32));
+  const rawAngle = solid.angle === 0 ? 360 : solid.angle;
+  const clampedAngle = Math.max(-360, Math.min(360, rawAngle));
+  const phiStart = ((solid.startAngle + (clampedAngle < 0 ? clampedAngle : 0)) * Math.PI) / 180;
+  const phiLength = (Math.abs(clampedAngle) * Math.PI) / 180;
+
+  const geometry = new THREE.LatheGeometry(points, segments, phiStart, phiLength);
+  geometry.computeVertexNormals();
+
+  if (phiLength < Math.PI * 2 - 1e-6) {
+    const contour: THREE.Vector2[] = [];
+    for (const point of points) {
+      const prev = contour[contour.length - 1];
+      if (!prev || prev.distanceToSquared(point) > 1e-8) contour.push(point);
+    }
+    if (contour.length > 1 && contour[contour.length - 1].distanceToSquared(contour[0]) <= 1e-8) {
+      contour.pop();
+    }
+
+    if (contour.length >= 3) {
+      const triangles = THREE.ShapeUtils.triangulateShape(contour, []);
+      if (triangles.length > 0) {
+        const posAttr = geometry.getAttribute("position");
+        const normAttr = geometry.getAttribute("normal");
+        const uvAttr = geometry.getAttribute("uv");
+        const idxAttr = geometry.getIndex();
+
+        const positions = Array.from(posAttr.array as Float32Array);
+        const normals = Array.from(normAttr.array as Float32Array);
+        const uvs = Array.from(uvAttr.array as Float32Array);
+        const indices = idxAttr
+          ? Array.from(idxAttr.array as Uint16Array | Uint32Array)
+          : Array.from({ length: posAttr.count }, (_, i) => i);
+
+        const caps = [
+          { angle: phiStart, sign: -1 },
+          { angle: phiStart + phiLength, sign: 1 },
+        ];
+        const vA = new THREE.Vector3();
+        const vB = new THREE.Vector3();
+        const vC = new THREE.Vector3();
+        const e1 = new THREE.Vector3();
+        const e2 = new THREE.Vector3();
+        const faceNormal = new THREE.Vector3();
+
+        for (const cap of caps) {
+          const sin = Math.sin(cap.angle);
+          const cos = Math.cos(cap.angle);
+          const outward = new THREE.Vector3(cap.sign * cos, 0, -cap.sign * sin);
+          const baseIndex = positions.length / 3;
+
+          for (const pt of contour) {
+            positions.push(pt.x * sin, pt.y, pt.x * cos);
+            normals.push(outward.x, outward.y, outward.z);
+            uvs.push(0, 0);
+          }
+
+          for (const [ia, ib, ic] of triangles) {
+            const pA = contour[ia];
+            const pB = contour[ib];
+            const pC = contour[ic];
+            vA.set(pA.x * sin, pA.y, pA.x * cos);
+            vB.set(pB.x * sin, pB.y, pB.x * cos);
+            vC.set(pC.x * sin, pC.y, pC.x * cos);
+            e1.subVectors(vB, vA);
+            e2.subVectors(vC, vA);
+            faceNormal.crossVectors(e1, e2);
+            if (faceNormal.dot(outward) >= 0) {
+              indices.push(baseIndex + ia, baseIndex + ib, baseIndex + ic);
+            } else {
+              indices.push(baseIndex + ia, baseIndex + ic, baseIndex + ib);
+            }
+          }
+        }
+
+        geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+        geometry.setAttribute("normal", new THREE.Float32BufferAttribute(normals, 3));
+        geometry.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+        geometry.setIndex(indices);
+      }
+    }
+  }
+
+  // LatheGeometry rotates around Y axis (x = radius, y = height).
+  // Map Y axis to solid.axis:
+  if (solid.axis === "z") {
+    geometry.rotateX(Math.PI / 2);
+  } else if (solid.axis === "x") {
+    geometry.rotateZ(-Math.PI / 2);
+  }
+  geometry.translate(solid.origin.x, solid.origin.y, solid.origin.z);
+  return geometry;
+}
+
 export function solidGeometry(
   solid: ResolvedSolid,
   quality: PreviewQuality = "high",
@@ -373,22 +528,7 @@ export function solidGeometry(
   }
 
   if (solid.kind === "revolve") {
-    const points = solid.points.map(([r, h]) => new THREE.Vector2(Math.max(0, Math.abs(r)), h));
-    const segments = Math.min(96, Math.max(12, solid.segments || 32));
-    const phiStart = (solid.startAngle * Math.PI) / 180;
-    const phiLength = ((solid.angle || 360) * Math.PI) / 180;
-    const geometry = new THREE.LatheGeometry(points, segments, phiStart, phiLength);
-    geometry.computeVertexNormals();
-
-    // LatheGeometry rotates around Y axis (x = radius, y = height).
-    // Map Y axis to solid.axis:
-    if (solid.axis === "z") {
-      geometry.rotateX(Math.PI / 2);
-    } else if (solid.axis === "x") {
-      geometry.rotateZ(-Math.PI / 2);
-    }
-    geometry.translate(solid.origin.x, solid.origin.y, solid.origin.z);
-    return geometry;
+    return revolveGeometry(solid);
   }
 
   if (solid.kind === "tube") {
@@ -453,14 +593,14 @@ export function solidGeometry(
   } else if (solid.plane === "xz") {
     // Revit basis for xz: u = BasisX (a -> X), v = BasisZ (b -> Z), axisUnit = BasisY (from/to -> Y)
     // ExtrudeGeometry generates 2D shape in (X, Y) with extrusion along +Z (0 to depth).
-    // We map 2D (X, Y) -> (X, Z) and depth (Z) -> Y.
+    // We map 2D (X, Y) -> (X, Z) and depth (Z) -> Y (det = -1, so flip winding back outward).
     const basis = new THREE.Matrix4().set(
       1, 0, 0, 0,
       0, 0, 1, 0,
       0, 1, 0, 0,
       0, 0, 0, 1
     );
-    geometry.applyMatrix4(basis);
+    applyBasisMatrix(geometry, basis);
     geometry.translate(0, low, 0);
   } else {
     // Revit basis for yz: u = BasisY (a -> Y), v = BasisZ (b -> Z), axisUnit = BasisX (from/to -> X)
@@ -471,7 +611,7 @@ export function solidGeometry(
       0, 1, 0, 0,
       0, 0, 0, 1
     );
-    geometry.applyMatrix4(basis);
+    applyBasisMatrix(geometry, basis);
     geometry.translate(low, 0, 0);
   }
 
@@ -493,14 +633,22 @@ export interface PartGeometry {
  * edges are keyed by an integer pair. The previous string-keyed version allocated a
  * map entry and two vectors per edge, which dominated the main thread on big cuts.
  */
-export function csgEdgeGeometry(geometry: THREE.BufferGeometry, thresholdDeg = 24): THREE.BufferGeometry {
-  const position = geometry.getAttribute("position");
-  if (!position) return new THREE.BufferGeometry();
+interface WeldedEdgeGraph {
+  welded: number[];
+  indices: Uint32Array;
+  triangleCount: number;
+  vertexCount: number;
+  faceNormals: Float32Array;
+  edges: Map<number, { faceA: number; faceB: number }>;
+}
 
-  // Guard: a pathological cut is not worth freezing the viewer for an outline.
+function buildWeldedEdgeGraph(geometry: THREE.BufferGeometry): WeldedEdgeGraph | null {
+  const position = geometry.getAttribute("position");
+  if (!position) return null;
+
   const sourceIndex = geometry.getIndex();
   const triangleCount = Math.floor((sourceIndex ? sourceIndex.count : position.count) / 3);
-  if (triangleCount > 400_000) return new THREE.BufferGeometry();
+  if (triangleCount === 0 || triangleCount > 400_000) return null;
 
   const sourceCount = position.count;
   const lookup = new Map<string, number>();
@@ -527,26 +675,16 @@ export function csgEdgeGeometry(geometry: THREE.BufferGeometry, thresholdDeg = 2
   }
 
   const faceNormals = new Float32Array(triangleCount * 3);
-  const ax = { x: 0, y: 0, z: 0 };
-  const bx = { x: 0, y: 0, z: 0 };
-  const cx = { x: 0, y: 0, z: 0 };
-
-  const point = (index: number, target: { x: number; y: number; z: number }) => {
-    target.x = welded[index * 3];
-    target.y = welded[index * 3 + 1];
-    target.z = welded[index * 3 + 2];
-  };
-
   for (let face = 0; face < triangleCount; face += 1) {
-    point(indices[face * 3], ax);
-    point(indices[face * 3 + 1], bx);
-    point(indices[face * 3 + 2], cx);
-    const ux = bx.x - ax.x;
-    const uy = bx.y - ax.y;
-    const uz = bx.z - ax.z;
-    const vx = cx.x - ax.x;
-    const vy = cx.y - ax.y;
-    const vz = cx.z - ax.z;
+    const ia = indices[face * 3] * 3;
+    const ib = indices[face * 3 + 1] * 3;
+    const ic = indices[face * 3 + 2] * 3;
+    const ux = welded[ib] - welded[ia];
+    const uy = welded[ib + 1] - welded[ia + 1];
+    const uz = welded[ib + 2] - welded[ia + 2];
+    const vx = welded[ic] - welded[ia];
+    const vy = welded[ic + 1] - welded[ia + 1];
+    const vz = welded[ic + 2] - welded[ia + 2];
     let nx = uy * vz - uz * vy;
     let ny = uz * vx - ux * vz;
     let nz = ux * vy - uy * vx;
@@ -586,10 +724,139 @@ export function csgEdgeGeometry(geometry: THREE.BufferGeometry, thresholdDeg = 2
     register(c, a, face);
   }
 
-  const threshold = Math.cos((thresholdDeg * Math.PI) / 180);
-  const points: number[] = [];
+  return { welded, indices, triangleCount, vertexCount, faceNormals, edges };
+}
 
-  for (const [key, edge] of edges) {
+export interface PartEdgeGeometries {
+  /** Hard feature creases (>= creaseDeg), used in Shaded+Edges, Hidden Line, Wireframe. */
+  edges: THREE.BufferGeometry;
+  /** Tangent transition seams (flat wall meeting curved fillet/bend) for Wireframe & Hidden Line. */
+  tangentEdges: THREE.BufferGeometry;
+  /** Smooth curved interior edges with adjacent face normals for view-dependent GPU silhouettes. */
+  smoothEdges: THREE.BufferGeometry;
+}
+
+function emptySmoothGeometry(): THREE.BufferGeometry {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute([], 3));
+  g.setAttribute("aEdgeMid", new THREE.Float32BufferAttribute([], 3));
+  g.setAttribute("aNormalA", new THREE.Float32BufferAttribute([], 3));
+  g.setAttribute("aNormalB", new THREE.Float32BufferAttribute([], 3));
+  return g;
+}
+
+function canonicalEdgeLine(
+  ax0: number,
+  ay0: number,
+  az0: number,
+  bx0: number,
+  by0: number,
+  bz0: number,
+) {
+  let dx = bx0 - ax0;
+  let dy = by0 - ay0;
+  let dz = bz0 - az0;
+  const len = Math.hypot(dx, dy, dz);
+  if (len < 1e-4) return null;
+  dx /= len;
+  dy /= len;
+  dz /= len;
+  // Canonical direction sign using dominant axis so near-zero components cannot flip sign.
+  if (Math.abs(dx) >= Math.abs(dy) && Math.abs(dx) >= Math.abs(dz)) {
+    if (dx < 0) { dx = -dx; dy = -dy; dz = -dz; }
+  } else if (Math.abs(dy) >= Math.abs(dz)) {
+    if (dy < 0) { dx = -dx; dy = -dy; dz = -dz; }
+  } else if (dz < 0) {
+    dx = -dx; dy = -dy; dz = -dz;
+  }
+  const tA = ax0 * dx + ay0 * dy + az0 * dz;
+  const tB = bx0 * dx + by0 * dy + bz0 * dz;
+  return {
+    dirX: dx,
+    dirY: dy,
+    dirZ: dz,
+    perpX: ax0 - dx * tA,
+    perpY: ay0 - dy * tA,
+    perpZ: az0 - dz * tA,
+    tMin: Math.min(tA, tB),
+    tMax: Math.max(tA, tB),
+  };
+}
+
+function pushMergedIntervals(
+  intervals: [number, number][],
+  dirX: number,
+  dirY: number,
+  dirZ: number,
+  perpX: number,
+  perpY: number,
+  perpZ: number,
+  points: number[],
+) {
+  if (intervals.length === 0) return;
+  intervals.sort((x, y) => x[0] - y[0]);
+  let curStart = intervals[0][0];
+  let curEnd = intervals[0][1];
+  for (let k = 1; k < intervals.length; k += 1) {
+    const [s, e] = intervals[k];
+    if (s <= curEnd + 1e-3) {
+      if (e > curEnd) curEnd = e;
+    } else {
+      points.push(
+        perpX + dirX * curStart, perpY + dirY * curStart, perpZ + dirZ * curStart,
+        perpX + dirX * curEnd, perpY + dirY * curEnd, perpZ + dirZ * curEnd,
+      );
+      curStart = s;
+      curEnd = e;
+    }
+  }
+  points.push(
+    perpX + dirX * curStart, perpY + dirY * curStart, perpZ + dirZ * curStart,
+    perpX + dirX * curEnd, perpY + dirY * curEnd, perpZ + dirZ * curEnd,
+  );
+}
+
+/**
+ * Extracts crisp CAD edge sets from a mesh:
+ * - `edges`: hard creases (>= creaseDeg), recovering CSG T-junction splits cleanly.
+ * - `tangentEdges`: flat-to-curved tangent seams (e.g. box flat wall to cornerRadius fillet).
+ * - `smoothEdges`: curved interior edges tagged with both face normals for GPU horizon silhouettes.
+ */
+export function extractPartEdges(
+  geometry: THREE.BufferGeometry,
+  creaseDeg = 24,
+  tangentMinDeg = 1.5,
+): PartEdgeGeometries {
+  const graph = buildWeldedEdgeGraph(geometry);
+  if (!graph) {
+    return {
+      edges: new THREE.BufferGeometry(),
+      tangentEdges: new THREE.BufferGeometry(),
+      smoothEdges: emptySmoothGeometry(),
+    };
+  }
+
+  const { welded, indices, triangleCount, vertexCount, faceNormals, edges } = graph;
+  const creaseThreshold = Math.cos((creaseDeg * Math.PI) / 180);
+  const planarThreshold = Math.cos((tangentMinDeg * Math.PI) / 180);
+
+  // Group coplanar faces (< tangentMinDeg) so tangent seams distinguish wide flat walls from curved facets.
+  const parent = new Int32Array(triangleCount);
+  for (let f = 0; f < triangleCount; f += 1) parent[f] = f;
+  const find = (x: number): number => {
+    while (parent[x] !== x) {
+      parent[x] = parent[parent[x]];
+      x = parent[x];
+    }
+    return x;
+  };
+  const union = (a: number, b: number) => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent[rb] = ra;
+  };
+
+  for (const edge of edges.values()) {
     if (edge.faceB < 0) continue;
     const a = edge.faceA * 3;
     const b = edge.faceB * 3;
@@ -597,19 +864,249 @@ export function csgEdgeGeometry(geometry: THREE.BufferGeometry, thresholdDeg = 2
       faceNormals[a] * faceNormals[b] +
       faceNormals[a + 1] * faceNormals[b + 1] +
       faceNormals[a + 2] * faceNormals[b + 2];
-    if (dot >= threshold) continue;
+    if (dot >= planarThreshold) union(edge.faceA, edge.faceB);
+  }
 
+  const regionVerts = new Map<number, Set<number>>();
+  const ensureRegionVerts = (r: number) => {
+    let set = regionVerts.get(r);
+    if (!set) {
+      set = new Set<number>();
+      regionVerts.set(r, set);
+    }
+    return set;
+  };
+  for (let f = 0; f < triangleCount; f += 1) {
+    const r = find(f);
+    const set = ensureRegionVerts(r);
+    set.add(indices[f * 3]);
+    set.add(indices[f * 3 + 1]);
+    set.add(indices[f * 3 + 2]);
+  }
+
+  const regionPerpWidth = (
+    regionId: number,
+    face: number,
+    dirX: number,
+    dirY: number,
+    dirZ: number,
+    px: number,
+    py: number,
+    pz: number,
+  ): number => {
+    const fn = face * 3;
+    const nx = faceNormals[fn];
+    const ny = faceNormals[fn + 1];
+    const nz = faceNormals[fn + 2];
+    let tx = ny * dirZ - nz * dirY;
+    let ty = nz * dirX - nx * dirZ;
+    let tz = nx * dirY - ny * dirX;
+    const tLen = Math.hypot(tx, ty, tz);
+    if (tLen < 1e-6) return 0;
+    tx /= tLen;
+    ty /= tLen;
+    tz /= tLen;
+    const verts = regionVerts.get(regionId);
+    if (!verts) return 0;
+    let maxSpan = 0;
+    for (const v of verts) {
+      const vb = v * 3;
+      const dist = Math.abs((welded[vb] - px) * tx + (welded[vb + 1] - py) * ty + (welded[vb + 2] - pz) * tz);
+      if (dist > maxSpan) maxSpan = dist;
+    }
+    return maxSpan;
+  };
+
+  const isTangentBoundary = (
+    faceA: number,
+    faceB: number,
+    dirX: number,
+    dirY: number,
+    dirZ: number,
+    px: number,
+    py: number,
+    pz: number,
+  ): boolean => {
+    const wA = regionPerpWidth(find(faceA), faceA, dirX, dirY, dirZ, px, py, pz);
+    const wB = regionPerpWidth(find(faceB), faceB, dirX, dirY, dirZ, px, py, pz);
+    const wSmall = Math.min(wA, wB);
+    const wLarge = Math.max(wA, wB);
+    return wSmall >= 0.02 && wLarge >= 1.0 && wLarge >= 2.2 * wSmall;
+  };
+
+  const creasePoints: number[] = [];
+  const tangentPoints: number[] = [];
+  const smoothPos: number[] = [];
+  const smoothMid: number[] = [];
+  const smoothNormA: number[] = [];
+  const smoothNormB: number[] = [];
+
+  const pushSmoothSegment = (
+    ax: number,
+    ay: number,
+    az: number,
+    bx: number,
+    by: number,
+    bz: number,
+    faceA: number,
+    faceB: number,
+  ) => {
+    const mx = (ax + bx) * 0.5;
+    const my = (ay + by) * 0.5;
+    const mz = (az + bz) * 0.5;
+    const na = faceA * 3;
+    const nb = faceB * 3;
+    smoothPos.push(ax, ay, az, bx, by, bz);
+    smoothMid.push(mx, my, mz, mx, my, mz);
+    smoothNormA.push(
+      faceNormals[na], faceNormals[na + 1], faceNormals[na + 2],
+      faceNormals[na], faceNormals[na + 1], faceNormals[na + 2],
+    );
+    smoothNormB.push(
+      faceNormals[nb], faceNormals[nb + 1], faceNormals[nb + 2],
+      faceNormals[nb], faceNormals[nb + 1], faceNormals[nb + 2],
+    );
+  };
+
+  interface UnmatchedEdge {
+    dirX: number;
+    dirY: number;
+    dirZ: number;
+    perpX: number;
+    perpY: number;
+    perpZ: number;
+    tMin: number;
+    tMax: number;
+    face: number;
+  }
+  const unmatchedBuckets = new Map<string, UnmatchedEdge[]>();
+
+  for (const [key, edge] of edges) {
     const lo = Math.floor(key / vertexCount);
     const hi = key - lo * vertexCount;
-    points.push(
-      welded[lo * 3], welded[lo * 3 + 1], welded[lo * 3 + 2],
-      welded[hi * 3], welded[hi * 3 + 1], welded[hi * 3 + 2],
+    const ax0 = welded[lo * 3];
+    const ay0 = welded[lo * 3 + 1];
+    const az0 = welded[lo * 3 + 2];
+    const bx0 = welded[hi * 3];
+    const by0 = welded[hi * 3 + 1];
+    const bz0 = welded[hi * 3 + 2];
+
+    if (edge.faceB < 0) {
+      if (edge.faceB !== -1) continue;
+      const line = canonicalEdgeLine(ax0, ay0, az0, bx0, by0, bz0);
+      if (!line) continue;
+      const bucketKey =
+        `${Math.round(line.dirX * 500) || 0}|${Math.round(line.dirY * 500) || 0}|${Math.round(line.dirZ * 500) || 0}|` +
+        `${Math.round(line.perpX * 50) || 0}|${Math.round(line.perpY * 50) || 0}|${Math.round(line.perpZ * 50) || 0}`;
+      let list = unmatchedBuckets.get(bucketKey);
+      if (!list) {
+        list = [];
+        unmatchedBuckets.set(bucketKey, list);
+      }
+      list.push({ ...line, face: edge.faceA });
+      continue;
+    }
+
+    const a = edge.faceA * 3;
+    const b = edge.faceB * 3;
+    const dot =
+      faceNormals[a] * faceNormals[b] +
+      faceNormals[a + 1] * faceNormals[b + 1] +
+      faceNormals[a + 2] * faceNormals[b + 2];
+
+    if (dot < creaseThreshold) {
+      creasePoints.push(ax0, ay0, az0, bx0, by0, bz0);
+    } else if (dot < planarThreshold) {
+      let dx = bx0 - ax0;
+      let dy = by0 - ay0;
+      let dz = bz0 - az0;
+      const len = Math.hypot(dx, dy, dz);
+      if (len < 1e-4) continue;
+      dx /= len;
+      dy /= len;
+      dz /= len;
+      if (isTangentBoundary(edge.faceA, edge.faceB, dx, dy, dz, ax0, ay0, az0)) {
+        tangentPoints.push(ax0, ay0, az0, bx0, by0, bz0);
+      } else {
+        pushSmoothSegment(ax0, ay0, az0, bx0, by0, bz0, edge.faceA, edge.faceB);
+      }
+    }
+  }
+
+  // Recover creases and tangent/smooth boundaries where CSG T-junctions split one side only.
+  for (const list of unmatchedBuckets.values()) {
+    if (list.length < 2) continue;
+    const creaseIntervals: [number, number][] = [];
+    const tangentIntervals: [number, number][] = [];
+    const ref = list[0];
+
+    for (let i = 0; i < list.length; i += 1) {
+      const a = list[i];
+      const na = a.face * 3;
+      for (let j = i + 1; j < list.length; j += 1) {
+        const b = list[j];
+        const u0 = Math.max(a.tMin, b.tMin);
+        const u1 = Math.min(a.tMax, b.tMax);
+        if (u1 - u0 <= 1e-3) continue;
+        const perpDistSq =
+          (a.perpX - b.perpX) ** 2 + (a.perpY - b.perpY) ** 2 + (a.perpZ - b.perpZ) ** 2;
+        if (perpDistSq > 0.0025) continue;
+        const nb = b.face * 3;
+        const dot =
+          faceNormals[na] * faceNormals[nb] +
+          faceNormals[na + 1] * faceNormals[nb + 1] +
+          faceNormals[na + 2] * faceNormals[nb + 2];
+        if (dot >= planarThreshold) continue;
+        if (dot < creaseThreshold) {
+          creaseIntervals.push([u0, u1]);
+        } else {
+          const px = ref.perpX + ref.dirX * u0;
+          const py = ref.perpY + ref.dirY * u0;
+          const pz = ref.perpZ + ref.dirZ * u0;
+          if (isTangentBoundary(a.face, b.face, ref.dirX, ref.dirY, ref.dirZ, px, py, pz)) {
+            tangentIntervals.push([u0, u1]);
+          } else {
+            pushSmoothSegment(
+              ref.perpX + ref.dirX * u0, ref.perpY + ref.dirY * u0, ref.perpZ + ref.dirZ * u0,
+              ref.perpX + ref.dirX * u1, ref.perpY + ref.dirY * u1, ref.perpZ + ref.dirZ * u1,
+              a.face,
+              b.face,
+            );
+          }
+        }
+      }
+    }
+
+    pushMergedIntervals(
+      creaseIntervals, ref.dirX, ref.dirY, ref.dirZ, ref.perpX, ref.perpY, ref.perpZ, creasePoints,
+    );
+    pushMergedIntervals(
+      tangentIntervals, ref.dirX, ref.dirY, ref.dirZ, ref.perpX, ref.perpY, ref.perpZ, tangentPoints,
     );
   }
 
-  const outline = new THREE.BufferGeometry();
-  outline.setAttribute("position", new THREE.Float32BufferAttribute(points, 3));
-  return outline;
+  const edgeGeom = new THREE.BufferGeometry();
+  edgeGeom.setAttribute("position", new THREE.Float32BufferAttribute(creasePoints, 3));
+
+  const tangentGeom = new THREE.BufferGeometry();
+  tangentGeom.setAttribute("position", new THREE.Float32BufferAttribute(tangentPoints, 3));
+
+  const smoothGeom = new THREE.BufferGeometry();
+  smoothGeom.setAttribute("position", new THREE.Float32BufferAttribute(smoothPos, 3));
+  smoothGeom.setAttribute("aEdgeMid", new THREE.Float32BufferAttribute(smoothMid, 3));
+  smoothGeom.setAttribute("aNormalA", new THREE.Float32BufferAttribute(smoothNormA, 3));
+  smoothGeom.setAttribute("aNormalB", new THREE.Float32BufferAttribute(smoothNormB, 3));
+
+  return { edges: edgeGeom, tangentEdges: tangentGeom, smoothEdges: smoothGeom };
+}
+
+/**
+ * Edge lines for a CSG result. EdgesGeometry keeps edges that only have one adjacent
+ * face, and CSG leaves plenty of those along its triangulation — they show up as
+ * diagonal scratches across flat faces. Only real two-face creases (and T-junction splits) are kept here.
+ */
+export function csgEdgeGeometry(geometry: THREE.BufferGeometry, thresholdDeg = 24): THREE.BufferGeometry {
+  return extractPartEdges(geometry, thresholdDeg).edges;
 }
 
 /**
@@ -629,22 +1126,49 @@ export function instanceEdgeGeometry(
   const total = perCopy * count;
   if (total > 800_000) return null;
 
-  const out = new Float32Array(total * 3);
-  let offset = 0;
-  for (let copy = 0; copy < count; copy += 1) {
-    const dx = axis === "x" ? spacing * copy : 0;
-    const dy = axis === "y" ? spacing * copy : 0;
-    const dz = axis === "z" ? spacing * copy : 0;
-    for (let vertex = 0; vertex < perCopy; vertex += 1) {
-      out[offset] = position.getX(vertex) + dx;
-      out[offset + 1] = position.getY(vertex) + dy;
-      out[offset + 2] = position.getZ(vertex) + dz;
-      offset += 3;
+  const copyTranslated = (attr: THREE.BufferAttribute | THREE.InterleavedBufferAttribute) => {
+    const out = new Float32Array(total * 3);
+    let offset = 0;
+    for (let copy = 0; copy < count; copy += 1) {
+      const dx = axis === "x" ? spacing * copy : 0;
+      const dy = axis === "y" ? spacing * copy : 0;
+      const dz = axis === "z" ? spacing * copy : 0;
+      for (let vertex = 0; vertex < perCopy; vertex += 1) {
+        out[offset] = attr.getX(vertex) + dx;
+        out[offset + 1] = attr.getY(vertex) + dy;
+        out[offset + 2] = attr.getZ(vertex) + dz;
+        offset += 3;
+      }
     }
-  }
+    return new THREE.BufferAttribute(out, 3);
+  };
+
+  const copyVerbatim = (attr: THREE.BufferAttribute | THREE.InterleavedBufferAttribute) => {
+    const out = new Float32Array(total * 3);
+    let offset = 0;
+    for (let copy = 0; copy < count; copy += 1) {
+      for (let vertex = 0; vertex < perCopy; vertex += 1) {
+        out[offset] = attr.getX(vertex);
+        out[offset + 1] = attr.getY(vertex);
+        out[offset + 2] = attr.getZ(vertex);
+        offset += 3;
+      }
+    }
+    return new THREE.BufferAttribute(out, 3);
+  };
 
   const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.BufferAttribute(out, 3));
+  geometry.setAttribute("position", copyTranslated(position));
+
+  const edgeMid = edgeGeometry.getAttribute("aEdgeMid");
+  const normalA = edgeGeometry.getAttribute("aNormalA");
+  const normalB = edgeGeometry.getAttribute("aNormalB");
+  if (edgeMid && normalA && normalB) {
+    geometry.setAttribute("aEdgeMid", copyTranslated(edgeMid));
+    geometry.setAttribute("aNormalA", copyVerbatim(normalA));
+    geometry.setAttribute("aNormalB", copyVerbatim(normalB));
+  }
+
   return geometry;
 }
 

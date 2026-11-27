@@ -23,6 +23,12 @@ import { attachViewerInteractions } from "./viewer/interactions";
 import { usePartMeshes } from "./viewer/usePartMeshes";
 import { useSection } from "./viewer/useSection";
 import { ViewerOverlays } from "./viewer/ViewerOverlays";
+import {
+  readDisplayMode,
+  readSilhouettes,
+  writeDisplayMode,
+  writeSilhouettes,
+} from "./viewer/displayMode";
 import type {
   ActiveHandleState,
   ContextMenuState,
@@ -30,6 +36,7 @@ import type {
   PartCacheEntry,
   SceneState,
   ViewDirection,
+  ViewerDisplayMode,
   ViewerProps,
 } from "./viewer/types";
 
@@ -140,11 +147,26 @@ export function Viewer({
   const shadowsEnabledRef = useRef<boolean>(true);
   shadowsEnabledRef.current = shadowsEnabled;
 
+  const [displayMode, setDisplayMode] = useState<ViewerDisplayMode>(() => readDisplayMode());
+  const displayModeRef = useRef<ViewerDisplayMode>(displayMode);
+  displayModeRef.current = displayMode;
+  useEffect(() => {
+    writeDisplayMode(displayMode);
+  }, [displayMode]);
+
+  const [showSilhouettes, setShowSilhouettes] = useState<boolean>(() => readSilhouettes());
+  const showSilhouettesRef = useRef<boolean>(showSilhouettes);
+  showSilhouettesRef.current = showSilhouettes;
+  useEffect(() => {
+    writeSilhouettes(showSilhouettes);
+  }, [showSilhouettes]);
+
   const section = useSection({
     stateRef,
     partCacheRef,
     renderDirtyRef,
     model,
+    displayMode,
     t,
     formatNumber,
   });
@@ -190,18 +212,40 @@ export function Viewer({
   const hoverBlockedRef = useRef(false);
   hoverBlockedRef.current = measuring || section.pickingSection || section.sectionAxis !== "off";
 
-  /** Export the current view as a PNG named after the family. */
+  const prepareDefaultCaptureRender = useCallback((defaultTheme?: "light" | "dark") => {
+    const state = stateRef.current;
+    const restores: (() => void)[] = [];
+    for (const entry of partCacheRef.current.values()) {
+      const undo = entry.applyDefaultStyle?.(defaultTheme);
+      if (undo) restores.push(undo);
+    }
+    if (state) state.renderer.shadowMap.needsUpdate = true;
+    return () => {
+      for (const undo of restores) undo();
+      if (state) state.renderer.shadowMap.needsUpdate = true;
+      renderDirtyRef.current = true;
+    };
+  }, []);
+  const prepareDefaultCaptureRenderRef = useRef(prepareDefaultCaptureRender);
+  prepareDefaultCaptureRenderRef.current = prepareDefaultCaptureRender;
+
+  /** Export the current view as a PNG named after the family using the default shading style. */
   const saveImage = () => {
     const state = stateRef.current;
     if (!state) return;
-    state.renderer.render(state.scene, state.camera);
-    const link = document.createElement("a");
-    const safe = (fileName || "family").replace(/[\\/:*?"<>|]+/g, "-");
-    link.href = state.renderer.domElement.toDataURL("image/png");
-    link.download = `${safe}.png`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+    const restore = prepareDefaultCaptureRender(themeRef.current);
+    try {
+      state.renderer.render(state.scene, state.camera);
+      const link = document.createElement("a");
+      const safe = (fileName || "family").replace(/[\\/:*?"<>|]+/g, "-");
+      link.href = state.renderer.domElement.toDataURL("image/png");
+      link.download = `${safe}.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } finally {
+      restore();
+    }
   };
 
   /** Keep HTML note pins attached to their world point without hiding behind geometry. */
@@ -582,9 +626,14 @@ export function Viewer({
     };
 
     onCaptureReadyRef.current?.(() =>
-      captureViewerThumbnail(stateRef.current, modelRef.current, () => {
-        renderDirtyRef.current = true;
-      }),
+      captureViewerThumbnail(
+        stateRef.current,
+        modelRef.current,
+        () => {
+          renderDirtyRef.current = true;
+        },
+        () => prepareDefaultCaptureRenderRef.current("light"),
+      ),
     );
 
     const partCache = partCacheRef.current;
@@ -689,6 +738,8 @@ export function Viewer({
     partCacheRef,
     renderDirtyRef,
     themeRef,
+    displayModeRef,
+    showSilhouettesRef,
     model,
     materials,
     selectedPartId,
@@ -704,6 +755,8 @@ export function Viewer({
     detailLevel,
     previewQuality,
     theme,
+    displayMode,
+    showSilhouettes,
   });
 
   // Explode: push each part away from the model centre.
@@ -1002,6 +1055,10 @@ export function Viewer({
         onToggleGrid={onToggleGrid}
         shadowsEnabled={shadowsEnabled}
         setShadowsEnabled={setShadowsEnabled}
+        displayMode={displayMode}
+        setDisplayMode={setDisplayMode}
+        showSilhouettes={showSilhouettes}
+        setShowSilhouettes={setShowSilhouettes}
         showPlanes={Boolean(showPlanes)}
         onTogglePlanes={onTogglePlanes}
         toolsMenuOpen={toolsMenuOpen}

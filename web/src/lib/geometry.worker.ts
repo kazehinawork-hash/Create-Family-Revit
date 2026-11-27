@@ -1,7 +1,6 @@
-import * as THREE from "three";
 import type { ResolvedPart } from "@family/spec-core";
 import { geometryTransferables, serializeGeometry } from "./geometry-transfer";
-import { buildPartGeometry, csgEdgeGeometry, type PreviewQuality } from "./three-build";
+import { buildPartGeometry, extractPartEdges, type PreviewQuality } from "./three-build";
 
 interface BuildRequest {
   id: number;
@@ -18,15 +17,15 @@ self.onmessage = (event: MessageEvent<BuildRequest>) => {
 
   try {
     const { geometry, hasCuts, cutFailed } = buildPartGeometry(part, quality);
-    const edges = hasCuts
-      ? csgEdgeGeometry(geometry, 24)
-      : new THREE.EdgesGeometry(geometry, 24);
+    const { edges, tangentEdges, smoothEdges } = extractPartEdges(geometry, 24);
 
     const payload = {
       id,
       ok: true as const,
       geometry: serializeGeometry(geometry),
       edges: serializeGeometry(edges),
+      tangentEdges: serializeGeometry(tangentEdges),
+      smoothEdges: serializeGeometry(smoothEdges),
       hasCuts,
       cutFailed,
     };
@@ -35,10 +34,14 @@ self.onmessage = (event: MessageEvent<BuildRequest>) => {
     // receives typed arrays, so dispose them here instead of leaking worker memory.
     geometry.dispose();
     edges.dispose();
+    tangentEdges.dispose();
+    smoothEdges.dispose();
 
     scope.postMessage(payload, [
       ...geometryTransferables(payload.geometry),
       ...geometryTransferables(payload.edges),
+      ...geometryTransferables(payload.tangentEdges),
+      ...geometryTransferables(payload.smoothEdges),
     ]);
   } catch (error) {
     scope.postMessage(

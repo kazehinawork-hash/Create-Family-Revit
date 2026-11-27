@@ -20,6 +20,13 @@ const viDictionary = {
   viewerTurntableHint: "Bật/Tắt hiệu ứng xoay tròn 360° tự động như bàn xoay trưng bày (Turntable)",
   viewerUnhideAllHint: "Hiện lại tất cả các cấu kiện đang ẩn",
   viewerUnhideCount: (count: string) => `Hiện lại tất cả (${count})`,
+  viewerDisplayMode: "Kiểu hiển thị đồ hoạ (Graphic Display)",
+  viewerModeShaded: "Tô bóng",
+  viewerModeShadedEdges: "Tô bóng + cạnh",
+  viewerModeHiddenLine: "Nét ẩn",
+  viewerModeWireframe: "Khung dây",
+  viewerSilhouettes: "Viền bao",
+  viewerSilhouettesHint: "Bật/tắt viền bao ngoài khối (Silhouettes)",
 
   /* Empty state */
   viewerTrySample: "thang cáp ngã ba 400×100",
@@ -79,6 +86,13 @@ export const en: Translation<typeof vi> = {
   viewerTurntableHint: "Turn the automatic 360° exhibition turntable on or off",
   viewerUnhideAllHint: "Show every hidden part again",
   viewerUnhideCount: (count: string) => `Show all again (${count})`,
+  viewerDisplayMode: "Graphic display style",
+  viewerModeShaded: "Shaded",
+  viewerModeShadedEdges: "Shaded with edges",
+  viewerModeHiddenLine: "Hidden line",
+  viewerModeWireframe: "Wireframe",
+  viewerSilhouettes: "Silhouettes",
+  viewerSilhouettesHint: "Toggle outer body silhouettes",
 
   viewerTrySample: "cable ladder tee 400×100",
 
@@ -133,6 +147,13 @@ export const zh: Translation<typeof vi> = {
   viewerTurntableHint: "开启或关闭自动 360° 旋转展示台",
   viewerUnhideAllHint: "重新显示所有已隐藏的零件",
   viewerUnhideCount: (count: string) => `全部显示（${count}）`,
+  viewerDisplayMode: "视觉样式（Graphic Display）",
+  viewerModeShaded: "着色",
+  viewerModeShadedEdges: "带边框着色",
+  viewerModeHiddenLine: "隐藏线",
+  viewerModeWireframe: "线框",
+  viewerSilhouettes: "轮廓线",
+  viewerSilhouettesHint: "开启或关闭轮廓线（Silhouettes）",
 
   viewerTrySample: "电缆桥架三通 400×100",
 

@@ -1,6 +1,19 @@
 import * as THREE from "three";
 import { describe, expect, it } from "vitest";
-import { computeCameraPreset, planeCrossSection, snapToAxis } from "./sceneHelpers";
+import {
+  computeCameraPreset,
+  createInfiniteGrid,
+  createSectionCap,
+  planeCrossSection,
+  snapToAxis,
+} from "./sceneHelpers";
+import {
+  applyPartStyle,
+  computeSmoothNormals,
+  createCurvedSilhouetteLineMaterial,
+  createPartSilhouetteMaterial,
+} from "./usePartMeshes";
+import type { PartCacheEntry } from "./types";
 
 describe("snapToAxis", () => {
   it("snaps near-axis vectors within maxAngleDeg onto X, Y, or Z", () => {
@@ -120,5 +133,207 @@ describe("planeCrossSection", () => {
   it("returns empty array when plane lies outside the bounding box", () => {
     const outside = planeCrossSection(bounds, new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 0, 500));
     expect(outside).toEqual([]);
+  });
+});
+
+describe("createInfiniteGrid", () => {
+  it("uses a screen-space quad instead of a huge world plane and syncs camera matrices", () => {
+    const grid = createInfiniteGrid();
+    const material = grid.material as THREE.ShaderMaterial;
+
+    grid.geometry.computeBoundingBox();
+    const size = grid.geometry.boundingBox!.getSize(new THREE.Vector3());
+    expect(size.x).toBe(2);
+    expect(size.y).toBe(2);
+    expect(grid.frustumCulled).toBe(false);
+    expect(grid.renderOrder).toBe(-2);
+    expect(material.glslVersion).toBe(THREE.GLSL3);
+    expect(material.depthWrite).toBe(false);
+    expect(material.depthTest).toBe(true);
+
+    // Must never intercept scene raycasts.
+    const raycaster = new THREE.Raycaster(new THREE.Vector3(0, 0, 100), new THREE.Vector3(0, 0, -1));
+    expect(raycaster.intersectObject(grid)).toEqual([]);
+
+    const camera = new THREE.PerspectiveCamera(38, 1.5, 1, 5000);
+    camera.position.set(45, -60, 35);
+    camera.lookAt(0, 0, 0);
+    camera.updateMatrixWorld();
+    camera.updateProjectionMatrix();
+
+    grid.position.z = -0.05;
+    grid.onBeforeRender(
+      {} as THREE.WebGLRenderer,
+      {} as THREE.Scene,
+      camera,
+      grid.geometry,
+      material,
+      {} as THREE.Group,
+    );
+
+    expect(material.uniforms.uCamera.value.toArray()).toEqual([45, -60, 35]);
+    expect(material.uniforms.uGridZ.value).toBe(-0.05);
+    expect(material.uniforms.uProj.value.elements).toEqual(camera.projectionMatrix.elements);
+    expect(material.uniforms.uInvProj.value.elements).toEqual(camera.projectionMatrixInverse.elements);
+    expect(material.uniforms.uCameraWorld.value.elements).toEqual(camera.matrixWorld.elements);
+  });
+});
+
+describe("viewer ShaderMaterials", () => {
+  const BUILTIN_ATTR_RE = /^\s*(?:attribute|in)\s+\S+\s+(position|normal|uv)\s*;/m;
+  const BUILTIN_UNIFORM_RE =
+    /^\s*uniform\s+\S+\s+(modelMatrix|modelViewMatrix|projectionMatrix|viewMatrix|normalMatrix|cameraPosition|clippingPlanes)\b/m;
+
+  it("never redeclare Three.js built-in attributes or uniforms", () => {
+    const materials: [string, THREE.ShaderMaterial][] = [
+      ["infiniteGrid", createInfiniteGrid().material as THREE.ShaderMaterial],
+      ["sectionCap", createSectionCap().material as THREE.ShaderMaterial],
+      ["partSilhouette", createPartSilhouetteMaterial(1.5, "light")],
+      ["curvedSilhouetteLines", createCurvedSilhouetteLineMaterial("light")],
+    ];
+
+    for (const [name, mat] of materials) {
+      expect(mat.vertexShader, `${name} vertexShader attr`).not.toMatch(BUILTIN_ATTR_RE);
+      expect(mat.vertexShader, `${name} vertexShader uniform`).not.toMatch(BUILTIN_UNIFORM_RE);
+      expect(mat.fragmentShader, `${name} fragmentShader uniform`).not.toMatch(BUILTIN_UNIFORM_RE);
+    }
+  });
+
+  it("configures part silhouette for screen-space back-face clipping outline in light and dark themes", () => {
+    const light = createPartSilhouetteMaterial(1.8, "light");
+    const dark = createPartSilhouetteMaterial(1.8, "dark");
+
+    expect(light.side).toBe(THREE.BackSide);
+    expect(light.clipping).toBe(true);
+    expect(light.transparent).toBe(true);
+    expect(light.depthWrite).toBe(false);
+    expect(light.depthTest).toBe(true);
+    expect(light.polygonOffset).toBe(true);
+    expect(light.uniforms.outlinePx.value).toBe(1.8);
+    expect(light.uniforms.uResolution.value).toBeInstanceOf(THREE.Vector2);
+    expect(light.uniforms.outlineColor.value.getHex()).toBe(0x171d21);
+    expect(dark.uniforms.outlineColor.value.getHex()).toBe(0xc4ccd1);
+  });
+});
+
+describe("computeSmoothNormals", () => {
+  it("welds normals by position so split bevel/box faces share a continuous outward normal", () => {
+    const nonIndexed = new THREE.BoxGeometry(20, 20, 20).toNonIndexed();
+    const smooth = computeSmoothNormals(nonIndexed);
+    expect(smooth.count).toBe(nonIndexed.getAttribute("position").count);
+
+    // Pick corner (10, 10, 10) across multiple faces and verify all copies get the same welded diagonal normal.
+    const pos = nonIndexed.getAttribute("position");
+    const cornerNormals: number[][] = [];
+    for (let i = 0; i < pos.count; i += 1) {
+      if (
+        Math.abs(pos.getX(i) - 10) < 1e-4 &&
+        Math.abs(pos.getY(i) - 10) < 1e-4 &&
+        Math.abs(pos.getZ(i) - 10) < 1e-4
+      ) {
+        cornerNormals.push([smooth.getX(i), smooth.getY(i), smooth.getZ(i)]);
+      }
+    }
+    expect(cornerNormals.length).toBeGreaterThanOrEqual(3);
+    const invSqrt3 = 1 / Math.sqrt(3);
+    for (const [nx, ny, nz] of cornerNormals) {
+      expect(nx).toBeCloseTo(invSqrt3, 4);
+      expect(ny).toBeCloseTo(invSqrt3, 4);
+      expect(nz).toBeCloseTo(invSqrt3, 4);
+    }
+  });
+});
+
+describe("applyPartStyle display modes", () => {
+  function makeEntry(): PartCacheEntry {
+    const group = new THREE.Group();
+    const meshMaterial = new THREE.MeshStandardMaterial();
+    const edgeMaterial = new THREE.LineBasicMaterial({ transparent: true });
+    const tangentMaterial = new THREE.LineBasicMaterial({ transparent: true });
+    const smoothMaterial = createCurvedSilhouetteLineMaterial("light");
+    const silhouetteMaterial = createPartSilhouetteMaterial(1.25, "light");
+    const geom = new THREE.BoxGeometry(10, 10, 10);
+    const mesh = new THREE.Mesh(geom, meshMaterial);
+    const tangentLines = new THREE.LineSegments(geom, tangentMaterial);
+    const smoothLines = new THREE.LineSegments(geom, smoothMaterial);
+    const silhouette = new THREE.Mesh(geom, silhouetteMaterial);
+    group.add(mesh, tangentLines, smoothLines, silhouette);
+    return {
+      geometryKey: "k",
+      styleKey: "s",
+      group,
+      meshMaterial,
+      edgeMaterial,
+      tangentMaterial,
+      tangentLines,
+      smoothLines,
+      silhouette,
+      disposables: [
+        geom,
+        meshMaterial,
+        edgeMaterial,
+        tangentMaterial,
+        smoothMaterial,
+        silhouetteMaterial,
+      ],
+    };
+  }
+
+  const baseStyle = {
+    name: "Body",
+    color: "#8fa1b3",
+    metalness: 0.4,
+    roughness: 0.5,
+    isSelected: false,
+    isTransparent: false,
+    isClearance: false,
+    hasIssue: false,
+    isAffected: false,
+    isAnimating: false,
+    isGhost: false,
+    isHovered: false,
+    isDimmed: false,
+  };
+
+  it("applies shaded, shadedEdges, hiddenLine, wireframe and silhouettes toggle accurately", () => {
+    const entry = makeEntry();
+    const mesh = entry.group.children[0] as THREE.Mesh;
+
+    applyPartStyle(entry, baseStyle, "light", "shaded", true);
+    expect(entry.meshMaterial.colorWrite).toBe(true);
+    expect(entry.edgeMaterial.visible).toBe(false);
+    expect(entry.tangentMaterial?.visible).toBe(false);
+    expect(entry.smoothLines?.visible).toBe(false);
+    expect(entry.silhouette?.visible).toBe(true);
+    expect(mesh.castShadow).toBe(true);
+
+    applyPartStyle(entry, baseStyle, "light", "shadedEdges", false);
+    expect(entry.meshMaterial.colorWrite).toBe(true);
+    expect(entry.edgeMaterial.visible).toBe(true);
+    expect(entry.tangentMaterial?.visible).toBe(false);
+    expect(entry.smoothLines?.visible).toBe(false);
+    expect(entry.silhouette?.visible).toBe(false);
+
+    applyPartStyle(entry, baseStyle, "light", "hiddenLine", true);
+    expect(entry.meshMaterial.colorWrite).toBe(true);
+    expect(entry.meshMaterial.emissiveIntensity).toBe(1);
+    expect(entry.meshMaterial.emissive.getHex()).toBe(0xffffff);
+    expect(entry.edgeMaterial.visible).toBe(true);
+    expect(entry.tangentMaterial?.visible).toBe(true);
+    expect(entry.smoothLines?.visible).toBe(true);
+    expect(entry.silhouette?.visible).toBe(false);
+
+    applyPartStyle(entry, baseStyle, "light", "wireframe", true);
+    expect(entry.meshMaterial.colorWrite).toBe(false);
+    expect(entry.meshMaterial.depthWrite).toBe(false);
+    expect(entry.edgeMaterial.visible).toBe(true);
+    expect(entry.tangentMaterial?.visible).toBe(true);
+    expect(entry.smoothLines?.visible).toBe(true);
+    expect(entry.silhouette?.visible).toBe(false);
+    expect(mesh.castShadow).toBe(false);
+
+    applyPartStyle(entry, baseStyle, "light", "wireframe", false);
+    expect(entry.tangentMaterial?.visible).toBe(true);
+    expect(entry.smoothLines?.visible).toBe(false);
   });
 });
