@@ -34,9 +34,9 @@ Return exactly one JSON object and nothing else.
 export const SPEC_PATCH_CONTRACT = `PATCH ANSWER (this turn only)
 Do NOT repeat the whole family. Return ONE JSON patch object:
 {"addParts":[],"updateParts":[{"id":"..."}],"removePartIds":[],"addParameters":[],"updateParameters":[{"name":"..."}],"addConnectors":[],"updateConnectors":[{"id":"..."}],"materials":[]}
-- addParts: only NEW parts, each with a new unique id.
-- updateParts: only the fields that change; the part is matched by id and everything else is kept.
-- removePartIds: ids of parts to delete.
+- addParts: only genuinely NEW parts, each with a new unique id. NEVER duplicate, rename, or translate existing parts into addParts.
+- updateParts: modify existing parts in place matched by their exact existing id (only changed fields are needed).
+- removePartIds: ids of parts to delete (required if replacing an existing part with a new id).
 - updateParameters / updateConnectors: matched by name / id.
 - Omit the keys you do not need. A patch that changes nothing is a failure.
 - Only if the whole family must be rebuilt, answer with a complete spec (schemaVersion + parts).`;
@@ -49,10 +49,16 @@ export function compactSpec(result) {
   }
 }
 
-export function repairInstructions(spec, issues, focus = "") {
+export function repairInstructions(spec, issues, focus = "", { patch = false } = {}) {
   const dependencyMap = spec ? parameterDependencySummary(spec, 6000, focus) : "";
   const prefix = dependencyMap ? `${dependencyMap}\n\n` : "";
-  return `${prefix}${repairPrompt.replace("{{issues}}", formatIssues(issues, 25))}`;
+  const body = patch
+    ? repairPrompt.replace(
+        /^-\s*Return the FULL spec, not a patch, a diff or a commentary\.\s*$/m,
+        "- Return ONE JSON patch object updating the existing part ids via `updateParts` (never re-emit or translate existing parts in `addParts`).",
+      )
+    : repairPrompt;
+  return `${prefix}${body.replace("{{issues}}", formatIssues(issues, 25))}`;
 }
 
 export function escapeAttribute(value) {

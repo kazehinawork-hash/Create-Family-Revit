@@ -909,3 +909,169 @@ test("a section turn that returns a complete spec is still accepted", async () =
   assert.deepEqual(ids.sort(), ["base", "frame"]);
   assert.equal(result.analysis.ok, true);
 });
+
+test("repairing warnings rejects overlapping English duplicate patches and re-requests valid updateParts", async () => {
+  const initialWithUnusedParam = {
+    schemaVersion: "1.0",
+    name: "Đồng hồ áp suất SUS304",
+    category: "Mechanical Equipment",
+    units: "mm",
+    parameters: [
+      { name: "Dial Diameter", type: "Length", group: "Dimensions", value: 100 },
+      { name: "Body Depth", type: "Length", group: "Dimensions", value: 35 },
+      { name: "Unused Margin", type: "Length", group: "Dimensions", value: 12 },
+    ],
+    materials: [{ name: "SUS304", color: "#c0c0c0", metalness: 0.9, roughness: 0.25 }],
+    connectors: [],
+    parts: [
+      {
+        id: "vo-dong-ho",
+        name: "Vỏ đồng hồ",
+        material: "SUS304",
+        solid: { kind: "cylinder", axis: "y", base: { x: 0, y: 0, z: 60 }, radius: 50, height: 35 },
+      },
+      {
+        id: "mat-kinh",
+        name: "Mặt kính",
+        material: "SUS304",
+        solid: { kind: "cylinder", axis: "y", base: { x: 0, y: -2, z: 60 }, radius: 46, height: 3 },
+      },
+      {
+        id: "chan-ren",
+        name: "Chân ren",
+        material: "SUS304",
+        solid: { kind: "cylinder", axis: "z", base: { x: 0, y: 17, z: 0 }, radius: 10, height: 25 },
+      },
+    ],
+    notes: [],
+  };
+
+  const prompts = [];
+  let call = 0;
+  const result = await design({
+    prompt: "Dựng đồng hồ áp suất SUS304 bạc sáng đường kính 100 mm.",
+    currentSpec: null,
+    lod: 300,
+    emit: () => {},
+    model: "cheap-model",
+    generate: async (messages) => {
+      prompts.push(messages.map((m) => (typeof m.content === "string" ? m.content : "")).join("\n"));
+      call += 1;
+      if (call === 1) return { json: initialWithUnusedParam, text: "", usage: null };
+      if (call === 2) {
+        // Bad LLM repair: re-emits tweaked overlapping English parts in addParts with no removePartIds.
+        return {
+          json: {
+            addParts: [
+              {
+                id: "gauge-casing",
+                name: "Gauge Casing",
+                material: "SUS304",
+                solid: { kind: "cylinder", axis: "y", base: { x: 0, y: 0, z: 60 }, radius: 52, height: 35 },
+              },
+              {
+                id: "dial-glass",
+                name: "Dial Glass",
+                material: "SUS304",
+                solid: { kind: "cylinder", axis: "y", base: { x: 0, y: -2, z: 60 }, radius: 47, height: 3 },
+              },
+              {
+                id: "stem",
+                name: "Process Stem",
+                material: "SUS304",
+                solid: { kind: "cylinder", axis: "z", base: { x: 0, y: 17, z: 0 }, radius: 11, height: 26 },
+              },
+            ],
+            updateParts: [],
+            removePartIds: [],
+          },
+          text: "",
+          usage: null,
+        };
+      }
+      // Next retry obeys updateParts with original ids.
+      return {
+        json: {
+          updateParts: [
+            {
+              id: "vo-dong-ho",
+              solid: { radius: "[Dial Diameter] / 2", height: "[Body Depth]" },
+            },
+          ],
+          updateParameters: [{ name: "Unused Margin", formula: "[Body Depth] * 0.2" }],
+        },
+        text: "",
+        usage: null,
+      };
+    },
+  });
+
+  assert.equal(call, 3, "pipeline should reject overlapping duplicate repair patch and retry");
+  assert.doesNotMatch(
+    prompts[1],
+    /Return the FULL spec, not a patch/i,
+    "repair prompt in patch mode must not contradict SPEC_PATCH_CONTRACT",
+  );
+  assert.match(prompts[2], /vo-dong-ho, mat-kinh, chan-ren/, "retry prompt names existing part ids");
+  assert.equal(result.analysis.spec.parts.length, 3, "must keep original 3 parts without doubling");
+  assert.deepEqual(
+    result.analysis.spec.parts.map((part) => part.id),
+    ["vo-dong-ho", "mat-kinh", "chan-ren"],
+  );
+  assert.ok(
+    !(result.stats.warnings ?? []).some((warning) => /304\s*bậc/i.test(warning)),
+    "SUS304 bạc sáng must never emit a 304 bậc thang warning",
+  );
+});
+
+test("repairing warnings that validly adds 4 bolts to 5 base parts keeps all 9 parts", async () => {
+  const initialFiveParts = {
+    schemaVersion: "1.0",
+    name: "Cụm thiết bị 5 phần",
+    category: "Mechanical Equipment",
+    units: "mm",
+    parameters: [{ name: "Unused Gap", type: "Length", group: "Dimensions", value: 8 }],
+    materials: [{ name: "Steel", color: "#9aa3a8", metalness: 0.5, roughness: 0.4 }],
+    connectors: [],
+    parts: [
+      { id: "a", name: "Part A", material: "Steel", solid: { kind: "box", origin: { x: 0, y: 0, z: 0 }, size: { x: 400, y: 300, z: 12 } } },
+      { id: "b", name: "Part B", material: "Steel", solid: { kind: "box", origin: { x: 0, y: 0, z: 12 }, size: { x: 260, y: 200, z: 140 } } },
+      { id: "c", name: "Part C", material: "Steel", solid: { kind: "box", origin: { x: 0, y: 0, z: 152 }, size: { x: 260, y: 200, z: 10 } } },
+      { id: "d", name: "Part D", material: "Steel", solid: { kind: "cylinder", axis: "x", base: { x: -160, y: 0, z: 80 }, radius: 40, height: 30 } },
+      { id: "e", name: "Part E", material: "Steel", solid: { kind: "cylinder", axis: "x", base: { x: 130, y: 0, z: 80 }, radius: 40, height: 30 } },
+    ],
+    notes: [],
+  };
+
+  let call = 0;
+  const result = await design({
+    prompt: "Dựng cụm thiết bị chữ nhật có mặt bích đáy.",
+    currentSpec: null,
+    lod: 300,
+    emit: () => {},
+    model: "cheap-model",
+    generate: async () => {
+      call += 1;
+      if (call === 1) return { json: initialFiveParts, text: "", usage: null };
+      return {
+        json: {
+          addParts: [
+            { id: "bolt-1", name: "Bolt 1", material: "Steel", solid: { kind: "cylinder", axis: "z", base: { x: -170, y: -120, z: 12.5 }, radius: 6, height: "[Unused Gap] * 2" } },
+            { id: "bolt-2", name: "Bolt 2", material: "Steel", solid: { kind: "cylinder", axis: "z", base: { x: 170, y: -120, z: 12.5 }, radius: 6, height: "[Unused Gap] * 2" } },
+            { id: "bolt-3", name: "Bolt 3", material: "Steel", solid: { kind: "cylinder", axis: "z", base: { x: -170, y: 120, z: 12.5 }, radius: 6, height: "[Unused Gap] * 2" } },
+            { id: "bolt-4", name: "Bolt 4", material: "Steel", solid: { kind: "cylinder", axis: "z", base: { x: 170, y: 120, z: 12.5 }, radius: 6, height: "[Unused Gap] * 2" } },
+          ],
+        },
+        text: "",
+        usage: null,
+      };
+    },
+  });
+
+  assert.equal(call, 2);
+  assert.equal(result.analysis.spec.parts.length, 9);
+  assert.deepEqual(
+    result.analysis.spec.parts.map((part) => part.id),
+    ["a", "b", "c", "d", "e", "bolt-1", "bolt-2", "bolt-3", "bolt-4"],
+  );
+});
