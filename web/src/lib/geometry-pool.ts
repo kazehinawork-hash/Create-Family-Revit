@@ -3,13 +3,15 @@ import type { ResolvedPart } from "@family/spec-core";
 import { deserializeGeometry, type SerializedGeometry } from "./geometry-transfer";
 import {
   buildPartGeometry,
-  csgEdgeGeometry,
+  extractPartEdges,
   type PreviewQuality,
 } from "./three-build";
 
 export interface BuiltPartGeometry {
   geometry: THREE.BufferGeometry;
   edges: THREE.BufferGeometry;
+  tangentEdges: THREE.BufferGeometry;
+  smoothEdges: THREE.BufferGeometry;
   hasCuts: boolean;
   cutFailed: boolean;
 }
@@ -19,6 +21,8 @@ interface WorkerReply {
   ok: boolean;
   geometry?: SerializedGeometry;
   edges?: SerializedGeometry;
+  tangentEdges?: SerializedGeometry;
+  smoothEdges?: SerializedGeometry;
   hasCuts?: boolean;
   cutFailed?: boolean;
   error?: string;
@@ -51,6 +55,12 @@ function handleReply(event: MessageEvent<WorkerReply>) {
   entry.resolve({
     geometry: deserializeGeometry(reply.geometry),
     edges: deserializeGeometry(reply.edges),
+    tangentEdges: reply.tangentEdges
+      ? deserializeGeometry(reply.tangentEdges)
+      : new THREE.BufferGeometry(),
+    smoothEdges: reply.smoothEdges
+      ? deserializeGeometry(reply.smoothEdges)
+      : new THREE.BufferGeometry(),
     hasCuts: Boolean(reply.hasCuts),
     cutFailed: Boolean(reply.cutFailed),
   });
@@ -91,10 +101,8 @@ function getWorkers(): Worker[] | null {
 
 function buildSync(part: ResolvedPart, quality: PreviewQuality): BuiltPartGeometry {
   const { geometry, hasCuts, cutFailed } = buildPartGeometry(part, quality);
-  const edges = hasCuts
-    ? csgEdgeGeometry(geometry, 24)
-    : new THREE.EdgesGeometry(geometry, 24);
-  return { geometry, edges, hasCuts, cutFailed };
+  const { edges, tangentEdges, smoothEdges } = extractPartEdges(geometry, 24);
+  return { geometry, edges, tangentEdges, smoothEdges, hasCuts, cutFailed };
 }
 
 /**

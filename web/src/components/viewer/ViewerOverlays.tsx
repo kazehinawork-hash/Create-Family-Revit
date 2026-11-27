@@ -1,13 +1,23 @@
+import {
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type MutableRefObject,
+  type RefObject,
+  type SetStateAction,
+} from "react";
 import type { ResolvedModel } from "@family/spec-core";
-import type { Dispatch, MutableRefObject, RefObject, SetStateAction } from "react";
 import type { ChatTarget, ModelNote, NoteDraft } from "../../lib/annotations";
 import type { Units } from "../../lib/format";
 import { useI18n } from "../../lib/i18n";
+import { DISPLAY_MODE_OPTIONS } from "./displayMode";
 import type {
   ActiveHandleState,
   ContextMenuState,
   NoteComposerState,
   SectionCustomState,
+  ViewerDisplayMode,
 } from "./types";
 
 interface ViewerOverlaysProps {
@@ -18,6 +28,10 @@ interface ViewerOverlaysProps {
   onToggleGrid: () => void;
   shadowsEnabled: boolean;
   setShadowsEnabled: Dispatch<SetStateAction<boolean>>;
+  displayMode: ViewerDisplayMode;
+  setDisplayMode: Dispatch<SetStateAction<ViewerDisplayMode>>;
+  showSilhouettes: boolean;
+  setShowSilhouettes: Dispatch<SetStateAction<boolean>>;
   showPlanes: boolean;
   onTogglePlanes?: () => void;
   toolsMenuOpen: boolean;
@@ -88,6 +102,10 @@ export function ViewerOverlays({
   onToggleGrid,
   shadowsEnabled,
   setShadowsEnabled,
+  displayMode,
+  setDisplayMode,
+  showSilhouettes,
+  setShowSilhouettes,
   showPlanes,
   onTogglePlanes,
   toolsMenuOpen,
@@ -150,6 +168,39 @@ export function ViewerOverlays({
   visiblePartCount,
 }: ViewerOverlaysProps) {
   const { t, formatNumber } = useI18n();
+  const [displayMenuOpen, setDisplayMenuOpen] = useState(false);
+  const displayMenuRef = useRef<HTMLDivElement>(null);
+  const displayBtnRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!displayMenuOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (
+        target &&
+        (displayMenuRef.current?.contains(target) || displayBtnRef.current?.contains(target))
+      ) {
+        return;
+      }
+      setDisplayMenuOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setDisplayMenuOpen(false);
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [displayMenuOpen]);
+
+  const displayModeLabel: Record<ViewerDisplayMode, string> = {
+    shaded: t.viewerModeShaded,
+    shadedEdges: t.viewerModeShadedEdges,
+    hiddenLine: t.viewerModeHiddenLine,
+    wireframe: t.viewerModeWireframe,
+  };
 
   return (
     <>
@@ -196,9 +247,45 @@ export function ViewerOverlays({
           </button>
         )}
         <button
+          ref={displayBtnRef}
+          type="button"
+          className={`tool tool-primary ${displayMenuOpen || displayMode !== "shadedEdges" ? "active" : ""}`}
+          data-testid="viewer-display-mode-btn"
+          onClick={() => {
+            setToolsMenuOpen(false);
+            setDisplayMenuOpen((current) => !current);
+          }}
+          title={`${t.viewerDisplayMode}: ${displayModeLabel[displayMode]}`}
+          aria-expanded={displayMenuOpen}
+          aria-haspopup="menu"
+        >
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3">
+            <path d="M8 1.5 14 4.8v6.4L8 14.5 2 11.2V4.8z" />
+            <path d="M8 1.5v6.5m0 0 6-3.2M8 8 2 4.8" />
+          </svg>
+          <span className="tool-label">{displayModeLabel[displayMode]}</span>
+        </button>
+        <button
+          type="button"
+          className={`tool ${showSilhouettes ? "active" : ""}`}
+          data-testid="viewer-silhouettes-btn"
+          aria-pressed={showSilhouettes}
+          onClick={() => setShowSilhouettes((curr) => !curr)}
+          title={t.viewerSilhouettesHint}
+        >
+          <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4">
+            <rect x="2.5" y="2.5" width="11" height="11" rx="2" />
+            <rect x="5" y="5" width="6" height="6" rx="1" strokeWidth="1" opacity="0.6" />
+          </svg>
+          <span className="tool-label">{t.viewerSilhouettes}</span>
+        </button>
+        <button
           type="button"
           className="tool viewer-tools-more"
-          onClick={() => setToolsMenuOpen((current) => !current)}
+          onClick={() => {
+            setDisplayMenuOpen(false);
+            setToolsMenuOpen((current) => !current);
+          }}
           title={t.moreViewerTools}
           aria-expanded={toolsMenuOpen}
         >
@@ -356,6 +443,50 @@ export function ViewerOverlays({
         </div>
       )}
 
+      {displayMenuOpen && (
+        <div
+          ref={displayMenuRef}
+          className="viewer-display-menu"
+          role="menu"
+          aria-label={t.viewerDisplayMode}
+          data-testid="viewer-display-menu"
+        >
+          <div className="viewer-display-menu-head">{t.viewerDisplayMode}</div>
+          {DISPLAY_MODE_OPTIONS.map((mode) => {
+            const active = displayMode === mode;
+            return (
+              <button
+                key={mode}
+                type="button"
+                role="menuitemradio"
+                aria-checked={active}
+                data-testid={`viewer-display-option-${mode}`}
+                className={active ? "active" : ""}
+                onClick={() => {
+                  setDisplayMode(mode);
+                  setDisplayMenuOpen(false);
+                }}
+              >
+                <span>{displayModeLabel[mode]}</span>
+                {active && <span aria-hidden="true">✓</span>}
+              </button>
+            );
+          })}
+          <div className="viewer-display-menu-sep" />
+          <button
+            type="button"
+            role="menuitemcheckbox"
+            aria-checked={showSilhouettes}
+            data-testid="viewer-display-silhouettes-item"
+            className={showSilhouettes ? "active" : ""}
+            onClick={() => setShowSilhouettes((curr) => !curr)}
+          >
+            <span>{t.viewerSilhouettes}</span>
+            {showSilhouettes && <span aria-hidden="true">✓</span>}
+          </button>
+        </div>
+      )}
+
       {toolsMenuOpen && (
         <div className="viewer-more-menu">
           <button type="button" onClick={() => { setToolsMenuOpen(false); onToggleGrid(); }}>
@@ -363,6 +494,9 @@ export function ViewerOverlays({
           </button>
           <button type="button" onClick={() => { setToolsMenuOpen(false); setShadowsEnabled((v) => !v); }}>
             {t.shadows}
+          </button>
+          <button type="button" onClick={() => { setToolsMenuOpen(false); setShowSilhouettes((v) => !v); }}>
+            {t.viewerSilhouettes}
           </button>
           {onTogglePlanes && (
             <button type="button" onClick={() => { setToolsMenuOpen(false); onTogglePlanes(); }}>

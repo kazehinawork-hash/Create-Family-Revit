@@ -114,6 +114,7 @@ export function snapToAxis(
 
 export function createInfiniteGrid(): THREE.Mesh {
   const material = new THREE.ShaderMaterial({
+    glslVersion: THREE.GLSL3,
     uniforms: {
       uMinorColor: { value: new THREE.Color(0xb8b0a5) },
       uMajorColor: { value: new THREE.Color(0x8f877d) },
@@ -122,16 +123,21 @@ export function createInfiniteGrid(): THREE.Mesh {
       uFadeStart: { value: 6000 },
       uFadeEnd: { value: 36000 },
       uCamera: { value: new THREE.Vector3() },
+      uProj: { value: new THREE.Matrix4() },
+      uInvProj: { value: new THREE.Matrix4() },
+      uCameraWorld: { value: new THREE.Matrix4() },
+      uGridZ: { value: -0.05 },
     },
     vertexShader: `
-      varying vec3 vWorldPosition;
+      out vec2 vNdc;
       void main() {
-        vec4 world = modelMatrix * vec4(position, 1.0);
-        vWorldPosition = world.xyz;
-        gl_Position = projectionMatrix * viewMatrix * world;
+        vNdc = position.xy;
+        gl_Position = vec4(position.xy, 0.0, 1.0);
       }
     `,
     fragmentShader: `
+      precision highp float;
+
       uniform vec3 uMinorColor;
       uniform vec3 uMajorColor;
       uniform float uMinorOpacity;
@@ -139,18 +145,51 @@ export function createInfiniteGrid(): THREE.Mesh {
       uniform float uFadeStart;
       uniform float uFadeEnd;
       uniform vec3 uCamera;
-      varying vec3 vWorldPosition;
+      uniform mat4 uProj;
+      uniform mat4 uInvProj;
+      uniform mat4 uCameraWorld;
+      uniform float uGridZ;
 
-      float gridLine(vec2 world, float spacing) {
+      in vec2 vNdc;
+      out vec4 fragColor;
+
+      float gridLine(vec2 world, vec2 worldRel, float spacing) {
         vec2 coord = world / spacing;
-        vec2 derivative = max(fwidth(coord), vec2(1e-5));
+        vec2 derivative = max(fwidth(worldRel / spacing), vec2(1e-5));
         vec2 grid = abs(fract(coord - 0.5) - 0.5) / derivative;
-        return 1.0 - smoothstep(0.0, 1.2, min(grid.x, grid.y));
+        float line = 1.0 - smoothstep(0.0, 1.2, min(grid.x, grid.y));
+        // Fade out sub-pixel frequency lines near the horizon to prevent aliasing bands.
+        float aa = 1.0 - smoothstep(0.3, 0.8, max(derivative.x, derivative.y));
+        return line * aa;
       }
 
       void main() {
-        vec2 world = vWorldPosition.xy;
-        float footprint = max(fwidth(world.x), fwidth(world.y));
+        // Sample NDC z = -1 and z = 0 (near and ~2*near in clip space) so the ray step
+        // stays small near the camera and avoids 2 km triangle interpolation loss.
+        vec4 p0 = uInvProj * vec4(vNdc, -1.0, 1.0);
+        p0 /= p0.w;
+        vec4 p1 = uInvProj * vec4(vNdc, 0.0, 1.0);
+        p1 /= p1.w;
+
+        mat3 camRot = mat3(uCameraWorld);
+        vec3 rayOrigin = camRot * p0.xyz;
+        vec3 rayStep = camRot * (p1.xyz - p0.xyz);
+
+        float dz = uGridZ - uCamera.z;
+        float safeStepZ = abs(rayStep.z) < 1e-7 ? (rayStep.z < 0.0 ? -1e-7 : 1e-7) : rayStep.z;
+        float t = (dz - rayOrigin.z) / safeStepZ;
+
+        vec3 hitCam = p0.xyz + max(t, 0.0) * (p1.xyz - p0.xyz);
+        vec4 clipPos = uProj * vec4(hitCam, 1.0);
+        float ndcDepth = clipPos.z / clipPos.w;
+        bool hit = abs(rayStep.z) >= 1e-7 && t >= 0.0 && ndcDepth > -1.0 && ndcDepth < 1.0;
+
+        float maxSteps = max(uFadeEnd * 1.25, 100.0) / max(length(rayStep), 1e-4);
+        float tGrad = clamp(t, 0.0, maxSteps);
+        vec2 worldRel = rayOrigin.xy + tGrad * rayStep.xy;
+        vec2 world = uCamera.xy + worldRel;
+
+        float footprint = max(fwidth(worldRel.x), fwidth(worldRel.y));
         float target = max(10.0, footprint * 64.0);
         float level = clamp(log(target / 10.0) / log(10.0), 0.0, 3.0);
         float exponent = floor(level);
@@ -158,21 +197,26 @@ export function createInfiniteGrid(): THREE.Mesh {
         float base = 10.0 * pow(10.0, exponent);
 
         float minor = mix(
-          gridLine(world, base),
-          gridLine(world, base * 10.0),
+          gridLine(world, worldRel, base),
+          gridLine(world, worldRel, base * 10.0),
           blend
         );
         float major = mix(
-          gridLine(world, base * 5.0),
-          gridLine(world, base * 50.0),
+          gridLine(world, worldRel, base * 5.0),
+          gridLine(world, worldRel, base * 50.0),
           blend
         );
 
-        float distanceToCamera = length(world - uCamera.xy);
+        if (!hit) discard;
+
+        gl_FragDepth = ((gl_DepthRange.diff * ndcDepth) + gl_DepthRange.near + gl_DepthRange.far) * 0.5;
+
+        float distanceToCamera = length(worldRel);
         float fade = 1.0 - smoothstep(uFadeStart, uFadeEnd, distanceToCamera);
         float alpha = max(minor * uMinorOpacity, major * uMajorOpacity) * fade;
         if (alpha < 0.002) discard;
-        gl_FragColor = vec4(mix(uMinorColor, uMajorColor, major), alpha);
+
+        fragColor = vec4(mix(uMinorColor, uMajorColor, major), alpha);
       }
     `,
     transparent: true,
@@ -180,9 +224,18 @@ export function createInfiniteGrid(): THREE.Mesh {
     depthTest: true,
     side: THREE.DoubleSide,
   });
-  const grid = new THREE.Mesh(new THREE.PlaneGeometry(2000000, 2000000), material);
+  const grid = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), material);
   grid.position.z = -0.05;
   grid.renderOrder = -2;
+  grid.frustumCulled = false;
+  grid.raycast = () => {};
+  grid.onBeforeRender = (_renderer, _scene, camera) => {
+    material.uniforms.uProj.value.copy(camera.projectionMatrix);
+    material.uniforms.uInvProj.value.copy(camera.projectionMatrixInverse);
+    material.uniforms.uCameraWorld.value.copy(camera.matrixWorld);
+    material.uniforms.uCamera.value.setFromMatrixPosition(camera.matrixWorld);
+    material.uniforms.uGridZ.value = grid.position.z;
+  };
   return grid;
 }
 
@@ -291,6 +344,7 @@ export function captureViewerThumbnail(
   state: SceneState | null,
   currentModel: ResolvedModel | null,
   markDirty: () => void,
+  prepareDefaultRender?: () => () => void,
 ): string | null {
   if (!state || !currentModel?.bounds) return null;
 
@@ -315,6 +369,7 @@ export function captureViewerThumbnail(
   const previousBackground = state.scene.background;
 
   let image: string | null = null;
+  const restoreStyle = prepareDefaultRender?.();
   try {
     state.grid.visible = false;
     state.refPlanesGroup.visible = false;
@@ -350,6 +405,7 @@ export function captureViewerThumbnail(
     state.camera.lookAt(center);
     state.camera.updateProjectionMatrix();
 
+    state.renderer.shadowMap.needsUpdate = true;
     state.renderer.render(state.scene, state.camera);
     const source = state.renderer.domElement;
 
@@ -380,6 +436,7 @@ export function captureViewerThumbnail(
   } catch {
     image = null;
   } finally {
+    restoreStyle?.();
     state.grid.visible = wasVisible.grid;
     state.refPlanesGroup.visible = wasVisible.refPlanes;
     state.connectorsGroup.visible = wasVisible.connectors;
@@ -396,6 +453,7 @@ export function captureViewerThumbnail(
     state.controls.target.copy(previousTarget);
     state.controls.update();
     state.scene.background = previousBackground;
+    state.renderer.shadowMap.needsUpdate = true;
     markDirty();
   }
 

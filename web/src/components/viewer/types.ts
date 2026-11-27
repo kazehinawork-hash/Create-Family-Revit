@@ -3,6 +3,9 @@ import type * as THREE from "three";
 import type { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { ChatTarget, ModelNote, NoteDraft, Vec3Like } from "../../lib/annotations";
 import type { Units } from "../../lib/format";
+import type { ViewerDisplayMode } from "./displayMode";
+
+export type { ViewerDisplayMode };
 
 /** Camera presets the ViewCube can request. */
 export type ViewDirection =
@@ -27,11 +30,16 @@ export interface PartCacheEntry {
   group: THREE.Group;
   meshMaterial: THREE.MeshStandardMaterial;
   edgeMaterial: THREE.LineBasicMaterial;
+  tangentMaterial?: THREE.LineBasicMaterial;
+  tangentLines?: THREE.LineSegments;
+  smoothLines?: THREE.LineSegments;
   /** Stencil helpers that mark the solid part of a section cut. */
   stencilBack?: THREE.Mesh;
   stencilFront?: THREE.Mesh;
-  /** Dark back-face shell that makes the outer silhouette read stronger. */
+  /** Back-face shell that makes the outer silhouette read stronger. */
   silhouette?: THREE.Mesh;
+  /** Latest computed part visual style so capture/export can temporarily apply default shading. */
+  applyDefaultStyle?: (defaultTheme?: "light" | "dark") => () => void;
   disposables: { dispose: () => void }[];
 }
 

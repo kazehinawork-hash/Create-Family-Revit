@@ -3,13 +3,14 @@ import type { ResolvedModel } from "@family/spec-core";
 import * as THREE from "three";
 import type { Strings } from "../../lib/strings";
 import { planeCrossSection } from "./sceneHelpers";
-import type { PartCacheEntry, SceneState, SectionCustomState, SectionDragData } from "./types";
+import type { PartCacheEntry, SceneState, SectionCustomState, SectionDragData, ViewerDisplayMode } from "./types";
 
 export interface UseSectionOptions {
   stateRef: MutableRefObject<SceneState | null>;
   partCacheRef: MutableRefObject<Map<string, PartCacheEntry>>;
   renderDirtyRef: MutableRefObject<boolean>;
   model: ResolvedModel | null;
+  displayMode: ViewerDisplayMode;
   t: Strings;
   formatNumber: (value: number) => string;
 }
@@ -113,6 +114,7 @@ export function useSection({
   partCacheRef,
   renderDirtyRef,
   model,
+  displayMode,
   t,
   formatNumber,
 }: UseSectionOptions) {
@@ -313,7 +315,7 @@ export function useSection({
     handleLabel.position.copy(handlePoint).add(new THREE.Vector3(0, 0, handleHeight * 1.15));
 
     const cap = sectionCapRef.current;
-    const active = sectionFill && model.parts.length < 200;
+    const active = sectionFill && displayMode !== "wireframe" && model.parts.length < 200;
     if (cap) {
       cap.visible = active;
       if (active) {
@@ -348,7 +350,7 @@ export function useSection({
 
     state.renderer.shadowMap.needsUpdate = true;
     renderDirtyRef.current = true;
-  }, [stateRef, partCacheRef, renderDirtyRef, sectionAxis, sectionT, model, sectionCustom, sectionFill, t, formatNumber]);
+  }, [stateRef, partCacheRef, renderDirtyRef, sectionAxis, sectionT, model, sectionCustom, sectionFill, displayMode, t, formatNumber]);
 
   const sectionMm = (() => {
     if (!model?.bounds || sectionAxis === "off") return null;

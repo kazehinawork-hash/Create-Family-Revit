@@ -252,3 +252,257 @@ test("viewer interactions: hover, multi-angle & sectioned picking, deselect, con
   const download = await downloadPromise;
   expect(download.suggestedFilename().toLowerCase()).toMatch(/\.png$/);
 });
+
+test("viewer shaders compile without WebGL shader errors across light, dark, and section clipping", async ({
+  page,
+}) => {
+  const shaderErrors: string[] = [];
+  const SHADER_ERROR_RE = /Shader Error|VALIDATE_STATUS|redefinition|THREE\.WebGLProgram/i;
+  page.on("console", (msg) => {
+    const text = msg.text();
+    if (SHADER_ERROR_RE.test(text)) shaderErrors.push(`[console.${msg.type()}] ${text}`);
+  });
+  page.on("pageerror", (err) => {
+    shaderErrors.push(`[pageerror] ${err.message}`);
+  });
+
+  await loadFixtureIntoViewer(page);
+
+  // Exercise section clipping shader path (NUM_CLIPPING_PLANES > 0) while model & silhouette render.
+  await page.locator('.viewer-tools button[title="Mặt cắt"]').click();
+  const sectionCard = page.locator(".section-card");
+  await expect(sectionCard).toBeVisible();
+  const sectionInput = sectionCard.locator('input[type="number"]');
+  await sectionInput.fill("0");
+  await sectionInput.dispatchEvent("change");
+  await page.waitForTimeout(250);
+  await page.locator('button[aria-label="Đóng mặt cắt"]').click();
+
+  // Switch to dark theme and back to light theme so both silhouette palettes render cleanly.
+  await page.getByRole("button", { name: "Thao tác khác" }).click();
+  await page.locator(".theme-switch button", { hasText: "Tối" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await page.waitForTimeout(250);
+
+  await page.locator(".theme-switch button", { hasText: "Sáng" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  await page.waitForTimeout(250);
+
+  expect(shaderErrors).toEqual([]);
+});
+
+test("display mode switcher and silhouettes toggle persist across reload while PNG export works in any mode", async ({
+  page,
+}) => {
+  const shaderErrors: string[] = [];
+  const SHADER_ERROR_RE = /Shader Error|VALIDATE_STATUS|redefinition|THREE\.WebGLProgram/i;
+  page.on("console", (msg) => {
+    const text = msg.text();
+    if (SHADER_ERROR_RE.test(text)) shaderErrors.push(`[console.${msg.type()}] ${text}`);
+  });
+  page.on("pageerror", (err) => {
+    shaderErrors.push(`[pageerror] ${err.message}`);
+  });
+
+  await loadFixtureIntoViewer(page);
+
+  const modeBtn = page.getByTestId("viewer-display-mode-btn");
+  const silhouettesBtn = page.getByTestId("viewer-silhouettes-btn");
+  await expect(modeBtn).toContainText("Tô bóng + cạnh");
+  await expect(silhouettesBtn).toHaveAttribute("aria-pressed", "true");
+
+  // Cycle through Shaded -> Hidden Line -> Wireframe and turn Silhouettes OFF.
+  await modeBtn.click();
+  await page.getByTestId("viewer-display-option-shaded").click();
+  await expect(modeBtn).toContainText("Tô bóng");
+
+  await modeBtn.click();
+  await page.getByTestId("viewer-display-option-hiddenLine").click();
+  await expect(modeBtn).toContainText("Nét ẩn");
+
+  await modeBtn.click();
+  await page.getByTestId("viewer-display-option-wireframe").click();
+  await expect(modeBtn).toContainText("Khung dây");
+
+  await silhouettesBtn.click();
+  await expect(silhouettesBtn).toHaveAttribute("aria-pressed", "false");
+
+  // Export PNG while wireframe + silhouettes OFF are active; must export cleanly & restore state.
+  const downloadPromise = page.waitForEvent("download");
+  await page.locator('.viewer-tools button[title="Lưu ảnh PNG"]').click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename().toLowerCase()).toMatch(/\.png$/);
+  await expect(modeBtn).toContainText("Khung dây");
+
+  // Reload and verify display mode + silhouettes preference survive.
+  await page.reload();
+  await expect(page.getByTestId("viewer-display-mode-btn")).toContainText("Khung dây");
+  await expect(page.getByTestId("viewer-silhouettes-btn")).toHaveAttribute("aria-pressed", "false");
+
+  expect(shaderErrors).toEqual([]);
+});
+
+test("CSG-cut and arrayed parts render outer edges cleanly across Wireframe, Hidden Line, themes, and section clipping", async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  const shaderErrors: string[] = [];
+  const SHADER_ERROR_RE = /Shader Error|VALIDATE_STATUS|redefinition|THREE\.WebGLProgram/i;
+  page.on("console", (msg) => {
+    const text = msg.text();
+    if (SHADER_ERROR_RE.test(text)) shaderErrors.push(`[console.${msg.type()}] ${text}`);
+  });
+  page.on("pageerror", (err) => {
+    shaderErrors.push(`[pageerror] ${err.message}`);
+  });
+
+  const csgSpec = {
+    schemaVersion: "1.0",
+    name: "CSG Wireframe Check",
+    category: "Generic Model",
+    units: "mm",
+    parameters: [],
+    parts: [
+      {
+        id: "csg-plate",
+        name: "CSG Plate",
+        material: "Aluminum",
+        solid: {
+          kind: "box",
+          origin: { x: -250, y: -150, z: 0 },
+          size: { x: 500, y: 300, z: 260 },
+          cornerRadius: 20,
+        },
+        cuts: [
+          {
+            kind: "cylinder",
+            axis: "y",
+            base: { x: 0, y: -160, z: 130 },
+            radius: 45,
+            height: 320,
+          },
+        ],
+      },
+      {
+        id: "pin-array",
+        name: "Pin Array",
+        material: "Steel",
+        solid: {
+          kind: "cylinder",
+          axis: "z",
+          base: { x: -300, y: 0, z: 20 },
+          radius: 40,
+          height: 220,
+        },
+        array: { count: 2, axis: "x", spacing: 600 },
+      },
+    ],
+    materials: [
+      { name: "Aluminum", color: "#b0b7be", metalness: 0.4, roughness: 0.45 },
+      { name: "Steel", color: "#6c7680", metalness: 0.5, roughness: 0.4 },
+    ],
+  };
+
+  await page.route("**/api/design", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "text/event-stream; charset=utf-8",
+      body:
+        `data: ${JSON.stringify({ type: "job", jobId: "csg-wf" })}\n\n` +
+        `data: ${JSON.stringify({
+          type: "spec",
+          spec: csgSpec,
+          stats: { ...fakeStats, parts: 2, instances: 3, bounds: { x: 640, y: 300, z: 260 } },
+          issues: [],
+          errors: [],
+          outcome: "ok",
+        })}\n\n`,
+    });
+  });
+
+  await page.goto("/");
+  await page.locator("textarea").first().fill("Load CSG wireframe fixture.");
+  await page.getByTestId("chat-send").click();
+  await expect(page.locator(".viewer-caption")).toContainText("2 chi tiết");
+  await page.waitForTimeout(1500);
+  await page.locator('.viewer-tools button[title="Vừa khung"]').click();
+  await page.waitForTimeout(300);
+
+  const countDarkInkPixelsInRegion = async (
+    canvasPng: Buffer,
+    region: { x0: number; y0: number; x1: number; y1: number },
+    darkMode: boolean,
+  ) => {
+    const b64 = canvasPng.toString("base64");
+    return page.evaluate(
+      async ({ dataUrl, r, dark }) => {
+        const img = new Image();
+        img.src = dataUrl;
+        await new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = reject;
+        });
+        const off = document.createElement("canvas");
+        off.width = img.width;
+        off.height = img.height;
+        const ctx = off.getContext("2d")!;
+        ctx.drawImage(img, 0, 0);
+        const sx = Math.floor(img.width * r.x0);
+        const sy = Math.floor(img.height * r.y0);
+        const sw = Math.max(1, Math.floor(img.width * (r.x1 - r.x0)));
+        const sh = Math.max(1, Math.floor(img.height * (r.y1 - r.y0)));
+        const data = ctx.getImageData(sx, sy, sw, sh).data;
+        let hits = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          const lum = 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
+          if (dark ? lum > 175 : lum < 85) hits += 1;
+        }
+        return hits;
+      },
+      { dataUrl: `data:image/png;base64,${b64}`, r: region, dark: darkMode },
+    );
+  };
+
+  // Switch to Wireframe: CSG plate straight outer edges must draw dark ink pixels in the upper half.
+  const canvas = page.locator(".viewer canvas").first();
+  await page.getByTestId("viewer-display-mode-btn").click();
+  await page.getByTestId("viewer-display-option-wireframe").click();
+  await page.waitForTimeout(300);
+
+  const wireLightPng = await canvas.screenshot();
+  const upperBandLightHits = await countDarkInkPixelsInRegion(
+    wireLightPng,
+    { x0: 0.3, y0: 0.22, x1: 0.7, y1: 0.42 },
+    false,
+  );
+  expect(upperBandLightHits).toBeGreaterThan(80);
+
+  // Dark theme in Wireframe must draw bright ink edges cleanly.
+  await page.getByRole("button", { name: "Thao tác khác" }).click();
+  await page.locator(".theme-switch button", { hasText: "Tối" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await page.waitForTimeout(300);
+  const wireDarkPng = await canvas.screenshot();
+  const upperBandDarkHits = await countDarkInkPixelsInRegion(
+    wireDarkPng,
+    { x0: 0.3, y0: 0.22, x1: 0.7, y1: 0.42 },
+    true,
+  );
+  expect(upperBandDarkHits).toBeGreaterThan(80);
+
+  // Section clipping and remaining modes must also run without shader errors.
+  await page.locator('.viewer-tools button[title="Mặt cắt"]').click();
+  await page.waitForTimeout(250);
+  await page.getByTestId("viewer-display-mode-btn").click();
+  await page.getByTestId("viewer-display-option-hiddenLine").click();
+  await page.waitForTimeout(250);
+  await page.getByTestId("viewer-display-mode-btn").click();
+  await page.getByTestId("viewer-display-option-shaded").click();
+  await page.waitForTimeout(250);
+  await page.getByTestId("viewer-display-mode-btn").click();
+  await page.getByTestId("viewer-display-option-shadedEdges").click();
+  await page.waitForTimeout(250);
+  await page.locator('button[aria-label="Đóng mặt cắt"]').click();
+
+  expect(shaderErrors).toEqual([]);
+});
