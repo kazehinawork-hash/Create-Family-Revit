@@ -55,6 +55,7 @@ test("a saved model can be renamed from the library and survives a reload", asyn
       page.locator(".saved-model-card", { hasText: renamed }).first(),
     ).toBeVisible();
   } finally {
-    await request.delete(`/api/models/${id}`);
+    await request.delete(`/api/models/${id}`).catch(() => {});
+    await request.delete(`/api/trash/${id}`).catch(() => {});
   }
 });

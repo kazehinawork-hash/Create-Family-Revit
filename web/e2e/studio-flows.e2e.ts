@@ -155,7 +155,7 @@ test("model selection, LOD selection, theme toggle, panel resize, and server off
 
   // Change model & LOD and confirm outgoing design payload + persistence.
   const modelSelect = page.locator("select.model-select");
-  await expect(modelSelect).toBeEnabled();
+  await expect(modelSelect).toBeEnabled({ timeout: 15_000 });
   await modelSelect.selectOption("agy:gemini-4-hydrogen-low");
   await expect.poll(() => page.evaluate(() => localStorage.getItem("fa.model"))).toBe(
     "agy:gemini-4-hydrogen-low",
@@ -253,9 +253,12 @@ test("save, load, and delete family from library UI", async ({ page, request }) 
     const cy = box.y + box.height * 0.5;
     const offCenterX = box.x + box.width * 0.6;
 
-    await page.waitForTimeout(450);
-    await page.mouse.click(offCenterX, cy);
-    await expect(page.locator(".viewer-selected-chip")).toContainText("Bottom Plate");
+    await expect(async () => {
+      await page.mouse.click(offCenterX, cy);
+      await expect(page.locator(".viewer-selected-chip")).toContainText("Bottom Plate", {
+        timeout: 1_000,
+      });
+    }).toPass({ timeout: 10_000, intervals: [150, 250, 400] });
     await page.keyboard.press("Escape");
     await expect(page.locator(".viewer-selected-chip")).toHaveCount(0);
 
@@ -263,7 +266,9 @@ test("save, load, and delete family from library UI", async ({ page, request }) 
     for (let i = 0; i < 60; i += 1) {
       await page.mouse.wheel(0, 300);
     }
-    await page.waitForTimeout(350);
+    await page.evaluate(
+      () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+    );
     await page.mouse.click(offCenterX, cy);
     await expect(page.locator(".viewer-selected-chip")).toHaveCount(0);
 
@@ -278,10 +283,13 @@ test("save, load, and delete family from library UI", async ({ page, request }) 
     await loadResponse;
     await expect(page.locator(".library-modal")).toHaveCount(0);
     await expect(page.locator(".project-name")).toHaveText(uniqueName);
-    await page.waitForTimeout(400);
 
-    await page.mouse.click(offCenterX, cy);
-    await expect(page.locator(".viewer-selected-chip")).toContainText("Bottom Plate");
+    await expect(async () => {
+      await page.mouse.click(offCenterX, cy);
+      await expect(page.locator(".viewer-selected-chip")).toContainText("Bottom Plate", {
+        timeout: 1_000,
+      });
+    }).toPass({ timeout: 10_000, intervals: [150, 250, 400] });
 
     // 3. Re-open Library and move the model to Trash.
     await page.locator("header.topbar button", { hasText: "Thư viện" }).first().click();

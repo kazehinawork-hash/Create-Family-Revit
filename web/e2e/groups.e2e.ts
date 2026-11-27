@@ -31,34 +31,38 @@ test("a group can be renamed in place and the new name survives a reload", async
   const created = await request.post("/api/library/groups", { data: { name: original } });
   expect(created.ok()).toBeTruthy();
 
-  await openLibrary(page);
+  let activeGroupName = original;
+  try {
+    await openLibrary(page);
 
-  const row = page.locator(".library-group-row", { hasText: original }).first();
-  await expect(row).toBeVisible();
-  // The action is discoverable without hovering: visible, faint but present.
-  const menuBtn = row.locator(".group-menu-btn");
-  await expect(menuBtn).toBeVisible();
-  expect(await menuBtn.evaluate((node) => Number(getComputedStyle(node).opacity))).toBeGreaterThan(
-    0.2,
-  );
+    const row = page.locator(".library-group-row", { hasText: original }).first();
+    await expect(row).toBeVisible();
+    // The action is discoverable without hovering: visible, faint but present.
+    const menuBtn = row.locator(".group-menu-btn");
+    await expect(menuBtn).toBeVisible();
+    expect(await menuBtn.evaluate((node) => Number(getComputedStyle(node).opacity))).toBeGreaterThan(
+      0.2,
+    );
 
-  // The sidebar scrolls the row into view on the first click; double-click after that
-  // so both clicks land on the same row (a real user sees the row before clicking).
-  await row.locator(".library-filter").click();
-  await row.locator(".library-filter").dblclick();
-  const input = page.locator(`[data-testid="group-rename-input-${original}"]`);
-  await expect(input).toBeVisible();
-  await input.fill(renamed);
-  await input.press("Enter");
+    // The sidebar scrolls the row into view on the first click; double-click after that
+    // so both clicks land on the same row (a real user sees the row before clicking).
+    await row.locator(".library-filter").click();
+    await row.locator(".library-filter").dblclick();
+    const input = page.locator(`[data-testid="group-rename-input-${original}"]`);
+    await expect(input).toBeVisible();
+    await input.fill(renamed);
+    await input.press("Enter");
 
-  await expect(page.locator(".library-group-row", { hasText: renamed }).first()).toBeVisible();
-  expect((await snapshot(request)).groups.map((group) => group.name)).toContain(renamed);
+    await expect(page.locator(".library-group-row", { hasText: renamed }).first()).toBeVisible();
+    activeGroupName = renamed;
+    expect((await snapshot(request)).groups.map((group) => group.name)).toContain(renamed);
 
-  await page.reload();
-  await page.locator("button", { hasText: "Thư viện" }).first().click();
-  await expect(page.locator(".library-group-row", { hasText: renamed }).first()).toBeVisible();
-
-  await request.delete(`/api/library/groups/${encodeURIComponent(renamed)}`);
+    await page.reload();
+    await page.locator("button", { hasText: "Thư viện" }).first().click();
+    await expect(page.locator(".library-group-row", { hasText: renamed }).first()).toBeVisible();
+  } finally {
+    await request.delete(`/api/library/groups/${encodeURIComponent(activeGroupName)}`).catch(() => {});
+  }
 });
 
 test("deleting a group moves its families back to Chưa nhóm", async ({ page, request }) => {
@@ -111,7 +115,9 @@ test("deleting a group moves its families back to Chưa nhóm", async ({ page, r
     expect(detail.group ?? "").toBe("");
     await expect(page.locator(".saved-model-card", { hasText: family }).first()).toBeVisible();
   } finally {
-    await request.delete(`/api/models/${id}`);
+    await request.delete(`/api/models/${id}`).catch(() => {});
+    await request.delete(`/api/trash/${id}`).catch(() => {});
+    await request.delete(`/api/library/groups/${encodeURIComponent(group)}`).catch(() => {});
   }
 });
 
@@ -126,13 +132,16 @@ test("right-click opens the same menu, Escape and an outside click close it", as
   try {
     await openLibrary(page);
 
+    const row = page.locator(".library-group-row", { hasText: group }).first();
+    await expect(row).toBeVisible();
+
     // System rows (Tất cả / Chưa nhóm / Thùng rác) offer no group menu: only the
     // named-group rows carry the ⋯ button.
     await expect(page.locator(".library-group-row .group-menu-btn")).toHaveCount(
       await page.locator(".library-group-row").count(),
     );
 
-    const row = page.locator(".library-group-row", { hasText: group }).first();
+    await row.locator(".library-filter").click();
     await row.locator(".library-filter").click();
     await row.locator(".library-filter").click({ button: "right" });
 
@@ -160,23 +169,25 @@ test("a duplicate group name is reported instead of silently merging", async ({
   expect((await request.post("/api/library/groups", { data: { name: first } })).ok()).toBeTruthy();
   expect((await request.post("/api/library/groups", { data: { name: second } })).ok()).toBeTruthy();
 
-  await openLibrary(page);
-  const row = page.locator(".library-group-row", { hasText: second }).first();
-  await row.locator(".library-filter").click();
-  await row.locator(".library-filter").dblclick();
-  const input = page.locator(`[data-testid="group-rename-input-${second}"]`);
-  await expect(input).toBeVisible();
-  await input.fill(first);
-  await input.press("Enter");
+  try {
+    await openLibrary(page);
+    const row = page.locator(".library-group-row", { hasText: second }).first();
+    await row.locator(".library-filter").click();
+    await row.locator(".library-filter").dblclick();
+    const input = page.locator(`[data-testid="group-rename-input-${second}"]`);
+    await expect(input).toBeVisible();
+    await input.fill(first);
+    await input.press("Enter");
 
-  await expect(page.locator(".group-name-error")).toContainText(first);
-  await input.press("Escape");
+    await expect(page.locator(".group-name-error")).toContainText(first);
+    await input.press("Escape");
 
-  expect((await snapshot(request)).groups.map((group) => group.name)).toEqual(
-    expect.arrayContaining([first, second]),
-  );
-
-  for (const name of [first, second]) {
-    await request.delete(`/api/library/groups/${encodeURIComponent(name)}`);
+    expect((await snapshot(request)).groups.map((group) => group.name)).toEqual(
+      expect.arrayContaining([first, second]),
+    );
+  } finally {
+    for (const name of [first, second]) {
+      await request.delete(`/api/library/groups/${encodeURIComponent(name)}`).catch(() => {});
+    }
   }
 });

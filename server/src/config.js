@@ -181,7 +181,7 @@ export const config = {
     root: ROOT,
     webDist: path.join(ROOT, "web", "dist"),
     prompts: path.join(ROOT, "server", "prompts"),
-    uploads: path.join(ROOT, ".uploads"),
+    uploads: process.env.FAMILY_UPLOADS_DIR || path.join(ROOT, ".uploads"),
     saved: process.env.FAMILY_SAVED_DIR || path.join(ROOT, "saved-models"),
     jobs: process.env.FAMILY_JOBS_DIR || path.join(ROOT, ".jobs"),
     out: process.env.FAMILY_OUT_DIR || path.join(home, "Documents", "FamilyAgent", "out"),
