@@ -98,3 +98,75 @@ test("complexity guard flags mitered crosses but not a simple box", () => {
     false,
   );
 });
+
+test("checklist: ignores material codes (SUS304/Inox 304), bạc/bắc, cong/portable, and absurd counts", () => {
+  const gaugePrompt =
+    "Dựng cụm đồng hồ áp suất SUS304 bạc sáng, vỏ inox 304 bạc mờ, mặt đường kính 100 mm.";
+  const gaugeChecklist = extractChecklistHeuristic(gaugePrompt);
+  assert.deepEqual(gaugeChecklist.groups, []);
+  assert.equal(gaugeChecklist.connectors, 0);
+
+  const falsePositives = extractChecklistHeuristic(
+    "Ống uốn 90 cong, 24 portable, 100 công tắc, hướng 4 bắc, 12 bạc, 304 bac, 200 cộng.",
+  );
+  assert.deepEqual(falsePositives.groups, []);
+  assert.equal(falsePositives.connectors, 0);
+
+  const absurdAndCodePrefix = extractChecklistHeuristic(
+    "Inox 304 bậc A, SUS 12 bậc, EN 16 rails, mã số 12 cổng, DN 16 cổng, 500 bậc thang, 999 cổng kết nối, 40 thành góc.",
+  );
+  assert.deepEqual(absurdAndCodePrefix.groups, []);
+  assert.equal(absurdAndCodePrefix.connectors, 0);
+});
+
+test("checklist: extracts genuine counts even after SUS304 bạc or words ending like en/ip/số", () => {
+  const mixed = extractChecklistHeuristic(
+    "Thang cáp vật liệu SUS304 bạc sáng, gồm 4 cụm thành góc, 6 bậc thang, 4 cổng kết nối.",
+  );
+  const byRole = Object.fromEntries(mixed.groups.map((group) => [group.role, group.expected]));
+  assert.equal(byRole.corner, 4);
+  assert.equal(byRole.rung, 6);
+  assert.equal(mixed.connectors, 4);
+
+  assert.equal(
+    extractChecklistHeuristic("Tổng số 6 bậc").groups.find((group) => group.role === "rung")
+      ?.expected,
+    6,
+  );
+  assert.equal(
+    extractChecklistHeuristic("green 2 rails").groups.find((group) => group.role === "corner")
+      ?.expected,
+    2,
+  );
+  assert.equal(
+    extractChecklistHeuristic("then 2 rails").groups.find((group) => group.role === "corner")
+      ?.expected,
+    2,
+  );
+  assert.equal(extractChecklistHeuristic("clip 2 ports").connectors, 2);
+  assert.equal(
+    extractChecklistHeuristic("pass 2 rails").groups.find((group) => group.role === "corner")
+      ?.expected,
+    2,
+  );
+
+  assert.equal(
+    extractChecklistHeuristic("Thang cáp 8 bậc và 2 thành đứng").groups.find(
+      (group) => group.role === "rung",
+    )?.expected,
+    8,
+  );
+  assert.equal(
+    extractChecklistHeuristic("Cable ladder with 6 rungs and 2 rails").groups.find(
+      (group) => group.role === "rung",
+    )?.expected,
+    6,
+  );
+  assert.equal(
+    extractChecklistHeuristic("Thang cap 6 bac thang, 2 dau noi").groups.find(
+      (group) => group.role === "rung",
+    )?.expected,
+    6,
+  );
+  assert.equal(extractChecklistHeuristic("Thang 6-rung, 3 ports").connectors, 3);
+});

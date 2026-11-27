@@ -112,35 +112,72 @@ function collectParameters(text) {
   return found;
 }
 
+const MAX_EXTRACTED_COUNTS = {
+  connectors: 24,
+  rungs: 100,
+  corners: 24,
+};
+
+const CODE_PREFIX_BEFORE_COUNT =
+  /(?:(?<![\p{L}\p{N}_])(?:sus|ss|inox|aisi|astm|jis|din|iso|iec|en|ral|ip|dn|pn|sch|phi|model|code|type|seri|serial|mã(?:\s+số)?)|[φø])[ \t-]*$/iu;
+
+const SEP = "(?:[ \\t]+|-(?=[\\p{L}]))";
+const LEFT_BOUNDARY = "(?<![\\p{L}\\p{N}_./-])";
+const RIGHT_BOUNDARY = "(?![\\p{L}\\p{N}_])";
+
 /**
  * Heuristic extraction (no model call): counts, parameters and material needs.
  * A cheap model pass can refine it when the prompt is long and the heuristic is thin.
  */
 export function extractChecklistHeuristic(prompt) {
   const text = String(prompt ?? "");
-  const normalized = normalize(text);
+  const accented = text.normalize("NFC").toLowerCase();
   const family = matchTemplateFamily(text);
   const defaults = FAMILY_DEFAULTS[family] ?? { corners: 0, connectors: 0 };
 
-  const readCount = (patterns) => {
+  const readCount = (patterns, maxCount) => {
     for (const pattern of patterns) {
-      const match = normalized.match(pattern);
-      if (match) {
+      for (const match of accented.matchAll(pattern)) {
         const value = Number(match[1]);
-        if (Number.isFinite(value) && value > 0) return value;
+        if (!Number.isFinite(value) || value <= 0 || value > maxCount) continue;
+        const prefix = accented.slice(Math.max(0, match.index - 24), match.index);
+        if (CODE_PREFIX_BEFORE_COUNT.test(prefix)) continue;
+        return value;
       }
     }
     return null;
   };
 
-  // Connectors first: "4 connector" must not be read as "4 walls".
-  const connectors = readCount([
-    /(\d+)\s*(?:connector|cong|dau noi|port)/,
-  ]);
-  const rungs = readCount([/(\d+)\s*(?:bac|rung)/]);
-  const corners = readCount([
-    /(\d+)\s*(?:cum\s+)?(?:thanh goc|thanh dung|corner|rail)/,
-  ]);
+  // Match on accent-preserved text so "bạc" (silver) / "bắc" (north) never matches
+  // "bậc" (rung), and "cong" (curved) / "công" / "cộng" never matches "cổng" (port).
+  // Unaccented forms require the full multi-word phrase ("bac thang", "cong ket noi", "dau noi").
+  const connectors = readCount(
+    [
+      new RegExp(
+        `${LEFT_BOUNDARY}(\\d+)${SEP}(?:connectors?|ports?|cổng(?:\\s+(?:kết\\s+nối|nối|mep))?|đầu\\s+nối|cong\\s+(?:ket\\s+noi|noi|mep)|dau\\s+noi)${RIGHT_BOUNDARY}`,
+        "gu",
+      ),
+    ],
+    MAX_EXTRACTED_COUNTS.connectors,
+  );
+  const rungs = readCount(
+    [
+      new RegExp(
+        `${LEFT_BOUNDARY}(\\d+)${SEP}(?:bậc\\s+thang|bậc|bac\\s+thang|rungs?)${RIGHT_BOUNDARY}`,
+        "gu",
+      ),
+    ],
+    MAX_EXTRACTED_COUNTS.rungs,
+  );
+  const corners = readCount(
+    [
+      new RegExp(
+        `${LEFT_BOUNDARY}(\\d+)${SEP}(?:(?:cụm|cum)\\s+)?(?:thành\\s+(?:góc|đứng)|thanh\\s+(?:goc|dung)|corners?|rails?)${RIGHT_BOUNDARY}`,
+        "gu",
+      ),
+    ],
+    MAX_EXTRACTED_COUNTS.corners,
+  );
 
   const groups = [];
   if (corners ?? defaults.corners) {

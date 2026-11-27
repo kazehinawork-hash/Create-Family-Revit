@@ -16,7 +16,12 @@ import {
 } from "../checklist.js";
 import { config } from "../config.js";
 import { applyFastParameterEdit, parseFastParameterEdit } from "../fast-edit.js";
-import { applySpecPatch, describeSpecPatch, isFullSpec } from "../patch.js";
+import {
+  applySpecPatch,
+  describeSpecPatch,
+  isFullSpec,
+  isOverlappingRepairDuplicatePatch,
+} from "../patch.js";
 import { cacheKey, readCachedResultEntry, writeCachedResult } from "../result-cache.js";
 import { isOutputLimitError } from "../retry.js";
 import {
@@ -239,6 +244,7 @@ export async function designStable(options) {
 
     let messages = freshMessages(text, spec, { focus: text, patch: Boolean(spec) && section });
     let patchBase = spec && section ? spec : null;
+    let patchMode = spec && section ? "section" : null;
     let analysis = null;
     let bestAnalysis = null;
     let attempts = 0;
@@ -411,10 +417,33 @@ export async function designStable(options) {
       if (result?.json && typeof result.json === "object") {
         if (patchBase && !isFullSpec(result.json)) {
           const delta = result.json;
-          result.json = applySpecPatch(patchBase, delta);
-          console.log(
-            `[design] patch merged (${describeSpecPatch(delta)}) parts=${(result.json.parts ?? []).length}`,
-          );
+          if (patchMode === "repair" && isOverlappingRepairDuplicatePatch(patchBase, delta)) {
+            console.warn(
+              `[design] rejected overlapping repair patch (${describeSpecPatch(delta)}); keeping existing parts`,
+            );
+            if (attempts < callsMax) {
+              const existingIds = (patchBase.parts ?? []).map((p) => p.id).filter(Boolean).join(", ");
+              send({
+                type: "stage",
+                stage: "repairing",
+                message: "Yêu cầu cập nhật đúng part hiện có thay vì nhân đôi",
+              });
+              messages = freshMessages(
+                `Your previous patch re-emitted overlapping parts with new ids in addParts instead of updating the existing parts (${existingIds}). ` +
+                  "Do NOT add a second copy of existing parts. Update existing parts in place using `updateParts` with their exact existing `id`s (or include old `id`s in `removePartIds` if replacing).",
+                patchBase,
+                { dependencyMap: false, patch: true },
+              );
+              continue;
+            }
+            warnings.push("Bỏ qua patch sửa lỗi có nguy cơ nhân đôi part; giữ nguyên mô hình trước.");
+            result.json = patchBase;
+          } else {
+            result.json = applySpecPatch(patchBase, delta, { mode: patchMode || "edit" });
+            console.log(
+              `[design] patch merged (${describeSpecPatch(delta)}) parts=${(result.json.parts ?? []).length}`,
+            );
+          }
         }
         result.json = autoHealSpec(result.json);
       }
@@ -444,6 +473,7 @@ export async function designStable(options) {
               message: `Thiếu ${describeGaps(gaps)} — bổ sung`,
             });
             patchBase = result.json;
+            patchMode = "supplement";
             messages = freshMessages(buildSupplementPrompt(gaps.missing, text), patchBase, {
               focus: text,
               patch: true,
@@ -476,8 +506,9 @@ export async function designStable(options) {
             issues: fixableIssues.slice(0, 12),
           });
           patchBase = result.json;
+          patchMode = "repair";
           messages = freshMessages(
-            `Original request:\n${text}\n\n${repairInstructions(result.json, fixableIssues, text)}`,
+            `Original request:\n${text}\n\n${repairInstructions(result.json, fixableIssues, text, { patch: true })}`,
             patchBase,
             { dependencyMap: false, patch: true },
           );
@@ -496,8 +527,9 @@ export async function designStable(options) {
         issues: analysis.errors.slice(0, 12),
       });
       patchBase = result.json;
+      patchMode = "repair";
       messages = freshMessages(
-        `Original request:\n${text}\n\n${repairInstructions(result.json, analysis.errors, text)}`,
+        `Original request:\n${text}\n\n${repairInstructions(result.json, analysis.errors, text, { patch: true })}`,
         patchBase,
         { dependencyMap: false, patch: true },
       );
