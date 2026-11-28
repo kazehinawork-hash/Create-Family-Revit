@@ -409,7 +409,7 @@ export function Viewer({
     controls.screenSpacePanning = true;
     controls.minDistance = 80;
     controls.maxDistance = 60000;
-    controls.maxPolarAngle = Math.PI - 0.05;
+    controls.maxPolarAngle = Math.PI;
 
     controls.addEventListener("start", () => {
       if (turntableRef.current) setTurntableActive(false);

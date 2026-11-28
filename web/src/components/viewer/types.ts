@@ -10,6 +10,7 @@ export type { ViewerDisplayMode };
 /** Camera presets the ViewCube can request. */
 export type ViewDirection =
   | "top"
+  | "bottom"
   | "front"
   | "back"
   | "left"

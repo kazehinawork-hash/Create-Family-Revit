@@ -296,6 +296,9 @@ export function computeCameraPreset(
     case "top":
       offset.set(0, -0.001, distance);
       break;
+    case "bottom":
+      offset.set(0, -0.001, -distance);
+      break;
     case "front":
       offset.set(0, -distance, 0);
       break;

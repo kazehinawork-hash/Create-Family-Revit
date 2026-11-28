@@ -70,6 +70,13 @@ describe("computeCameraPreset", () => {
     expect(top.pos.x).toBeCloseTo(0, 3);
     expect(top.pos.z).toBeCloseTo(150 + top.distance, 3);
 
+    const bottom = computeCameraPreset(bounds, 38, "bottom");
+    expect(bottom.center.toArray()).toEqual([0, 0, 150]);
+    expect(bottom.pos.x).toBeCloseTo(0, 3);
+    expect(bottom.pos.y).toBeCloseTo(0, 2);
+    expect(bottom.pos.z).toBeCloseTo(150 - bottom.distance, 3);
+    expect(bottom.distance).toBeCloseTo(top.distance, 3);
+
     const front = computeCameraPreset(bounds, 38, "front");
     expect(front.pos.y).toBeCloseTo(-front.distance, 3);
     expect(front.pos.z).toBeCloseTo(150, 3);

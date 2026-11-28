@@ -6359,3 +6359,608 @@ body,
   pointer-events: none;
   opacity: 0;
 }
+
+/* ============================================================================
+   Luminous interactions
+   Flat surfaces, hairline borders and light instead of thick "plastic" ledges:
+   primary actions carry a soft accent→cyan gradient with a light sweep, the rest
+   light up their border and glow on hover. Ideas from uiverse.io (MIT), redrawn
+   on the studio tokens.
+   ============================================================================ */
+
+:root {
+  --fx-cyan: #22b8cf;
+  --fx-grad: linear-gradient(
+    135deg,
+    var(--accent) 0%,
+    color-mix(in srgb, var(--accent) 55%, var(--fx-cyan)) 100%
+  );
+  --fx-glow: color-mix(in srgb, var(--accent) 60%, var(--fx-cyan));
+  --fx-ring: color-mix(in srgb, var(--fx-glow) 45%, transparent);
+  --fx-halo: 0 6px 20px -8px color-mix(in srgb, var(--fx-glow) 70%, transparent);
+  --fx-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+:root[data-theme="dark"] {
+  --fx-cyan: #4dd8ee;
+  --fx-ring: color-mix(in srgb, var(--fx-glow) 55%, transparent);
+  --fx-halo: 0 6px 24px -6px color-mix(in srgb, var(--fx-glow) 75%, transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --fx-cyan: #4dd8ee;
+    --fx-ring: color-mix(in srgb, var(--fx-glow) 55%, transparent);
+    --fx-halo: 0 6px 24px -6px color-mix(in srgb, var(--fx-glow) 75%, transparent);
+  }
+}
+
+@keyframes fxSweep {
+  from {
+    transform: translateX(-120%) skewX(-20deg);
+  }
+  to {
+    transform: translateX(260%) skewX(-20deg);
+  }
+}
+
+@keyframes fxRise {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---------------------------------------------------------- primary actions */
+.btn-primary,
+.send,
+.chat-result-action.chat-result-action-primary {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  border: 0;
+  background: var(--fx-grad);
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  transition:
+    box-shadow 200ms var(--fx-ease),
+    transform 120ms var(--fx-ease),
+    filter 200ms ease;
+}
+
+.chat-result-action.chat-result-action-primary {
+  font-weight: 550;
+}
+
+/* The light sweep that crosses the button on hover. */
+.btn-primary::after,
+.send::after,
+.chat-result-action.chat-result-action-primary::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 40%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.38),
+    transparent
+  );
+  transform: translateX(-120%) skewX(-20deg);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.btn-primary:hover:not(:disabled),
+.send:hover:not(:disabled),
+.chat-result-action.chat-result-action-primary:hover:not(:disabled) {
+  background: var(--fx-grad);
+  color: #fff;
+  filter: brightness(1.08) saturate(1.1);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.28),
+    0 0 0 1px var(--fx-ring),
+    var(--fx-halo);
+}
+
+.btn-primary:hover:not(:disabled)::after,
+.send:hover:not(:disabled)::after,
+.chat-result-action.chat-result-action-primary:hover:not(:disabled)::after {
+  animation: fxSweep 700ms var(--fx-ease);
+}
+
+.btn-primary:active:not(:disabled),
+.send:active:not(:disabled),
+.chat-result-action.chat-result-action-primary:active:not(:disabled) {
+  transform: scale(0.97);
+  filter: brightness(0.96);
+  box-shadow:
+    inset 0 1px 2px rgba(0, 0, 0, 0.2),
+    0 0 0 1px var(--fx-ring);
+}
+
+.btn-primary:disabled,
+.send:disabled,
+.chat-result-action.chat-result-action-primary:disabled {
+  background: var(--line-strong);
+  color: var(--muted);
+  box-shadow: none;
+  filter: none;
+}
+
+.btn-primary.danger,
+.send.stop,
+.btn-primary.danger:hover:not(:disabled),
+.send.stop:hover:not(:disabled) {
+  background: linear-gradient(
+    135deg,
+    var(--danger),
+    color-mix(in srgb, var(--danger) 70%, #ff4fa3)
+  );
+}
+
+.btn-primary.danger:hover:not(:disabled),
+.send.stop:hover:not(:disabled) {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.25),
+    0 0 0 1px color-mix(in srgb, var(--danger) 50%, transparent),
+    0 6px 22px -8px var(--danger);
+}
+
+/* ------------------------------------------------- secondary / ghost actions */
+.btn-secondary,
+.btn-ghost,
+.btn-demo,
+.chat-result-action:not(.chat-result-action-primary),
+.msg-action {
+  position: relative;
+  transition:
+    border-color 180ms ease,
+    background-color 180ms ease,
+    color 160ms ease,
+    box-shadow 220ms var(--fx-ease),
+    transform 120ms var(--fx-ease);
+}
+
+.btn-secondary:hover:not(:disabled),
+.btn-ghost:hover:not(:disabled),
+.btn-demo:hover:not(:disabled),
+.btn-demo.active,
+.chat-result-action:not(.chat-result-action-primary):hover:not(:disabled),
+.msg-action:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--fx-glow) 65%, transparent);
+  background: color-mix(in srgb, var(--fx-glow) 9%, var(--panel));
+  color: var(--ink);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--fx-glow) 18%, transparent),
+    0 0 16px -6px var(--fx-glow);
+}
+
+.btn-ghost.danger:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--danger) 65%, transparent);
+  background: color-mix(in srgb, var(--danger) 9%, var(--panel));
+  color: var(--danger);
+  box-shadow: 0 0 16px -6px var(--danger);
+}
+
+.btn-secondary:active:not(:disabled),
+.btn-ghost:active:not(:disabled),
+.btn-demo:active:not(:disabled),
+.chat-result-action:not(.chat-result-action-primary):active:not(:disabled),
+.msg-action:active:not(:disabled) {
+  transform: scale(0.97);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--fx-glow) 30%, transparent);
+}
+
+/* ----------------------------------------------------- viewer toolbar, chips */
+:root[data-theme="dark"] .viewer-tools {
+  background: color-mix(in srgb, var(--panel) 78%, transparent);
+  border-color: color-mix(in srgb, var(--line-strong) 80%, transparent);
+  backdrop-filter: blur(10px) saturate(1.2);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 8px 24px -12px rgba(0, 0, 0, 0.6);
+}
+
+.viewer-tools .tool,
+.btn-part-action,
+.btn-hide-part,
+.btn-delete-model,
+.btn-history-model,
+.viewer-selected-chip .chip-action-btn,
+.viewer-selected-chip .chip-close,
+.composer-target-remove,
+.types-chip {
+  transition:
+    background-color 150ms ease,
+    color 150ms ease,
+    box-shadow 200ms var(--fx-ease),
+    transform 120ms var(--fx-ease);
+}
+
+.viewer-tools .tool:hover:not(:disabled),
+.btn-part-action:hover:not(:disabled),
+.btn-hide-part:hover:not(:disabled),
+.viewer-selected-chip .chip-action-btn:hover:not(:disabled) {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--fx-glow) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fx-glow) 28%, transparent);
+}
+
+/* The active tool reads as "lit": tinted, outlined and with a glowing baseline. */
+.viewer-tools .tool.active,
+.viewer-tools .tool[aria-pressed="true"],
+.btn-part-action.active {
+  color: var(--accent-ink);
+  background: color-mix(in srgb, var(--fx-glow) 16%, transparent);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--fx-glow) 40%, transparent),
+    inset 0 -2px 0 -0.5px var(--fx-glow),
+    0 0 12px -5px var(--fx-glow);
+}
+
+.viewer-tools .tool:active:not(:disabled),
+.btn-part-action:active:not(:disabled),
+.btn-hide-part:active:not(:disabled),
+.btn-delete-model:active:not(:disabled),
+.btn-history-model:active:not(:disabled),
+.viewer-selected-chip .chip-action-btn:active:not(:disabled),
+.viewer-selected-chip .chip-close:active:not(:disabled),
+.composer-target-remove:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+.btn-delete-model:hover:not(:disabled) {
+  color: var(--danger);
+}
+
+/* ----------------------------------------------------------- focus, disabled */
+.btn-primary:focus-visible,
+.btn-secondary:focus-visible,
+.btn-ghost:focus-visible,
+.btn-demo:focus-visible,
+.send:focus-visible,
+.chat-result-action:focus-visible,
+.msg-action:focus-visible,
+.viewer-tools .tool:focus-visible,
+.btn-part-action:focus-visible,
+.btn-hide-part:focus-visible,
+.btn-delete-model:focus-visible,
+.btn-history-model:focus-visible,
+.viewer-selected-chip .chip-action-btn:focus-visible,
+.viewer-selected-chip .chip-close:focus-visible,
+.composer-target-remove:focus-visible,
+.theme-switch button:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--panel),
+    0 0 0 4px var(--fx-glow),
+    0 0 14px -2px var(--fx-glow);
+}
+
+.btn-secondary:disabled,
+.btn-ghost:disabled,
+.viewer-tools .tool:disabled {
+  transform: none;
+  box-shadow: none;
+}
+
+/* ------------------------------------------------------- toggles, checkboxes */
+.theme-switch button,
+.viewer-display-menu button {
+  transition:
+    background-color 180ms ease,
+    color 180ms ease,
+    box-shadow 200ms var(--fx-ease);
+}
+
+input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  flex: 0 0 auto;
+  border: 1.5px solid var(--line-strong);
+  border-radius: 4px;
+  background: var(--panel);
+  cursor: pointer;
+  vertical-align: middle;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    box-shadow 200ms var(--fx-ease);
+}
+
+input[type="checkbox"]::after {
+  content: "";
+  position: absolute;
+  left: 3.5px;
+  top: 1px;
+  width: 3.5px;
+  height: 7px;
+  border: solid #fff;
+  border-width: 0 1.7px 1.7px 0;
+  transform: rotate(45deg) scale(0);
+  opacity: 0;
+  transition:
+    transform 180ms var(--fx-ease),
+    opacity 120ms ease;
+}
+
+input[type="checkbox"]:hover:not(:disabled) {
+  border-color: var(--fx-glow);
+  box-shadow: 0 0 10px -3px var(--fx-glow);
+}
+
+input[type="checkbox"]:checked {
+  border-color: transparent;
+  background: var(--fx-grad);
+  box-shadow: 0 0 10px -3px var(--fx-glow);
+}
+
+input[type="checkbox"]:checked::after {
+  transform: rotate(45deg) scale(1);
+  opacity: 1;
+}
+
+input[type="checkbox"]:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--panel),
+    0 0 0 4px var(--fx-glow);
+}
+
+input[type="checkbox"]:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ------------------------------------------------------------------- inputs */
+.chat-composer textarea,
+.library-search,
+.library-sort select,
+.model-select {
+  transition:
+    border-color 180ms ease,
+    background-color 180ms ease,
+    box-shadow 240ms var(--fx-ease);
+}
+
+.chat-composer textarea:hover:not(:disabled):not(:focus),
+.library-search:hover:not(:disabled):not(:focus),
+.library-sort select:hover:not(:disabled):not(:focus),
+.model-select:hover:not(:disabled):not(:focus) {
+  border-color: color-mix(in srgb, var(--fx-glow) 40%, var(--line-strong));
+}
+
+.chat-composer textarea:focus,
+.library-search:focus,
+.library-sort select:focus-visible,
+.model-select:focus-visible {
+  outline: none;
+  border-color: var(--fx-glow);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--fx-glow) 16%, transparent),
+    0 0 22px -8px var(--fx-glow);
+}
+
+:root[data-theme="dark"] .chat-composer textarea:focus,
+:root[data-theme="dark"] .library-search:focus {
+  background: var(--panel);
+}
+
+/* ------------------------------------------------------ agent running state */
+.live {
+  animation: fxRise 200ms var(--fx-ease);
+}
+
+@keyframes fxDot {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.7);
+    box-shadow: none;
+  }
+  40% {
+    opacity: 1;
+    transform: scale(1);
+    box-shadow: 0 0 8px var(--fx-glow);
+  }
+}
+
+.dots-loader {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+  flex: 0 0 auto;
+}
+
+.dots-loader .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--fx-grad);
+  animation: fxDot 1.2s ease-in-out infinite;
+}
+
+.dots-loader .dot:nth-child(2) {
+  animation-delay: 0.16s;
+}
+
+.dots-loader .dot:nth-child(3) {
+  animation-delay: 0.32s;
+}
+
+.agent-pill.agent-pill-pulse .agent-pill-dot {
+  box-shadow: 0 0 8px var(--fx-glow);
+}
+
+/* --------------------------------------------------------- tooltips, menus */
+.viewer-hover-tip,
+.viewer-handle-tooltip,
+.card-menu,
+.more-menu,
+.viewer-display-menu {
+  animation: fxRise 160ms var(--fx-ease);
+}
+
+.card-menu button,
+.more-item,
+.viewer-display-menu button,
+.viewer-context-menu button {
+  transition:
+    background-color 140ms ease,
+    color 140ms ease,
+    box-shadow 160ms ease;
+}
+
+.card-menu button:hover:not(:disabled),
+.more-item:hover:not(:disabled),
+.viewer-display-menu button:hover:not(:disabled),
+.viewer-context-menu button:hover:not(:disabled) {
+  box-shadow: inset 2px 0 0 var(--fx-glow);
+}
+
+.card-menu button:focus-visible,
+.more-item:focus-visible,
+.viewer-display-menu button:focus-visible,
+.viewer-context-menu button:focus-visible {
+  outline: 2px solid var(--fx-glow);
+  outline-offset: -2px;
+}
+
+/* ------------------------------------------------------------ library cards */
+.saved-model-card {
+  position: relative;
+  isolation: isolate;
+  transition:
+    border-color 220ms ease,
+    box-shadow 260ms var(--fx-ease),
+    transform 260ms var(--fx-ease);
+}
+
+/* A gradient hairline that fades in around the card on hover. */
+.saved-model-card::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    135deg,
+    var(--accent),
+    var(--fx-cyan) 45%,
+    transparent 75%
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box exclude,
+    linear-gradient(#000 0 0);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 240ms ease;
+  z-index: 2;
+}
+
+.saved-model-card:hover,
+.saved-model-card:focus-within {
+  transform: translateY(-3px);
+  border-color: transparent;
+  box-shadow:
+    0 14px 30px -16px color-mix(in srgb, var(--fx-glow) 55%, transparent),
+    0 4px 12px -6px rgba(0, 0, 0, 0.25);
+}
+
+.saved-model-card:hover::before,
+.saved-model-card:focus-within::before {
+  opacity: 1;
+}
+
+.saved-model-card .model-name {
+  transition: color 180ms ease;
+}
+
+.saved-model-card:hover .model-name,
+.saved-model-card:focus-within .model-name {
+  color: var(--accent-ink);
+}
+
+.saved-model-card:active {
+  transform: translateY(-1px) scale(0.995);
+}
+
+/* --------------------------------------------------------- reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  .btn-primary,
+  .btn-secondary,
+  .btn-ghost,
+  .btn-demo,
+  .send,
+  .chat-result-action,
+  .msg-action,
+  .viewer-tools .tool,
+  .btn-part-action,
+  .btn-hide-part,
+  .btn-delete-model,
+  .btn-history-model,
+  .viewer-selected-chip .chip-action-btn,
+  .viewer-selected-chip .chip-close,
+  .composer-target-remove,
+  .types-chip,
+  .theme-switch button,
+  .viewer-display-menu button,
+  input[type="checkbox"],
+  input[type="checkbox"]::after,
+  .chat-composer textarea,
+  .library-search,
+  .library-sort select,
+  .model-select,
+  .card-menu button,
+  .more-item,
+  .viewer-context-menu button,
+  .saved-model-card,
+  .saved-model-card::before,
+  .saved-model-card .model-name {
+    transition-duration: 0.01ms !important;
+  }
+
+  .live,
+  .btn-primary::after,
+  .send::after,
+  .chat-result-action::after,
+  .viewer-hover-tip,
+  .viewer-handle-tooltip,
+  .card-menu,
+  .more-menu,
+  .viewer-display-menu {
+    animation: none !important;
+  }
+
+  .dots-loader .dot {
+    animation-duration: 2.4s;
+  }
+
+  .saved-model-card:hover,
+  .saved-model-card:focus-within,
+  .saved-model-card:active,
+  .btn-primary:active:not(:disabled),
+  .send:active:not(:disabled),
+  .chat-result-action:active:not(:disabled),
+  .btn-secondary:active:not(:disabled),
+  .btn-ghost:active:not(:disabled),
+  .btn-demo:active:not(:disabled),
+  .viewer-tools .tool:active:not(:disabled) {
+    transform: none !important;
+  }
+}
