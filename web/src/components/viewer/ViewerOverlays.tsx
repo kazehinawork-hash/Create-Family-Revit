@@ -214,6 +214,7 @@ export function ViewerOverlays({
         <button
           type="button"
           className={`tool ${showGrid ? "active" : ""}`}
+          aria-pressed={showGrid}
           onClick={onToggleGrid}
           title={t.grid}
         >
@@ -225,6 +226,7 @@ export function ViewerOverlays({
         <button
           type="button"
           className={`tool ${shadowsEnabled ? "active" : ""}`}
+          aria-pressed={shadowsEnabled}
           onClick={() => setShadowsEnabled((curr) => !curr)}
           title={t.shadows}
         >
@@ -238,6 +240,7 @@ export function ViewerOverlays({
           <button
             type="button"
             className={`tool ${showPlanes ? "active" : ""}`}
+            aria-pressed={showPlanes}
             onClick={onTogglePlanes}
             title={t.refPlanes}
           >
@@ -268,8 +271,8 @@ export function ViewerOverlays({
         <button
           type="button"
           className={`tool ${showSilhouettes ? "active" : ""}`}
-          data-testid="viewer-silhouettes-btn"
           aria-pressed={showSilhouettes}
+          data-testid="viewer-silhouettes-btn"
           onClick={() => setShowSilhouettes((curr) => !curr)}
           title={t.viewerSilhouettesHint}
         >
@@ -298,6 +301,7 @@ export function ViewerOverlays({
         <button
           type="button"
           className={`tool tool-primary ${sectionAxis !== "off" ? "active" : ""}`}
+          aria-pressed={sectionAxis !== "off"}
           onClick={() => {
             if (sectionAxis === "off") {
               setSectionT(1);
@@ -318,6 +322,7 @@ export function ViewerOverlays({
         <button
           type="button"
           className={`tool tool-primary ${measuring ? "active" : ""}`}
+          aria-pressed={measuring}
           onClick={() => setMeasuring((current) => !current)}
           title={t.measure}
         >
@@ -331,6 +336,7 @@ export function ViewerOverlays({
         <button
           type="button"
           className={`tool tool-primary ${detailLevel === "coarse" ? "active" : ""}`}
+          aria-pressed={detailLevel === "coarse"}
           onClick={() => setDetailLevel((cur) => (cur === "coarse" ? "fine" : "coarse"))}
           title={detailLevel === "coarse" ? t.viewerToFine : t.viewerToCoarse}
         >
@@ -344,6 +350,7 @@ export function ViewerOverlays({
           <button
             type="button"
             className={`tool tool-primary ${showConnectors ? "active" : ""}`}
+            aria-pressed={showConnectors}
             onClick={onToggleConnectors}
             title={t.connectorsTooltip}
           >
@@ -357,6 +364,7 @@ export function ViewerOverlays({
         <button
           type="button"
           className={`tool ${turntableActive ? "active" : ""}`}
+          aria-pressed={turntableActive}
           onClick={() => setTurntableActive((curr) => !curr)}
           title={t.viewerTurntableHint}
         >
@@ -368,6 +376,7 @@ export function ViewerOverlays({
         <button
           type="button"
           className={`tool ${dimOthers ? "active" : ""}`}
+          aria-pressed={dimOthers}
           onClick={() => setDimOthers((current) => !current)}
           title={t.dimOthers}
         >
@@ -394,6 +403,7 @@ export function ViewerOverlays({
         <button
           type="button"
           className={`tool ${showDimensions ? "active" : ""}`}
+          aria-pressed={showDimensions}
           onClick={() => setShowDimensions((current) => !current)}
           title={t.dimensions}
         >

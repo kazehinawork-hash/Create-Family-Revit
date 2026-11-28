@@ -6,7 +6,7 @@
   --line-strong: #d2cfc6;
   --ink: #1f2226;
   --ink-2: #4d5055;
-  --muted: #8c8e91;
+  --muted: #676a6f;
   --accent: #3c7a63;
   --accent-ink: #2b5a49;
   --accent-soft: #e9f1ed;
@@ -697,7 +697,7 @@ body.resizing {
   overflow: hidden;
   border: 1px solid var(--line-strong);
   border-radius: 7px;
-  background: #fff;
+  background: var(--panel-2);
   cursor: zoom-in;
 }
 
@@ -2090,7 +2090,7 @@ body.resizing {
   font-size: 10.5px;
   color: var(--ink-2);
   font-family: var(--mono);
-  background: rgba(255, 255, 255, 0.85);
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
   border: 1px solid var(--line);
   border-radius: 6px;
   padding: 3px 7px;
@@ -2160,7 +2160,7 @@ body.resizing {
   padding: 0 10px;
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: #fff;
+  background: var(--panel);
   color: var(--muted);
   transition:
     border-color 0.12s ease,
@@ -2179,7 +2179,7 @@ body.resizing {
 
 .filter:focus-within {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(60, 122, 99, 0.1);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
   color: var(--accent-ink);
 }
 
@@ -2290,7 +2290,7 @@ body.resizing {
 }
 
 .param-row:hover {
-  background: #faf9f6;
+  background: var(--surface-hover);
 }
 
 .param-row .swatch {
@@ -2317,7 +2317,7 @@ body.resizing {
 .param-formula {
   display: block;
   font-family: var(--mono);
-  font-size: 9.5px;
+  font-size: 10px;
   color: var(--muted);
   white-space: nowrap;
   overflow: hidden;
@@ -2334,7 +2334,7 @@ body.resizing {
   background: transparent;
   color: var(--accent-ink);
   font-family: var(--mono);
-  font-size: 9.5px;
+  font-size: 10px;
   text-align: left;
   white-space: nowrap;
   overflow: hidden;
@@ -2388,7 +2388,7 @@ body.resizing {
 
 .param-unit {
   font-family: var(--mono);
-  font-size: 9.5px;
+  font-size: 10px;
   color: var(--muted);
   min-width: 16px;
   text-align: right;
@@ -2883,8 +2883,8 @@ body.resizing {
   min-width: 200px;
   max-width: 260px;
   background: #ffffff;
-  color: #1f2328;
-  border: 1px solid #d0d7de;
+  color: var(--ink);
+  border: 1px solid var(--line-strong);
   border-radius: 8px;
   box-shadow:
     0 8px 24px rgba(140, 149, 159, 0.28),
@@ -2914,7 +2914,7 @@ body.resizing {
   padding: 6px 8px;
   font-weight: 600;
   font-size: 12px;
-  color: #57606a;
+  color: var(--ink-2);
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
@@ -2923,7 +2923,7 @@ body.resizing {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #0969da;
+  background: var(--accent);
   box-shadow: 0 0 0 2px rgba(9, 105, 218, 0.2);
 }
 
@@ -2947,7 +2947,7 @@ body.resizing {
   padding: 6px 10px;
   border: none;
   background: transparent;
-  color: #24292f;
+  color: var(--ink);
   font-size: 13px;
   font-weight: 500;
   text-align: left;
@@ -2960,17 +2960,17 @@ body.resizing {
 
 .viewer-context-menu .menu-item:hover {
   background: #f0f3f6;
-  color: #0969da;
+  color: var(--accent-ink);
 }
 
 .viewer-context-menu .menu-item.secondary {
-  color: #57606a;
+  color: var(--ink-2);
   font-size: 12px;
 }
 
 .viewer-context-menu .menu-item.secondary:hover {
   background: #f0f3f6;
-  color: #24292f;
+  color: var(--ink);
 }
 
 .viewer-context-menu .menu-item svg {
@@ -3372,7 +3372,7 @@ body.resizing {
   cursor: pointer;
   padding: 4px;
   border-radius: 4px;
-  color: #57606a;
+  color: var(--ink-2);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3382,12 +3382,12 @@ body.resizing {
 }
 
 .btn-part-action:hover {
-  background: #eaeef2;
-  color: #24292f;
+  background: var(--surface-hover);
+  color: var(--ink);
 }
 
 .btn-part-action.active {
-  color: #0969da;
+  color: var(--accent-ink);
   background: rgba(9, 105, 218, 0.1);
 }
 
@@ -3448,7 +3448,7 @@ body.resizing {
   margin: 0;
   font-size: 16px;
   font-weight: 600;
-  color: #1f2328;
+  color: var(--ink);
 }
 
 .modal-header .header-actions {
@@ -3462,12 +3462,12 @@ body.resizing {
   border: none;
   font-size: 20px;
   cursor: pointer;
-  color: #57606a;
+  color: var(--ink-2);
   padding: 0 4px;
 }
 
 .modal-close:hover {
-  color: #1f2328;
+  color: var(--ink);
 }
 
 .modal-body {
@@ -3528,7 +3528,7 @@ a.modal-close {
 .empty-library {
   text-align: center;
   padding: 40px 20px;
-  color: #57606a;
+  color: var(--ink-2);
 }
 .empty-library p {
   margin: 0 0 6px 0;
@@ -3561,12 +3561,12 @@ a.modal-close {
 
 .saved-model-card:hover {
   background: #ffffff;
-  border-color: #0969da;
+  border-color: var(--accent);
   box-shadow: 0 4px 12px rgba(9, 105, 218, 0.08);
 }
 
 .saved-model-card.active {
-  border-color: #0969da;
+  border-color: var(--accent);
   background: #f0f7ff;
 }
 
@@ -3580,8 +3580,8 @@ a.modal-close {
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
-  color: #57606a;
-  background: #eaeef2;
+  color: var(--ink-2);
+  background: var(--surface-hover);
   padding: 2px 6px;
   border-radius: 4px;
 }
@@ -3590,7 +3590,7 @@ a.modal-close {
   margin: 0;
   font-size: 14px;
   font-weight: 600;
-  color: #1f2328;
+  color: var(--ink);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3601,7 +3601,7 @@ a.modal-close {
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: #57606a;
+  color: var(--ink-2);
 }
 
 .btn-delete-model {
@@ -3705,8 +3705,8 @@ a.modal-close {
   left: 20px;
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(8px);
-  color: #0969da;
-  border: 1px solid #d0d7de;
+  color: var(--accent-ink);
+  border: 1px solid var(--line-strong);
   border-radius: 20px;
   padding: 6px 14px;
   font-size: 13px;
@@ -3724,7 +3724,7 @@ a.modal-close {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #0969da;
+  background: var(--accent);
   box-shadow: 0 0 0 0 rgba(9, 105, 218, 0.7);
   animation: pulseBlue 1.2s infinite;
 }
@@ -3977,7 +3977,7 @@ a.modal-close {
 
 .badge-flow.bidirectional {
   background: #ddf4ff;
-  color: #0969da;
+  color: var(--accent-ink);
 }
 
 .connector-size {
@@ -4009,7 +4009,7 @@ a.modal-close {
 
 .connector-host-toggle.ref {
   border-color: #8ab4f8;
-  color: #0969da;
+  color: var(--accent-ink);
   background: #eef5ff;
 }
 
@@ -4466,7 +4466,7 @@ a.modal-close {
   margin: 0;
   font-size: 14px;
   font-weight: 600;
-  color: #1f2328;
+  color: var(--ink);
   border: 1px solid #7aa7e8;
   border-radius: 4px;
   padding: 3px 6px;
@@ -4626,8 +4626,8 @@ a.modal-close {
 .library-section-head .count {
   font-size: 11px;
   font-weight: 500;
-  color: #57606a;
-  background: #eaeef2;
+  color: var(--ink-2);
+  background: var(--surface-hover);
   border-radius: 9px;
   padding: 0 6px;
 }
@@ -4650,7 +4650,7 @@ a.modal-close {
 }
 
 .library-group-row.drop-target {
-  outline: 2px dashed #0969da;
+  outline: 2px dashed var(--accent);
   outline-offset: -2px;
 }
 
@@ -4788,16 +4788,15 @@ a.modal-close {
   margin-left: auto;
 }
 
+/* Show the whole name: wrap onto as many lines as it needs, breaking at spaces first. */
 .library-group-row .group-name {
   flex: 1;
   min-width: 0;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  display: block;
   white-space: normal;
-  text-overflow: ellipsis;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  line-height: 1.3;
+  padding: 2px 0;
   line-height: 1.3;
   max-height: 2.6em;
   text-align: left;
@@ -4809,15 +4808,15 @@ a.modal-close {
   border: 1px dashed var(--line);
   border-radius: 6px;
   background: transparent;
-  color: #57606a;
+  color: var(--ink-2);
   font: inherit;
   font-size: 13px;
   cursor: pointer;
 }
 
 .library-new-group:hover {
-  border-color: #0969da;
-  color: #0969da;
+  border-color: var(--accent);
+  color: var(--accent-ink);
 }
 
 .library-main {
@@ -4852,7 +4851,7 @@ a.modal-close {
 }
 
 .library-search:focus {
-  border-color: #0969da;
+  border-color: var(--accent);
 }
 
 .library-sort {
@@ -4860,7 +4859,7 @@ a.modal-close {
   align-items: center;
   gap: 6px;
   font-size: 12px;
-  color: #57606a;
+  color: var(--ink-2);
   white-space: nowrap;
 }
 
@@ -4895,7 +4894,7 @@ a.modal-close {
   font: inherit;
   font-size: 13px;
   font-weight: 600;
-  color: #1f2328;
+  color: var(--ink);
   cursor: pointer;
   text-align: left;
 }
@@ -4932,8 +4931,8 @@ a.modal-close {
   font-size: 11px;
   padding: 1px 7px;
   border-radius: 10px;
-  background: #eaeef2;
-  color: #57606a;
+  background: var(--surface-hover);
+  color: var(--ink-2);
 }
 
 .saved-model-card .chip-group {
@@ -6370,19 +6369,29 @@ body,
 
 :root {
   --fx-cyan: #22b8cf;
+  /* The filled gradient stays dark enough for white text (≥ 4.5:1 end to end);
+     the brighter --fx-cyan is only used for glows and hairlines. */
   --fx-grad: linear-gradient(
     135deg,
     var(--accent) 0%,
-    color-mix(in srgb, var(--accent) 55%, var(--fx-cyan)) 100%
+    color-mix(in srgb, var(--accent) 70%, #0e7490) 100%
   );
+  --fx-on-grad: #fff;
   --fx-glow: color-mix(in srgb, var(--accent) 60%, var(--fx-cyan));
   --fx-ring: color-mix(in srgb, var(--fx-glow) 45%, transparent);
   --fx-halo: 0 6px 20px -8px color-mix(in srgb, var(--fx-glow) 70%, transparent);
   --fx-ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/* In the dark theme the fill is bright and luminous, so it carries dark ink. */
 :root[data-theme="dark"] {
   --fx-cyan: #4dd8ee;
+  --fx-grad: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--accent) 88%, #fff) 0%,
+    color-mix(in srgb, var(--accent) 50%, var(--fx-cyan)) 100%
+  );
+  --fx-on-grad: #06120e;
   --fx-ring: color-mix(in srgb, var(--fx-glow) 55%, transparent);
   --fx-halo: 0 6px 24px -6px color-mix(in srgb, var(--fx-glow) 75%, transparent);
 }
@@ -6390,6 +6399,12 @@ body,
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --fx-cyan: #4dd8ee;
+    --fx-grad: linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--accent) 88%, #fff) 0%,
+      color-mix(in srgb, var(--accent) 50%, var(--fx-cyan)) 100%
+    );
+    --fx-on-grad: #06120e;
     --fx-ring: color-mix(in srgb, var(--fx-glow) 55%, transparent);
     --fx-halo: 0 6px 24px -6px color-mix(in srgb, var(--fx-glow) 75%, transparent);
   }
@@ -6424,7 +6439,7 @@ body,
   isolation: isolate;
   border: 0;
   background: var(--fx-grad);
-  color: #fff;
+  color: var(--fx-on-grad);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
   transition:
     box-shadow 200ms var(--fx-ease),
@@ -6459,8 +6474,8 @@ body,
 .send:hover:not(:disabled),
 .chat-result-action.chat-result-action-primary:hover:not(:disabled) {
   background: var(--fx-grad);
-  color: #fff;
-  filter: brightness(1.08) saturate(1.1);
+  color: var(--fx-on-grad);
+  filter: brightness(1.06) saturate(1.1);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.28),
     0 0 0 1px var(--fx-ring),
@@ -6486,7 +6501,7 @@ body,
 .btn-primary:disabled,
 .send:disabled,
 .chat-result-action.chat-result-action-primary:disabled {
-  background: var(--line-strong);
+  background: var(--line);
   color: var(--muted);
   box-shadow: none;
   filter: none;
@@ -6496,10 +6511,11 @@ body,
 .send.stop,
 .btn-primary.danger:hover:not(:disabled),
 .send.stop:hover:not(:disabled) {
+  color: #fff;
   background: linear-gradient(
     135deg,
-    var(--danger),
-    color-mix(in srgb, var(--danger) 70%, #ff4fa3)
+    color-mix(in srgb, var(--danger) 78%, #000),
+    color-mix(in srgb, var(--danger) 62%, #9d174d)
   );
 }
 
@@ -6898,6 +6914,63 @@ input[type="checkbox"]:disabled {
 
 .saved-model-card:active {
   transform: translateY(-1px) scale(0.995);
+}
+
+/* A transform or isolation on the card would become the containing block of the
+   fixed "move to group" menu, shifting it and trapping it under the next cards.
+   While a card menu is open the card stays flat and lifts above its siblings. */
+.saved-model-card:has(.card-menu),
+.saved-model-card:has(.card-menu):hover,
+.saved-model-card:has(.card-menu):active {
+  transform: none;
+  isolation: auto;
+  z-index: 30;
+  /* Drop the transform at once: while it animated back the card was still the
+     menu's containing block, so the menu flashed off to the side first. */
+  transition:
+    border-color 220ms ease,
+    box-shadow 260ms var(--fx-ease);
+}
+
+/* ------------------------------------------------------- contrast fixes */
+::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+
+:root[data-theme="dark"] .brand-mark {
+  color: #06120e;
+  background: var(--fx-grad);
+}
+
+/* Thumbnails are rendered on a light studio backdrop; tone them down in the dark
+   theme so the library grid does not glare. */
+:root[data-theme="dark"] .saved-model-card .model-thumb {
+  background: #2a2e33;
+}
+
+:root[data-theme="dark"] .saved-model-card .model-thumb img {
+  filter: brightness(0.78) contrast(1.06);
+  transition: filter 220ms ease;
+}
+
+:root[data-theme="dark"] .saved-model-card:hover .model-thumb img {
+  filter: brightness(0.92) contrast(1.04);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .brand-mark {
+    color: #06120e;
+    background: var(--fx-grad);
+  }
+
+  :root:not([data-theme="light"]) .saved-model-card .model-thumb {
+    background: #2a2e33;
+  }
+
+  :root:not([data-theme="light"]) .saved-model-card .model-thumb img {
+    filter: brightness(0.78) contrast(1.06);
+  }
 }
 
 /* --------------------------------------------------------- reduced motion */
