@@ -854,7 +854,7 @@ export function ChatPanel({
                   {(entry.changes?.changedPartIds.length ?? 0) > 0 && onHighlightParts && (
                     <button
                       type="button"
-                      className="chat-result-action"
+                      className="chat-result-action chat-result-action-primary"
                       onClick={() => onHighlightParts(entry.changes!.changedPartIds)}
                     >
                       {t.chatViewOn3d}
@@ -893,7 +893,11 @@ export function ChatPanel({
 
         {running && (
           <div className="live">
-            <span className="spinner" />
+            <span className="dots-loader" aria-hidden="true">
+              <span className="dot" />
+              <span className="dot" />
+              <span className="dot" />
+            </span>
             <div>
               <div>{stageMessage || t.chatWorking}</div>
               {stageIssues && stageIssues.length > 0 && (

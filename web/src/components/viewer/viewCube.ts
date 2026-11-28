@@ -158,6 +158,7 @@ export function setupViewCube({
     new THREE.MeshBasicMaterial({
       map: compassTexture,
       transparent: true,
+      depthWrite: false,
       side: THREE.DoubleSide,
     }),
   );
@@ -276,13 +277,13 @@ export function setupViewCube({
     const intersects = raycaster.intersectObject(cubeMesh);
     if (intersects.length > 0 && intersects[0].face) {
       const index = Math.floor(intersects[0].face.materialIndex);
-      const viewMap: ("right" | "left" | "back" | "front" | "top" | "iso")[] = [
+      const viewMap: ViewDirection[] = [
         "right",
         "left",
         "back",
         "front",
         "top",
-        "iso",
+        "bottom",
       ];
       const view = viewMap[index] || "iso";
       if (bounds) {
@@ -301,6 +302,8 @@ export function setupViewCube({
   return {
     render: (mainCamera, mainControls) => {
       const dir = mainCamera.position.clone().sub(mainControls.target).normalize();
+      // Hide the bottom compass ring when orbiting underneath so the BOTTOM face stays unobstructed.
+      compassMesh.visible = dir.z >= -0.15;
       cubeCamera.position.copy(dir.multiplyScalar(6.2));
       cubeCamera.lookAt(0, 0, 0);
       cubeRenderer.render(cubeScene, cubeCamera);
